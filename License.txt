@@ -1,4 +1,4 @@
-(*  CSIsat: interpolation procedure for LA + EUF
+(*  CSIsat: Interpolating decision procedure for LA + EUF
  *  Copyright (C) 2008  The CSIsat team
  *
  *  This program is free software: you can redistribute it and/or modify

@@ -21,20 +21,21 @@ let sat_only = ref false
 let options = 
   [
     ("-debug", Arg.Unit Message.enable_debug,
-      "Print debugging informations");
+      "Print debug information.");
     ("-check", Arg.Unit (fun () -> check := true),
-      "check computed interpolant");
+      "Check the computed interpolant.");
     ("-sat", Arg.Unit (fun () -> sat_only := true),
-      "only check if the assignement is satisfiable or not (no interplolation), prints '(un)satisfiable' on stdout");
+      "Check for satisfiability only (no interplolation).\n Writes only "satisfiable" or "unsatisfiable" to stdout.");
     ("-solver", Arg.String LIUtils.set_solver,
-      "choose LA solver option: simplex, simplex_wo_presolve, interior. (default: simplex)")
+      "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).")
   ]
 
 let usage = (
-  "CSIsat is an open source interpolation procedure \n\n"^
-  "Reads the query from stdin and prints the answer on stdout.\n"^
-  "When the input is satisfiable, prints \"Satisfiable: + formula\" on stderr.\n"^
-  "The formula implies the conjunction of the two input formula.\n"
+  "CSIsat is an open-source interpolating decision procedure for LA+EUF.\n\n"^
+  "Reads the query from stdin and writes the answer to stdout.\n\n"^
+  "If the input formula is satisfiable,\n CSIsat writes \"Satisfiable: <formula>\" on stderr.\n"^
+  "'formula' implies the conjunction of the two input formula.\n"
+  "Otherwise it writes an interpolant to stdout.\n"
 )
 
 let _ = Arg.parse options (fun _ -> ()) usage

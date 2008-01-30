@@ -1,31 +1,20 @@
-Requirements:
-  - ocaml with the 'C' headers installed
-  - glpk
-
-Compilation:
-just execute: make
-
-Configuration:
-The makefile makes the following assumptions:
-  - The file 'libglpk.a' is located in '/usr/lib/'.
-    If this is not the case, please modify the GLPK variable in the Makefile.
-  - The ocaml headers and glpk headers are in the default include path.
-    If this is not the case, please modify the Makefile for glpk,
-    or glpk_ml_wrapper/Makefile for ocaml.
-If you want to compile a statically linked version, uncomment the line
-"#STATIC = -ccopt '-static'"
+CSIsat is an open-source interpolating decision procedure for LA+EUF.
 
 Usage:
-Reads the query from stdin and prints the answer on stdout.
+Reads the query from stdin and writes the answer to stdout.
 
-When the input is satisfiable, prints "Satisfiable: + formula" on stderr.
-The formula implies the conjunction of the two input formula.
+If the input formula is satisfiable, 
+CSIsat writes "Satisfiable: <formula>" on stderr.
+'formula' implies the conjunction of the two input formula.
+Otherwise it writes an interpolant to stdout.
 
 Options:
--debug: print debug information
--check: check the interpolant.
--sat: only check for satisfiability: print "(un)satisfiable" on stdout
--solver: choose which LA solver to use.
+-debug   Print debug information.
+-check   Check the computed interpolant.
+-sat     Check for satisfiability only (no interplolation).
+         Writes only "satisfiable" or "unsatisfiable" to stdout.
+-solver  Choose which LA solver to use.
+         Options: simplex, simplex_wo_presolve, interior (default: simplex).
 
 Input language:
 The language is similar to Foci.
@@ -43,7 +32,7 @@ term    :: variable
          | '*' number term
          | function_symbol '[' term ... term ']'
 
-A number is an integer, floating point, or a ratio (number '/' number)
-Warning: for the moment, "_1" is recognised as integer 1.
+'number' is an integer, floating point, or a ratio (number '/' number).
+Warning: For the moment, "_1" is recognized as integer 1.
 
-the authors: Dirk Beyer, Damien Zufferey, and Rupak Majumdar
+Authors: Dirk Beyer, Damien Zufferey, and Rupak Majumdar
