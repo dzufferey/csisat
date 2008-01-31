@@ -9,6 +9,7 @@ CSIsat writes "Satisfiable: <formula>" on stderr.
 Otherwise it writes an interpolant to stdout.
 
 Options:
+--help   Print this information.
 -debug   Print debug information.
 -check   Check the computed interpolant.
 -sat     Check for satisfiability only (no interplolation).

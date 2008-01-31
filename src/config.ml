@@ -25,7 +25,7 @@ let options =
     ("-check", Arg.Unit (fun () -> check := true),
       "Check the computed interpolant.");
     ("-sat", Arg.Unit (fun () -> sat_only := true),
-      "Check for satisfiability only (no interplolation).\n Writes only "satisfiable" or "unsatisfiable" to stdout.");
+      "Check for satisfiability only (no interplolation).\n Writes only \"satisfiable\" or \"unsatisfiable\" to stdout.");
     ("-solver", Arg.String LIUtils.set_solver,
       "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).")
   ]
@@ -35,7 +35,7 @@ let usage = (
   "Version 1.0, 2008-01-30.\n\n"^
   "Reads the query from stdin and writes the answer to stdout.\n\n"^
   "If the input formula is satisfiable,\n CSIsat writes \"Satisfiable: <formula>\" on stderr.\n"^
-  "'formula' implies the conjunction of the two input formula.\n"
+  "'formula' implies the conjunction of the two input formula.\n"^
   "Otherwise it writes an interpolant to stdout.\n"
 )
 
