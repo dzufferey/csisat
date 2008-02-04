@@ -468,147 +468,16 @@ let common_expression a b =
     Message.print Message.Debug (lazy("common fct are: " ^ (Utils.string_list_cat ", " common_sym)));
     (common_sym, common_var)
 
-(*TODO this is complete, but is it sound ??(i.e. on  shared expr)*)
-let interpolate_uif a b =
-  let expr_a = AstUtil.get_expr_deep a in
-  let expr_b = AstUtil.get_expr_deep b in
-  (*let common = OrdSet.intersection (OrdSet.list_to_ordSet expr_a) (OrdSet.list_to_ordSet expr_b) in*)
-  let (common_sym, common_var) = common_expression a b in
-  let graph_a = new dag (expr_a) in
-  let sat_a = graph_a#is_satisfiable a in
-    if not sat_a then False
-    else
-      begin
-        (*A is sat*)
-        let graph_b = new dag expr_b in
-        let sat_b = graph_b#is_satisfiable b in
-        if not sat_b then True
-        else
-          begin
-            (*A and B are sat*)
-            let rec split accEq accNeq lst = match lst with
-              | (Eq _ as eq)::xs -> split (eq::accEq) accNeq xs
-              | (Not(Eq _) as neq)::xs -> split accEq (neq::accNeq) xs
-              | e::xs -> failwith ("satUIF, interpolate_uif(1): projection contains some strang term -> "^(AstUtil.print e))
-              | [] -> (accEq,accNeq)
-            in
-            let (eq_a,neq_a) = match a with
-              | And lst_a -> split [] [] lst_a
-              | _ -> failwith "satUIF, interpolate_uif(2a): ...."
-            in
-            let (eq_b,neq_b) = match b with
-              | And lst_b -> split [] [] lst_b
-              | _ -> failwith "satUIF, interpolate_uif(2b): ...."
-            in
-            let graph_all = new dag (expr_a @ expr_b) in
-              List.iter (fun x -> graph_all#add_constr x) eq_a;
-              List.iter (fun x -> graph_all#add_constr x) eq_b;
-              let expr_only vars sym expr =
-                let rec process expr = match expr with
-                  | Constant _ as c -> List.mem c vars
-                  | Variable _ as v -> List.mem v vars
-                  | Application (s, lst) -> (List.mem s sym) && (List.for_all process lst)
-                  | _ -> false (*should not happen*)
-                in
-                  process expr
-              in
-              let rec max_depth expr =
-                let max_val = ref 0 in
-                match expr with
-                  | Application (s, lst) ->
-                    begin
-                      List.iter (fun x -> max_val := max (max_depth x) !max_val ) lst;
-                      1 + !max_val
-                    end
-                  | _ -> 0
-              in
-              let allowed_sym sym expr = match expr with
-                | Application (s, _) -> (List.mem s sym)
-                | _ -> false
-              in
-              let build_interpolant graph e1 e2 =
-                let cc = graph#get_cc in
-                let stack = ref [] in
-                let rec get_equiv expr =
-                  let cur_cc = List.hd (List.filter (List.mem expr) cc) in
-                  let lucky = List.filter (expr_only common_var common_sym) cur_cc in
-                  if List.length lucky > 0 then
-                    begin
-                      Some(List.hd lucky)
-                    end
-                  else
-                    (*DFS*)
-                    begin
-                      if List.mem expr !stack then
-                        None (*cycle detection*)
-                      else
-                        let possible_term = List.filter (allowed_sym common_sym) cur_cc in
-                          stack := expr::(!stack);
-                          let fill_sub expr = match expr with
-                            | Application (s, lst) ->
-                            (*TODO if s is not a common symbol*)
-                              let args = List.map get_equiv lst in
-                                if List.for_all (fun x -> x <> None ) args then
-                                    Some (Application(s, Utils.remove_some args))
-                                else None
-                            | _ -> failwith "satUIF: ..."
-                          in
-                          let rec find_possible lst = match lst with
-                            | x::xs ->
-                              begin
-                                match fill_sub x with
-                                | None -> find_possible xs
-                                | x -> x
-                              end
-                            | [] -> None
-                          in
-                          let res = find_possible possible_term in
-                            stack := List.tl (!stack);
-                            res
-                    end
-                in
-                  let ee1 = get_equiv e1 in
-                  let ee2 = get_equiv e2 in
-                    match (ee1, ee2) with
-                    | (Some x, Some y) -> Eq(x,y)
-                    | _ -> False
-              in
-                let contra_a = List.filter graph_all#neq_contradiction neq_a in
-                let it_a = List.filter (fun x -> x <> Not False) (List.map (fun x -> match x with
-                  | Not(Eq (e1,e2)) -> Not (build_interpolant graph_a e1 e2)
-                  | _ -> failwith "satUIF, interpolate_uif(3): ...."
-                  ) contra_a)
-                in
-                  match ((List.length contra_a) > 0, (List.length it_a) > 0) with
-                  | (true, true) -> List.hd it_a
-                  | (true, false) -> failwith "satUIF, interpolate_uif(4): contradiction found, but unable to build interpolant"
-                  | (false, _) ->
-                    begin
-                      let contra_b = List.filter graph_all#neq_contradiction neq_b in
-                      let it_b = List.filter (fun x -> x <> False) (List.map (fun x -> match x with
-                        | Not(Eq (e1,e2)) -> build_interpolant graph_b e1 e2
-                        | _ -> failwith "satUIF, interpolate_uif(5): ...."
-                        ) contra_b)
-                      in
-                        match ((List.length contra_b) > 0, (List.length it_b) > 0) with
-                        | (true, true) -> List.hd it_b
-                        | (true, false) -> failwith "satUIF, interpolate_uif(6): contradiction found, but unable to build interpolant"
-                        | (false, _) -> raise SAT
-                    end
-          end
-      end
-  
-let interpolate a b =
-  interpolate_uif a b
-
+(*TODO refactore*)
 (*May be only an over-approximation*)
 let unsat_core formula =
   Message.print Message.Debug (lazy ("SatUIF, unsat core for "^(AstUtil.print formula)));
   let expr = AstUtil.get_expr formula in
   let graph = new dag expr in
   let f_parts = AstUtil.get_subterm_nnf formula in
-  let ded = graph#add_pred_with_applied formula in
-  let ded = List.filter (fun x -> not (List.mem x f_parts)) ded in (*avoid justifing given eq*)
+  let ded = ref (OrdSet.list_to_ordSet (List.filter (fun x -> not (List.mem x f_parts)) (graph#add_pred_with_applied formula))) in (*avoid justifing given eq*)
+  let justifying = ref [] in
+  let justified = ref [] in
     if not (graph#has_contradiction) then 
       raise (SAT_FORMULA formula)
     else
@@ -617,44 +486,56 @@ let unsat_core formula =
           | And lst -> lst
           | _ -> failwith "SatUIF: unsat_core (1)"
         in
-        let eqs = fst (Dag.split_eq_neq [] [] formula_lst) in
+        let eqs = ref (fst (Dag.split_eq_neq [] [] formula_lst)) in
           match List.hd (graph#test_for_contradition) with
           | Not (Eq(e1,e2)) as neq ->
             begin
-              let path = Dag.bfs (ded @ eqs) e1 e2 in
+              let path = Dag.bfs (!ded @ !eqs) e1 e2 in
               let proof = Dag.path_to_eq path in
               let rec justify_ded eq =(*TODO can this goes into an infinite loop (circular proof) ??*)
-                if List.mem eq ded then
+                if OrdSet.mem eq !ded then
                   begin (*need a deduced eq*)
                     Message.print Message.Debug (lazy((AstUtil.print eq )^" is deduced"));
                     match eq with
                     | Eq(Application(_,args1),Application(_,args2))
                     | Eq(Sum args1, Sum args2) -> (*Sum as UF*)
                       begin
+                        justifying := OrdSet.union !justifying [eq];
                         let justification = List.map2 (fun x y ->
                             if x = y then True
                             else
                               begin
-                                let path = Dag.bfs (ded @ eqs) x y in
+                                let usable_ded = OrdSet.substract !ded !justifying in
+                                let path = Dag.bfs (usable_ded @ !eqs) x y in
                                 let proof = Dag.path_to_eq path in
                                   And (List.map justify_ded proof)
                               end
                           ) args1 args2
                         in
+                          justifying := OrdSet.substract !justifying [eq];
+                          ded := OrdSet.substract !ded [eq];(*justify only once*)
+                          eqs := eq::(!eqs);
+                          justified := eq::(!justified);
                           And justification
                       end
                     | Eq(Coeff(c1,e1), Coeff(c2,e2)) -> (*coeff as UF*)
                       begin
+                        justifying := OrdSet.union !justifying [eq];
                         let justification = List.map2 (fun x y ->
                             if x = y then True
                             else
                               begin
-                                let path = Dag.bfs (ded @ eqs) x y in
+                                let usable_ded = OrdSet.substract !ded !justifying in
+                                let path = Dag.bfs (usable_ded @ !eqs) x y in
                                 let proof = Dag.path_to_eq path in
                                   And (List.map justify_ded proof)
                               end
                           ) [Constant c1; e1] [Constant c2; e2]
                         in
+                          justifying := OrdSet.substract !justifying [eq];
+                          ded := OrdSet.substract !ded [eq];(*justify only once*)
+                          eqs := eq::(!eqs);
+                          justified := eq::(!justified);
                           And justification
                       end
                     | err -> failwith ("SatUIF: unsat_core (3), "^(AstUtil.print err))
@@ -662,7 +543,7 @@ let unsat_core formula =
                 else
                   begin
                     Message.print Message.Debug (lazy((AstUtil.print eq )^" is given"));
-                    eq (*present in the original system*)
+                    if List.mem eq !justified then True else eq (*present in the original system*)
                   end
               in
               let core = AstUtil.normalize_only (And (neq::(List.map justify_ded proof))) in
