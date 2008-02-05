@@ -484,6 +484,7 @@ let get_subterm pred =
   in
     process pred
 
+(*OrdSet*)
 let get_subterm_nnf pred =
   let rec process pred = match pred with
     | False -> []
@@ -567,6 +568,17 @@ let only_expr expr formula =
     | _ -> false
   in
    process_pred formula
+
+let alpha_convert_pred origin _new formula =
+  let rec process f = match f with
+    | f when f = origin -> _new
+    | And lst -> And (List.map process lst)
+    | Or lst -> Or (List.map process lst)
+    | Not p -> Not (process p)
+    | e -> e
+  in
+    process formula
+
 (** return a formula in LI, in UIF, and a set of shared variable
  *  works only for the conjunctive fragment
  *  returns
@@ -678,16 +690,25 @@ let split_formula_LI_UIF pred =
     end
   | (true, false) ->
     begin
-      (*TODO assert ! assoc is emtpy*)
-      ([], p_lst, [], !assoc)
+      let lst = match pred with 
+        | And lst -> lst
+        | el -> [el] (*so few checks because process_pred already did them*)
+      in
+        ([], lst, [], [])
     end
   | (false, true) ->
     begin
-      (*TODO assert ! assoc is emtpy*)
-      (p_lst, [], [], !assoc)
+      let lst = match pred with 
+        | And lst -> lst
+        | el -> [el] (*so few checks because process_pred already did them*)
+      in
+        (lst, [], [], [])
     end
   | (false, false) -> (*UIF arbirary choice*)
     begin
-      (*TODO assert ! assoc is emtpy*)
-      (p_lst, [], [], !assoc)
+      let lst = match pred with 
+        | And lst -> lst
+        | el -> [el] (*so few checks because process_pred already did them*)
+      in
+        (lst, [], [], [])
     end

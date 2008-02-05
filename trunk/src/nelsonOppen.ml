@@ -338,12 +338,12 @@ let is_liuif_sat_with_eq formula =
 
 
 
-let unsat_core_NO_with_info formula =
+let unsat_core_NO formula =
   let rec split_th accLI accUIF lst = match lst with
     | (LI, eq)::xs -> split_th (eq::accLI) accUIF xs
     | (UIF, eq)::xs -> split_th accLI (eq::accUIF) xs
     | [] -> (accLI, accUIF)
-    | _ -> failwith "NelsonOppen: unsat_core_NO_with_info -> split_th"
+    | _ -> failwith "NelsonOppen: unsat_core_NO -> split_th"
   in
   let rec is_deduction ded eq = match ded with
     | (th, d)::xs when d=eq -> Some th
@@ -358,7 +358,7 @@ let unsat_core_NO_with_info formula =
   let formula_uif = List.filter (fun x -> match x with | Leq _ | Lt _ -> false | _ -> true) formula_lst in
   let remove_el conj el = match conj with
     | And lst -> And (List.filter (fun x -> x<>el) lst)
-    | _ -> failwith "NelsonOppen, unsat_core_NO_with_info: unsat core should be a conj"
+    | _ -> failwith "NelsonOppen, unsat_core_NO: unsat core should be a conj"
   in
   let rec previous_ded ded eq acc = match ded with
     | (_, d)::xs when d=eq -> List.rev acc
@@ -405,7 +405,7 @@ let unsat_core_NO_with_info formula =
             Message.print Message.Debug (lazy ("partial (UIF) core is "^(AstUtil.print core)));
             justifiy part_ded core
         end
-      | _ -> failwith "NelsonOppen: unsat_core_NO_with_info -> local_core"
+      | _ -> failwith "NelsonOppen: unsat_core_NO-> local_core"
   in
   Message.print Message.Debug (lazy ("NO core for "^(AstUtil.print formula)));
   let full_core = match theory with
@@ -424,20 +424,9 @@ let unsat_core_NO_with_info formula =
           Message.print Message.Debug (lazy ("Last core (EUF) is "^(AstUtil.print core)));
           AstUtil.normalize_only (justifiy eq_lst core)
       end
-    | _ -> failwith "NelsonOppen: unsat_core_NO_with_info"
+    | _ -> failwith "NelsonOppen: unsat_core_NO"
   in
     full_core
-  (*
-  let full_core_expr = AstUtil.get_expr_deep full_core in
-  let filter_deduction (th, eq) = match eq with
-    | Eq(e1,e2) -> (List.mem e1 full_core_expr) && (List.mem e2 full_core_expr)
-    | _ -> failwith "NelsonOppen, unsat_core_NO_with_info: filter_deduction"
-  in
-    (*(full_core, theory, List.filter filter_deduction eq_lst)*)
-    match is_liuif_sat_with_eq full_core with
-    | (SATISFIABLE, _) -> failwith "NelsonOppen, unsat_core_NO_with_info: core is SAT"
-    | (t,eq) -> (full_core, t, eq)
-  *)
 
 let unsat_core formula =
   match theory_of formula with
@@ -455,7 +444,28 @@ let unsat_core formula =
   | EUF_LA ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
-      unsat_core_NO_with_info formula
+      unsat_core_NO formula 
+    end
+
+let precise_unsat_core formula =
+  match theory_of formula with
+  | EUF ->
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
+      let core = SatUIF.unsat_core formula in(*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
+        unsat_core_for_convex_theory SatUIF.is_uif_sat core
+    end
+  | LA ->
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
+      SatLI.unsat_core formula
+    end
+  (*| EUF_LA -> unsat_core_for_convex_theory is_liuif_sat formula*)
+  | EUF_LA ->
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
+      let core = unsat_core_NO formula in
+        unsat_core_for_convex_theory is_liuif_sat core
     end
 
 let unsat_core_with_info formula =
@@ -476,17 +486,39 @@ let unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
-  (*| EUF_LA ->  (*TODO better*)
-    begin
-      let unsat_core = unsat_core_for_convex_theory is_liuif_sat formula in
-        match is_liuif_sat_with_eq unsat_core with
-        | (SATISFIABLE, _) -> raise SAT
-        | (t,eq) -> (unsat_core, t, eq)
-    end*)
   | EUF_LA ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
-      let unsat_core = unsat_core_NO_with_info formula in
+      let unsat_core = unsat_core_NO formula in
+        match is_liuif_sat_with_eq unsat_core with
+        | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
+        | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
+    end
+
+let precise_unsat_core_with_info formula =
+  match theory_of formula with
+  | EUF ->
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
+      let core = SatUIF.unsat_core formula in(*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
+      let core = unsat_core_for_convex_theory SatUIF.is_uif_sat core in
+        match is_liuif_sat_with_eq core with
+        | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
+        | (t,eq) -> (core, t, eq)
+    end
+  | LA ->  (*TODO better*)
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
+      let unsat_core = SatLI.unsat_core formula in
+        match is_liuif_sat_with_eq unsat_core with
+        | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
+        | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
+    end
+  | EUF_LA ->
+    begin
+      Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
+      let unsat_core = unsat_core_NO formula in
+      let unsat_core = unsat_core_for_convex_theory is_liuif_sat unsat_core in
         match is_liuif_sat_with_eq unsat_core with
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)

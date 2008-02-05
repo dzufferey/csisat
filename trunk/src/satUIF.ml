@@ -54,7 +54,7 @@ class node =
       let n1 = self#find in
       let n2 = that#find in
         n1#set_parent n2;
-        that#set_ccparent (OrdSet.union n1#get_ccparent that#get_ccparent);
+        n2#set_ccparent (OrdSet.union n1#get_ccparent n2#get_ccparent);
         n1#set_ccparent []
 
     method ccpar: node list = (self#find)#get_ccparent
@@ -152,6 +152,21 @@ class dag = fun expr ->
     method add_neq neq = given_neq <- AstUtil.PredSet.add neq given_neq
     method get_given_neq = AstUtil.PredSet.fold (fun x acc -> x::acc) given_neq []
 
+    method print =
+      let buffer = Buffer.create 1000 in
+      let print_node (n:node) =
+        Buffer.add_string buffer ("node: "^(AstUtil.print_expr (self#get_expr n)));
+        Buffer.add_char buffer '\n';
+        Buffer.add_string buffer ("  in class of:  "^(AstUtil.print_expr (self#get_expr n#find)));
+        Buffer.add_char buffer '\n';
+        Buffer.add_string buffer ("  ccparent are: "^(Utils.string_list_cat ", " (List.map (fun x -> AstUtil.print_expr (self#get_expr x)) n#get_ccparent)));
+        Buffer.add_char buffer '\n';
+        Buffer.add_string buffer ("  ccpar    are: "^(Utils.string_list_cat ", " (List.map (fun x -> AstUtil.print_expr (self#get_expr x)) n#ccpar)));
+        Buffer.add_char buffer '\n';
+      in
+        Hashtbl.iter (fun _ n -> print_node n) nodes;
+        Buffer.contents buffer
+
     method add_constr eq = match eq with
       | Eq (e1, e2) ->
         let n1 = self#get_node e1 in
@@ -175,7 +190,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | err::_ -> failwith ("UIF: only for a conjunction of eq/ne"^(AstUtil.print err))
+        | err::_ -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
       in
       match conj with
         | And lst ->
@@ -184,9 +199,9 @@ class dag = fun expr ->
               List.iter (self#add_neq) neq;
               List.fold_left (fun acc x -> acc @ (self#add_constr_with_applied x) ) [] eq (*TODO change "acc @ ..."*)
           end
-        | err -> failwith ("UIF: only for a conjunction of eq/ne"^(AstUtil.print err))
+        | err -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
 
-   method create_and_add_constr eq = match eq with(*TODO buggy*)
+   method create_and_add_constr eq = match eq with(*TODO buggy because of congruence parent*)
       | Eq (e1, e2) ->
         let n1 =
             try self#get_node e1
@@ -215,13 +230,15 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | c -> failwith ("UIF: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
+        | c -> failwith ("UIF: only for a conjunction of eq/ne, given: "^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
       in
       match conj with
         | And lst ->
           begin
             let (eq,neq) = split_eq_neq [] [] lst in
+              Message.print Message.Debug (lazy("EUF GRAPH before:\n"^self#print));
               List.iter (self#add_constr) eq;
+              Message.print Message.Debug (lazy("EUF GRAPH after:\n"^self#print));
               not (List.exists self#neq_contradiction neq)
           end
         | err -> failwith ("UIF: only for a conjunction of eq/ne"^(AstUtil.print err))
@@ -451,8 +468,6 @@ class dag = fun expr ->
         AstUtil.PredSet.iter cp#add_neq given_neq;
         cp (*TODO avoid add_constr (does the job again...)*)
 
-    (*TODO merge with relvent equalities ... *)
-
   end
 
 let is_uif_sat pred =
@@ -469,14 +484,22 @@ let common_expression a b =
     (common_sym, common_var)
 
 (*TODO refactore*)
-(*May be only an over-approximation*)
+(*is only an over-approximation*)
 let unsat_core formula =
   Message.print Message.Debug (lazy ("SatUIF, unsat core for "^(AstUtil.print formula)));
   let expr = AstUtil.get_expr formula in
   let graph = new dag expr in
   let f_parts = AstUtil.get_subterm_nnf formula in
-  let ded = ref (OrdSet.list_to_ordSet (List.filter (fun x -> not (List.mem x f_parts)) (graph#add_pred_with_applied formula))) in (*avoid justifing given eq*)
-  let justifying = ref [] in
+  let ded_with_order = List.filter (fun x -> not (List.mem x f_parts)) (graph#add_pred_with_applied formula) in (*avoid justifing given eq*)
+  let previous_ded eq =
+    let rec process acc lst = match lst with
+      | x :: xs ->
+        if x = eq then List.rev acc else process (x::acc) xs
+      | [] -> failwith "SatUIF, previous_ded: deduction not found"
+    in
+      process [] ded_with_order
+  in
+  let ded = ref (OrdSet.list_to_ordSet ded_with_order) in
   let justified = ref [] in
     if not (graph#has_contradiction) then 
       raise (SAT_FORMULA formula)
@@ -492,54 +515,49 @@ let unsat_core formula =
             begin
               let path = Dag.bfs (!ded @ !eqs) e1 e2 in
               let proof = Dag.path_to_eq path in
-              let rec justify_ded eq =(*TODO can this goes into an infinite loop (circular proof) ??*)
+              let rec justify_ded eq =
                 if OrdSet.mem eq !ded then
                   begin (*need a deduced eq*)
                     Message.print Message.Debug (lazy((AstUtil.print eq )^" is deduced"));
-                    match eq with
-                    | Eq(Application(_,args1),Application(_,args2))
-                    | Eq(Sum args1, Sum args2) -> (*Sum as UF*)
-                      begin
-                        justifying := OrdSet.union !justifying [eq];
-                        let justification = List.map2 (fun x y ->
-                            if x = y then True
-                            else
-                              begin
-                                let usable_ded = OrdSet.substract !ded !justifying in
-                                let path = Dag.bfs (usable_ded @ !eqs) x y in
-                                let proof = Dag.path_to_eq path in
-                                  And (List.map justify_ded proof)
-                              end
-                          ) args1 args2
-                        in
-                          justifying := OrdSet.substract !justifying [eq];
-                          ded := OrdSet.substract !ded [eq];(*justify only once*)
-                          eqs := eq::(!eqs);
-                          justified := eq::(!justified);
-                          And justification
-                      end
-                    | Eq(Coeff(c1,e1), Coeff(c2,e2)) -> (*coeff as UF*)
-                      begin
-                        justifying := OrdSet.union !justifying [eq];
-                        let justification = List.map2 (fun x y ->
-                            if x = y then True
-                            else
-                              begin
-                                let usable_ded = OrdSet.substract !ded !justifying in
-                                let path = Dag.bfs (usable_ded @ !eqs) x y in
-                                let proof = Dag.path_to_eq path in
-                                  And (List.map justify_ded proof)
-                              end
-                          ) [Constant c1; e1] [Constant c2; e2]
-                        in
-                          justifying := OrdSet.substract !justifying [eq];
-                          ded := OrdSet.substract !ded [eq];(*justify only once*)
-                          eqs := eq::(!eqs);
-                          justified := eq::(!justified);
-                          And justification
-                      end
-                    | err -> failwith ("SatUIF: unsat_core (3), "^(AstUtil.print err))
-                  end
+                    let prev = OrdSet.list_to_ordSet (previous_ded eq) in
+                      match eq with
+                      | Eq(Application(_,args1),Application(_,args2))
+                      | Eq(Sum args1, Sum args2) -> (*Sum as UF*)
+                        begin
+                          let justification = List.map2 (fun x y ->
+                              if x = y then True
+                              else
+                                begin
+                                  let path = Dag.bfs (prev @ !eqs) x y in (*TODO Not_Found*)
+                                  let proof = Dag.path_to_eq path in
+                                    And (List.map justify_ded proof)
+                                end
+                            ) args1 args2
+                          in
+                            ded := OrdSet.substract !ded [eq];(*justify only once*)
+                            eqs := eq::(!eqs);
+                            justified := eq::(!justified);
+                            And justification
+                        end
+                      | Eq(Coeff(c1,e1), Coeff(c2,e2)) -> (*coeff as UF*)
+                        begin
+                          let justification = List.map2 (fun x y ->
+                              if x = y then True
+                              else
+                                begin
+                                  let path = Dag.bfs (prev @ !eqs) x y in
+                                  let proof = Dag.path_to_eq path in
+                                    And (List.map justify_ded proof)
+                                end
+                            ) [Constant c1; e1] [Constant c2; e2]
+                          in
+                            ded := OrdSet.substract !ded [eq];(*justify only once*)
+                            eqs := eq::(!eqs);
+                            justified := eq::(!justified);
+                            And justification
+                        end
+                      | err -> failwith ("SatUIF: unsat_core (3), "^(AstUtil.print err))
+                    end
                 else
                   begin
                     Message.print Message.Debug (lazy((AstUtil.print eq )^" is given"));

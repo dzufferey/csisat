@@ -257,6 +257,12 @@ let test_find_common_li () =
   let common = SatLI.find_common_expr f1 (Variable "x") [Variable "y"] [] in
     Message.print Message.Normal (lazy("common is: "^(AstUtil.print_expr common)))
 
+let test_unsat_EUF () =
+  let f = AstUtil.simplify ( List.hd (FociParser.parse_foci
+      "& [ ~= f2[c_5] f2[c_6] = c_0 f1[c_3 c_0] = c_1 f1[c_0 c_3]  = f1[c_0 c_3] f1[c_3 c_0] = c_1 f1[c_0 c_4] = c_5 f1[c_4 c_0]  = f1[c_0 c_4] f1[c_4 c_0] = c_0 f1[c_6 c_0] = c_6 f1[c_6 c_1] ]"
+     )) in
+   assert (not (SatUIF.is_uif_sat f))
+
 let interpolate_test () =
   let clp_tests = [
     (*EUQ tests*)
