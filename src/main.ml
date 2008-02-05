@@ -350,6 +350,7 @@ let unsat_core_uif =
 *)
 
 let main =
+  Random.self_init ();
   if !(Config.sat_only) then
     sat_only ()
   else

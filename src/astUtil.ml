@@ -499,6 +499,21 @@ let get_subterm_nnf pred =
   in
     process pred
 
+(*OrdSet*)
+let get_proposition pred =
+  let rec process pred = match pred with
+    | False -> []
+    | True -> []
+    | And lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
+    | Or lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
+    | Not p -> process p
+    | Eq _ as eq -> [eq]
+    | Lt _ as lt -> [lt]
+    | Leq _ as leq -> [leq]
+    | Atom _ as a -> [a]
+  in
+    process pred
+
 (*return the variables of a predicate*)
 (*OrdSet*)
 let get_var formula =
@@ -578,6 +593,7 @@ let alpha_convert_pred origin _new formula =
     | e -> e
   in
     process formula
+
 
 (** return a formula in LI, in UIF, and a set of shared variable
  *  works only for the conjunctive fragment
