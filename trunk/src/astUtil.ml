@@ -509,10 +509,27 @@ let get_proposition pred =
     | Not p -> process p
     | Eq _ as eq -> [eq]
     | Lt _ as lt -> [lt]
-    | Leq _ as leq -> [leq]
+    | Leq (e1,e2)  -> [Lt(e2,e1)]
     | Atom _ as a -> [a]
   in
     process pred
+
+let get_proposition_set pred =
+  let rec process pred = match pred with
+    | False -> PredSet.empty
+    | True -> PredSet.empty
+    | And lst -> List.fold_left (fun acc x -> PredSet.union acc (process x)) PredSet.empty lst
+    | Or lst -> List.fold_left (fun acc x -> PredSet.union acc (process x)) PredSet.empty lst
+    | Not p -> process p
+    | Eq _ as eq -> PredSet.singleton eq
+    | Lt _ as lt -> PredSet.singleton lt
+    | Leq (e1,e2)  -> PredSet.singleton (Lt(e2,e1))
+    | Atom _ as a -> PredSet.singleton a
+  in
+    process pred
+
+(*return the ¬a, assuming a is a proposition*)
+let contra x = normalize_only (Not x)
 
 (*return the variables of a predicate*)
 (*OrdSet*)
