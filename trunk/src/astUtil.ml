@@ -372,17 +372,17 @@ let is_cnf formula =
 
 let cnf tree =
   let rec process t = match t with
-    | And lst -> List.flatten (List.map process lst)
+    | And lst -> Utils.rev_flatten (List.rev_map process lst)
     | Or lst ->
       let merge cnf1 cnf2 =
-        List.flatten (List.map (fun x -> List.map (fun y -> x @ y) cnf2) cnf1)
+        Utils.rev_flatten (List.rev_map (fun x -> List.rev_map (fun y -> x @ y) cnf2) cnf1)
       in
       let rec iterate acc l (*: list list list == disj of conj of disj *) =
         match l with
         | x :: xs -> iterate (merge x acc) xs
         | [] -> acc
       in
-      let sub_cnf = List.map process lst in
+      let sub_cnf = List.rev_map process lst in
         iterate [[]] sub_cnf
     | _ as t -> [[t]]
   in
@@ -391,17 +391,17 @@ let cnf tree =
 (*TODO TEST*)
 let dnf tree =
   let rec process t = match t with
-    | Or lst -> List.flatten (List.map process lst)
+    | Or lst -> Utils.rev_flatten (List.rev_map process lst)
     | And lst ->
       let merge dnf1 dnf2 =
-        List.flatten (List.map (fun x -> List.map (fun y -> x @ y) dnf2) dnf1)
+        Utils.rev_flatten (List.rev_map (fun x -> List.rev_map (fun y -> x @ y) dnf2) dnf1)
       in
       let rec iterate acc l (*: list list list == conj of disj of conj *) =
         match l with
         | x :: xs -> iterate (merge x acc) xs
         | [] -> acc
       in
-      let sub_dnf = List.map process lst in
+      let sub_dnf = List.rev_map process lst in
         iterate [[]] sub_dnf
     | _ as t -> [[t]]
   in

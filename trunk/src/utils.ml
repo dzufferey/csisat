@@ -71,6 +71,9 @@ let rec map_filter fct lst = match lst with
     end
   | [] -> []
 
+let rev_flatten lst = 
+  List.fold_left (fun acc x -> List.rev_append x acc) [] lst
+
 (*from a list of edges (pairs) to a adjacency hashtbl*)
 let edges_to_graph edges =
   let graph = Hashtbl.create 53 in
