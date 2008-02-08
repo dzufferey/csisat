@@ -349,6 +349,12 @@ let unsat_core_uif =
       Message.print Message.Normal (lazy("core for "^(AstUtil.print f)^" is "^(AstUtil.print (NelsonOppen.unsat_core f))))
 *)
 
+let stat () =
+  Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
+  Gc.print_stat stdout;
+  Gc.full_major ();
+  Gc.print_stat stdout
+
 let main =
   Random.self_init ();
   if !(Config.sat_only) then

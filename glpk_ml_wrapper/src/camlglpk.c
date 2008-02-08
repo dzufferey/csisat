@@ -51,113 +51,129 @@ void to_std_out()
     //dup2(std_err, STDERR_FILENO);
 }
 
-CAMLprim value lp_create(value unit)
+value lp_create(value unit)
 {
+    CAMLparam1(unit);
     LPX* lp = lpx_create_prob();
-    return (value)lp;
+    CAMLreturn ((value)lp);
 }
 
-CAMLprim value lp_delete(value lp)
+value lp_delete(value lp)
 {
+    CAMLparam1(lp);
     lpx_delete_prob((LPX*)lp);   
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
 
-CAMLprim value lp_set_maximize(value lp)
+value lp_set_maximize(value lp)
 {
+    CAMLparam1(lp);
     lpx_set_obj_dir((LPX*)lp, LPX_MAX);
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_minimize(value lp)
+value lp_set_minimize(value lp)
 {
+    CAMLparam1(lp);
     lpx_set_obj_dir((LPX*)lp, LPX_MIN);
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_add_row(value lp, value i)
+value lp_add_row(value lp, value i)
 {
+    CAMLparam2(lp,i);
     lpx_add_rows((LPX*)lp, Int_val(i));
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_add_col(value lp, value i)
+value lp_add_col(value lp, value i)
 {
+    CAMLparam2(lp,i);
     lpx_add_cols((LPX*)lp, Int_val(i));
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_row_bnd_free(value lp, value i)
+value lp_set_row_bnd_free(value lp, value i)
 {
+    CAMLparam2(lp,i);
     lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_FR, 0.0, 0.0 );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_row_bnd_lower(value lp, value i, value lo)
+value lp_set_row_bnd_lower(value lp, value i, value lo)
 {
+    CAMLparam3(lp,i,lo);
     lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_LO, Double_val(lo), 0.0 );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_row_bnd_upper(value lp, value i, value up)
+value lp_set_row_bnd_upper(value lp, value i, value up)
 {
+    CAMLparam3(lp,i,up);
     lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_UP, 0.0, Double_val(up) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_row_bnd_double(value lp, value i, value lo, value up)
+value lp_set_row_bnd_double(value lp, value i, value lo, value up)
 {
+    CAMLparam4(lp,i,lo,up);
     lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_DB, Double_val(lo), Double_val(up) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_row_bnd_fixed(value lp, value i, value x)
+value lp_set_row_bnd_fixed(value lp, value i, value x)
 {
+    CAMLparam3(lp,i,x);
     lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_FX, Double_val(x), Double_val(x) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-
-
-CAMLprim value lp_set_col_bnd_free(value lp, value i)
+value lp_set_col_bnd_free(value lp, value i)
 {
+    CAMLparam2(lp,i);
     lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_FR, 0.0, 0.0 );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_col_bnd_lower(value lp, value i, value lo)
+value lp_set_col_bnd_lower(value lp, value i, value lo)
 {
+    CAMLparam3(lp,i,lo);
     lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_LO, Double_val(lo), 0.0 );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_col_bnd_upper(value lp, value i, value up)
+value lp_set_col_bnd_upper(value lp, value i, value up)
 {
+    CAMLparam3(lp,i,up);
     lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_UP, 0.0, Double_val(up) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_col_bnd_double(value lp, value i, value lo, value up)
+value lp_set_col_bnd_double(value lp, value i, value lo, value up)
 {
+    CAMLparam4(lp,i,lo,up);
     lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_DB, Double_val(lo), Double_val(up) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_col_bnd_fixed(value lp, value i, value x)
+value lp_set_col_bnd_fixed(value lp, value i, value x)
 {
+    CAMLparam3(lp,i,x);
     lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_FX, Double_val(x), Double_val(x) );
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_obj_coef(value lp, value i, value coeff)
+value lp_set_obj_coef(value lp, value i, value coeff)
 {
+    CAMLparam3(lp,i,coeff);
     lpx_set_obj_coef((LPX*)lp, Int_val(i) + 1, Double_val(coeff));
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_mat_row(value lp, value i, value len, value array)
+value lp_set_mat_row(value lp, value i, value len, value array)
 {
+    CAMLparam4(lp,i,len,array);
     int length = Int_val(len);
     int * indexes = malloc((len + 1) * sizeof(int));
     double *val =  malloc((len + 1) * sizeof(double));
@@ -176,11 +192,12 @@ CAMLprim value lp_set_mat_row(value lp, value i, value len, value array)
     }
     free(indexes);
     free(val);
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_set_mat_col(value lp, value i, value len, value array)
+value lp_set_mat_col(value lp, value i, value len, value array)
 {
+    CAMLparam4(lp,i,len,array);
     int length = Int_val(len);
     int * indexes = malloc((len + 1) * sizeof(int));
     double *val =  malloc((len + 1) * sizeof(double));
@@ -199,12 +216,13 @@ CAMLprim value lp_set_mat_col(value lp, value i, value len, value array)
     }
     free(indexes);
     free(val);
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
 
-CAMLprim value lp_simplex(value lp, value presolve)
+value lp_simplex(value lp, value presolve)
 {
+    CAMLparam2(lp,presolve);
     if(Bool_val(presolve)){
         lpx_set_int_parm((LPX*)lp, LPX_K_PRESOL, 1);
     }else{
@@ -235,101 +253,114 @@ CAMLprim value lp_simplex(value lp, value presolve)
     }else{
         fprintf(stderr, "unknown status: %d\n", status);
     }
-    return val;
+    CAMLreturn (val);
 }
 
-CAMLprim value lp_get_stat(value lp)
+value lp_get_stat(value lp)
 {
+    CAMLparam1(lp);
     int status = lpx_get_status((LPX*)lp);
-    return Val_int(status);
+    CAMLreturn (Val_int(status));
 }
 
 
-CAMLprim value lp_get_obj_val(value lp)
+value lp_get_obj_val(value lp)
 {
+    CAMLparam1(lp);
     double status = lpx_get_obj_val((LPX*)lp);
-    return caml_copy_double(status);
+    CAMLreturn (caml_copy_double(status));
 }
 
-CAMLprim value lp_get_row_stat(value lp, value i)
+value lp_get_row_stat(value lp, value i)
 {
+    CAMLparam2(lp,i);
     int status = lpx_get_row_stat((LPX*)lp, Int_val(i) + 1);
-    return Val_int(status);
+    CAMLreturn (Val_int(status));
 }
 
-CAMLprim value lp_get_row_primal(value lp, value i)
+value lp_get_row_primal(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_get_row_prim((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_get_rows_primal(value lp, value length, value array)
+value lp_get_rows_primal(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_get_row_prim((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
 
-CAMLprim value lp_get_row_dual(value lp, value i)
+value lp_get_row_dual(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_get_row_dual((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_get_rows_dual(value lp, value length, value array)
+value lp_get_rows_dual(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_get_row_dual((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_get_col_stat(value lp, value i)
+value lp_get_col_stat(value lp, value i)
 {
+    CAMLparam2(lp,i);
     int status = lpx_get_col_stat((LPX*)lp, Int_val(i) + 1);
-    return Val_int(status);
+    CAMLreturn (Val_int(status));
 }
 
-CAMLprim value lp_get_col_primal(value lp, value i)
+value lp_get_col_primal(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_get_col_prim((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_get_cols_primal(value lp, value length, value array)
+value lp_get_cols_primal(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_get_col_prim((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_get_col_dual(value lp, value i)
+value lp_get_col_dual(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_get_col_dual((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_get_cols_dual(value lp, value length, value array)
+value lp_get_cols_dual(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_get_col_dual((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_interior(value lp)
+value lp_interior(value lp)
 {
+    CAMLparam1(lp);
     to_dev_null();
     int status = lpx_interior((LPX*)lp);
     to_std_out();
@@ -349,82 +380,92 @@ CAMLprim value lp_interior(value lp)
     }else{
         fprintf(stderr, "unknown status: %d\n", status);
     }
-    return val;
+    CAMLreturn (val);
 }
 
-CAMLprim value lp_ipt_obj_val(value lp)
+value lp_ipt_obj_val(value lp)
 {
+    CAMLparam1(lp);
     double status = lpx_ipt_obj_val((LPX*)lp);
-    return caml_copy_double(status);
+    CAMLreturn (caml_copy_double(status));
 }
 
-CAMLprim value lp_ipt_row_primal(value lp, value i)
+value lp_ipt_row_primal(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_ipt_row_prim((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_ipt_rows_primal(value lp, value length, value array)
+value lp_ipt_rows_primal(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_ipt_row_prim((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_ipt_row_dual(value lp, value i)
+value lp_ipt_row_dual(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_ipt_row_dual((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_ipt_rows_dual(value lp, value length, value array)
+value lp_ipt_rows_dual(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_ipt_row_dual((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_ipt_col_primal(value lp, value i)
+value lp_ipt_col_primal(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_ipt_col_prim((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_ipt_cols_primal(value lp, value length, value array)
+value lp_ipt_cols_primal(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_ipt_col_prim((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_ipt_col_dual(value lp, value i)
+value lp_ipt_col_dual(value lp, value i)
 {
+    CAMLparam2(lp,i);
     double val = lpx_ipt_col_dual((LPX*)lp, Int_val(i) + 1);
-    return caml_copy_double(val);
+    CAMLreturn (caml_copy_double(val));
 }
 
-CAMLprim value lp_ipt_cols_dual(value lp, value length, value array)
+value lp_ipt_cols_dual(value lp, value length, value array)
 {
+    CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
         double val = lpx_ipt_col_dual((LPX*)lp, i + 1);
         Store_double_field(array, i, val);
     }
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }
 
-CAMLprim value lp_dump_problem(value lp)
+value lp_dump_problem(value lp)
 {
+    CAMLparam1(lp);
     lpx_print_prob((LPX*)lp, "lp_error.debug");
     lpx_write_cpxlp((LPX*)lp, "cpxlp_error.debug");
-    return Val_unit;
+    CAMLreturn (Val_unit);
 }

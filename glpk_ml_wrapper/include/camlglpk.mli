@@ -18,7 +18,7 @@
 type t
 
 external create: unit -> t = "lp_create"
-external delete: t -> unit = "lp_create"
+external delete: t -> unit = "lp_delete"
 
 (*
 external set_name: t -> string -> unit = "lp_set_name"
