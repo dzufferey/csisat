@@ -32,7 +32,7 @@ let options =
 
 let usage = (
   "CSIsat is an open-source interpolating decision procedure for LA+EUF.\n"^
-  "Version 1.0, 2008-01-30.\n\n"^
+  "Version 1.0.1, 2008-02-08.\n\n"^
   "Reads the query from stdin and writes the answer to stdout.\n\n"^
   "If the input formula is satisfiable,\n CSIsat writes \"Satisfiable: <formula>\" on stderr.\n"^
   "'formula' implies the conjunction of the two input formula.\n"^
