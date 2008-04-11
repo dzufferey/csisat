@@ -77,7 +77,7 @@ let is_li_sat pred =
           let ans = !solver.obj_val lp in
             Camlglpk.delete lp;
             Message.print Message.Debug (lazy("LI returned "^(string_of_float ans)));
-            ans > 1.e-12
+            ans > solver_error
             (*ans > 0.0*)
         else
           begin

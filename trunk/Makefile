@@ -21,6 +21,11 @@ FILES = \
 	$(OBJ)/utils.cmx \
 	$(OBJ)/ast.cmx \
 	$(OBJ)/astUtil.cmx \
+	$(OBJ)/dpllClause.cmx \
+	$(OBJ)/dpllProof.cmx \
+	$(OBJ)/satInterface.cmx \
+	$(OBJ)/picoInterface.cmx \
+	$(OBJ)/dpllCore.cmx \
 	$(OBJ)/matrix.cmx \
 	$(OBJ)/LIUtils.cmx \
 	$(OBJ)/fociPrinter.cmx \
