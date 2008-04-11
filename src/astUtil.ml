@@ -60,8 +60,6 @@ let rec push_negation negate pred = match pred with
     delete uneeded term
     remove uneeded coeff
 *)
-(* BUG -1 * f[x]
-*)
 let rec simplify_expr expr = 
   let rec distribute_coeff coeff expr =
     match expr with
@@ -370,6 +368,18 @@ let is_cnf formula =
     | And lst -> List.for_all contains_or_no_sub lst
     | _ -> true
 
+let is_cnf_strict f = match f with
+  | And lst ->
+    List.for_all (fun x -> match x with 
+      | Or lst ->
+        List.for_all ( fun x -> match x with
+          | And _ | Or _ | Not (And _) | Not (Or _) -> false
+          | _ -> true
+        ) lst
+      | _ -> false
+    ) lst
+  | _ -> false
+
 let cnf tree =
   let rec process t = match t with
     | And lst -> Utils.rev_flatten (List.rev_map process lst)
@@ -388,7 +398,6 @@ let cnf tree =
   in
     And (List.map (fun x -> Or x) (process tree))
 
-(*TODO TEST*)
 let dnf tree =
   let rec process t = match t with
     | Or lst -> Utils.rev_flatten (List.rev_map process lst)
@@ -530,6 +539,13 @@ let get_proposition_set pred =
 
 (*return the ¬a, assuming a is a proposition*)
 let contra x = normalize_only (Not x)
+
+(*no And or Or*)
+let rec is_atomic formula = match formula with
+  | False | True -> true
+  | Eq _ | Lt _ | Leq _ | Atom _ -> true
+  | And _ | Or _ -> false
+  | Not p -> is_atomic p
 
 (*return the variables of a predicate*)
 (*OrdSet*)

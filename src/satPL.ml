@@ -16,59 +16,21 @@
  *)
 
 open Ast
+open PicoInterface
+open DpllCore
 (**module of satisifability for propositionnal logic*)
 
-(**return a formula with only atoms and a map from atom to expr*)
-let to_sat_ast pred = 
-  let dico = Hashtbl.create 23 in
-  let pred_to_atom = Hashtbl.create 23 in
-  let counter = ref 0 in
-  let get_rep p =
-    try Hashtbl.find pred_to_atom p
-    with Not_found ->
-      begin
-        counter := 1 + !counter;
-        let atom = Atom !counter in
-          Hashtbl.replace dico atom p;
-          Hashtbl.replace pred_to_atom p atom;
-          atom
-      end
-  in
-  let rec process pred = match pred with
-    | False -> False
-    | True -> True
-    | Eq _ as eq -> get_rep eq
-    | Lt _ as lt -> get_rep lt
-    | Leq _ as leq -> get_rep leq
-    | Atom _ as a -> a
-    | And lst -> And (List.map process lst)
-    | Or lst -> Or (List.map process lst)
-    | Not p -> Not (process p)
-  in
-    (dico, process pred)
+let solver = ref "pico"
 
-let rec nnf_to_eq_lt pred = match pred with
-  | False -> False
-  | True -> True
-  | Eq _ as eq -> eq
-  | Lt _ as lt -> lt
-  | Leq (e1, e2) -> Not (Lt (e2, e2))
-  | Atom _ as a -> a
-  | And lst -> And (List.map nnf_to_eq_lt lst)
-  | Or lst -> Or (List.map nnf_to_eq_lt lst)
-  | Not p -> Not p(*if formula is in nnf, then not simplification nedded*)
+let set_solver str = match str with
+  | "pico" -> solver := "pico"
+  | "my_dpll" -> solver := "my_dpll"
+  | _ -> failwith "SatPL: unknown SAT solver"
 
-let is_in_cnf f = match f with
-  | And lst ->
-    List.for_all (fun x -> match x with 
-      | Or lst ->
-        List.for_all ( fun x -> match x with
-          | And _ | Or _ | Not (And _) | Not (Or _) -> false
-          | _ -> true
-        ) lst
-      | _ -> false
-    ) lst
-  | _ -> false
+let get_solver () = match !solver with
+  | "pico" -> new picosat false
+  | "my_dpll" -> new my_dpll false
+  | _ -> failwith "SatPL: unknown SAT solver"
 
 (**return a formula on CNF
  * and a hashtable atoms to the corresponding subterm
@@ -221,107 +183,23 @@ let unabstract_not dico clause =
   in
     Or lst
 
-let is_sat_state () =
-  let res = Camlpico.sat (-1) in
-  if (res = Camlpico.satisfiable()) then true
-  else if (res = Camlpico.unsatisfiable()) then false
-  else if (res = Camlpico.unknown()) then failwith "satPL: PicoSat said UNKNOWN"
-  else failwith "satPL: does not understand what PicoSat said"
-
-let init with_core size =
-  Message.print Message.Debug (lazy "initializing Sat solver:");
-  Message.print Message.Debug (lazy("  with "^(string_of_int size)^" variables"));
-  Message.print Message.Debug (lazy("  unsat core: "^(string_of_bool with_core)));
-  Camlpico.init ();
-  if with_core then Camlpico.enable_trace ();
-  Camlpico.adjust size
-
-(*return a list of pairs -> (atom, is_true)*)
-let get_sat_assign max_lit =
-  let a = Array.make (max_lit + 1) (Atom 0, 0) in
-    for i = 1 to max_lit do
-      a.(i) <- (Atom i, Camlpico.deref i)
-    done;
-    Utils.map_filter
-      (fun (a,i) ->
-        if i = 1 then Some (a, true)
-        else if i = -1 then Some (a, false)
-        else if i = 0 then None
-        else failwith ("SatPL, get_sat_assign: picosat told "^(string_of_int i))
-      )
-      (Array.to_list a)
-
 let clauses = ref []
 
-(*return the clauses in the unsat core*)
-let get_unsat_core max_lit =
-  let a = Array.make (max_lit + 1) 0 in
-    for i = 1 to max_lit do
-      a.(i) <- Camlpico.deref i
-    done;
-    let ans = ref AstUtil.PredSet.empty in
-      Array.iteri (fun i used -> if used = 1 then 
-        begin
-          Message.print Message.Debug (lazy("Atom "^(string_of_int i)^" in unsat core "));
-          ans := AstUtil.PredSet.add (Atom i) !ans;
-          ans := AstUtil.PredSet.add (Not (Atom i)) !ans
-        end) a;
-      (*TODO filter the clauses*)
-      Message.print Message.Debug (lazy("clauses is: "^(Utils.string_list_cat ", " (List.map (fun x -> AstUtil.print (Or x)) !clauses))));
-      List.filter (fun x -> List.for_all (fun el -> AstUtil.PredSet.mem el !ans) x) !clauses
-
-let add_clause pred = match pred with
-  | Or lst ->
-    if List.length lst > 0 then
-      begin
-        clauses := lst::!clauses;
-        List.iter
-          (fun x -> match x with
-            | Atom i -> Camlpico.add i
-            | Not (Atom i) -> Camlpico.add (-i)
-            | e -> failwith ("satPL: add_clause expect an atom, found "^(AstUtil.print e))
-
-          ) lst;
-          Camlpico.add 0
-      end
-  | e -> failwith ("satPL: add_clause expect a disjunction, found "^(AstUtil.print e))
-
-let add_formula pred = match pred with
-  | And lst -> List.iter add_clause lst
-  | e -> failwith ("satPL: add_clause expect a conjunction, found "^(AstUtil.print e))
-
 let reverse formula = match formula with
-  | And lst ->
-    begin
-      Or (
-        List.map (fun x -> match x with
-        | Atom _ as a -> Not a
-        | Not (Atom _ as a) -> a
-        | _ -> failwith "satPL: reverse expect atoms only"
-        ) lst)
-    end
+  | And lst -> Or (List.map AstUtil.contra lst)
   | e -> failwith ("satPL: reverse expect a disjunction, found"^(AstUtil.print e))
 
-(** reset the solver and the glabal variables*)
-let reset () =
-  Camlpico.reset ();
-  clauses := []
-
-
 let is_pl_sat formula =
-  let (dico, _, f)  =
-    if AstUtil.is_cnf formula then
-      to_atoms (AstUtil.cnf formula)
-    else 
-      equisatisfiable formula
+  let f =
+    if AstUtil.is_cnf formula then formula
+    else match equisatisfiable formula with
+      | (_,_,f) -> f
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
-  let nb_vars = Hashtbl.length dico in
-    init false nb_vars;
-    add_formula f;
-    let res = is_sat_state () in
-      reset ();
-      res
+  let solver = get_solver () in
+    solver#init f;
+    solver#solve
+
 
 let is_sat formula =
   Message.print Message.Debug (lazy("is_sat for"^(AstUtil.print formula)));
@@ -330,6 +208,7 @@ let is_sat formula =
   | False -> false
   | formula ->
     begin
+      let solver = get_solver () in
       let (atom_to_pred, pred_to_atom, f) =
         (*if is already in cnf ...*)
         if AstUtil.is_cnf formula then
@@ -345,14 +224,20 @@ let is_sat formula =
       in
       let f = AstUtil.cnf (AstUtil.simplify f) in
         Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
-      let nb_vars = Hashtbl.length atom_to_pred in
-        init false nb_vars;
-        add_formula f;
+        solver#init f;
         let rec test_and_refine () =
-          if is_sat_state () then
+          if solver#solve then
             begin
               Message.print Message.Debug (lazy "found potentially SAT assign");
-              let assign = unabstract_bool atom_to_pred (get_sat_assign nb_vars) in
+              let solution =
+                List.map
+                  (fun x ->
+                    let atom = List.hd (AstUtil.get_proposition x) in
+                      (atom, x=atom)
+                  )
+                  (solver#get_solution)
+              in
+              let assign = unabstract_bool atom_to_pred solution in
               try
                 (*TODO config can force a theory*)
                 let unsat_core = NelsonOppen.unsat_core assign in
@@ -360,18 +245,16 @@ let is_sat formula =
                   Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
                 let clause = abstract pred_to_atom unsat_core in
                 let contra = reverse clause in
-                  add_clause contra;
+                  solver#add_clause contra; (*add_clause contra;*)
                   test_and_refine ()
               with SAT | SAT_FORMULA _ ->
                 begin 
                   Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print assign)));
-                  reset ();
                   true
                 end
             end
           else
             begin
-              reset ();
               false
             end
         in
@@ -380,9 +263,9 @@ let is_sat formula =
 
 (** assume the formula to be unsat
  *  assume NNF
- *  TODO Stack Overflow ...
  *)
 let unsat_cores_LIUIF formula =
+  let solver = get_solver () in
   let cores = ref [] in
   let (atom_to_pred, pred_to_atom, f) =
     (*if is already in cnf ...*)
@@ -399,14 +282,31 @@ let unsat_cores_LIUIF formula =
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
     Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
-  let nb_vars = Hashtbl.length atom_to_pred in
-    init false nb_vars;
-    add_formula f;
+    solver#init f;
+    ignore (
+      match f with
+      | And lst ->
+        begin
+          let iter f = match f with
+            | Or lst -> clauses := lst::!clauses;
+            | _ -> failwith "..."
+          in
+            List.iter iter lst
+        end
+      | _ -> failwith "..." );
     let rec test_and_refine () =
-      if is_sat_state () then
+      if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
-          let assign = unabstract_bool atom_to_pred (get_sat_assign nb_vars) in
+          let solution =
+            List.map
+              (fun x ->
+                let atom = List.hd (AstUtil.get_proposition x) in
+                  (atom, x=atom)
+              )
+              (solver#get_solution)
+          in
+          let assign = unabstract_bool atom_to_pred solution in
           (*TODO config can force a theory*)
           try
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
@@ -414,7 +314,7 @@ let unsat_cores_LIUIF formula =
               cores := core_with_info::!cores;
               let clause = abstract pred_to_atom unsat_core in
               let contra = reverse clause in
-                add_clause contra;
+                solver#add_clause contra;
                 clauses := List.tl !clauses; (*pop to keep only original clauses in the stack*)
                 test_and_refine ()
           with SAT -> raise (SAT_FORMULA assign)
@@ -424,18 +324,12 @@ let unsat_cores_LIUIF formula =
           Message.print Message.Debug (lazy "No potentially SAT assign");
           (*in the "boolean" core, the contradiction should be direct if any ...*)
           (*is in CNF -> DNF -> remove element that are covered by existing unsat cores*)
-          (* TODO
-          let bool_core = match AstUtil.dnf (And (List.map (unabstract_not atom_to_pred) (get_unsat_core nb_vars))) with
-            | Or lst -> lst
-            | _ -> failwith "SatPL: DNF does not returned a Or ?!"
-          *)
-          (* TODO avoid DNF*)
+          (* TODO when proof is available, skip this step avoid DNF*)
           let bool_core = match AstUtil.dnf formula with
             | Or lst -> lst
             | _ -> failwith "SatPL: DNF does not returned a Or ?!"
           in
             List.iter (fun c -> Message.print Message.Debug (lazy("possible core: "^(AstUtil.print c)))) bool_core;
-            reset ();
             (*remove the clauses covered by the already found unsat cores*)
             List.iter
               (fun x ->

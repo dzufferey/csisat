@@ -1,5 +1,5 @@
 sat solver:
-	-get core
+	-get proof
 
 LA:
     -get implied equalites (faster incremental implementation ??)
@@ -14,5 +14,8 @@ DL:
 	-add difference logic
 
 
-Delayed theory combination: ??
+Delayed theory combination:
+    -needed ??
 
+General:
+    -multiple interpolant from one query (path)

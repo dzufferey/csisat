@@ -20,6 +20,8 @@ open AstUtil
 
 exception LP_SOLVER_FAILURE
 
+let solver_error = 1.e-10
+
 type li_solver = {
     solve       : Camlglpk.t -> bool; 
     obj_val     : Camlglpk.t -> float;

@@ -26,8 +26,10 @@ let options =
       "Check the computed interpolant.");
     ("-sat", Arg.Unit (fun () -> sat_only := true),
       "Check for satisfiability only (no interplolation).\n Writes only \"satisfiable\" or \"unsatisfiable\" to stdout.");
-    ("-solver", Arg.String LIUtils.set_solver,
-      "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).")
+    ("-LAsolver", Arg.String LIUtils.set_solver,
+      "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
+    ("-SATsolver", Arg.String SatPL.set_solver,
+      "Choose which SAT solver to use.\n Options: pico, my_dpll (default: pico).")
   ]
 
 let usage = (
