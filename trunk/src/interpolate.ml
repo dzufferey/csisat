@@ -882,7 +882,7 @@ let recurse_in_proof a b proof cores_with_info =
     let lits = 
       match disj with
       | Or lst -> OrdSet.list_to_ordSet lst
-      | _ -> failwith "Interpolate, build_trie: core is not a conj"
+      | err -> failwith ("Interpolate, clause_to_side: core is not a disj (1) "^(AstUtil.print err))
     in
       Hashtbl.add clause_to_side lits side
   in
@@ -890,7 +890,7 @@ let recurse_in_proof a b proof cores_with_info =
     let lits = 
       match SatPL.reverse core with
       | Or lst -> OrdSet.list_to_ordSet lst
-      | _ -> failwith "Interpolate, build_trie: core is not a conj"
+      | err -> failwith ("Interpolate, clause_to_side: core is not a disj (2) "^(AstUtil.print err))
     in
       Hashtbl.add clause_to_side lits (ThCl (core,th,info))
   in
@@ -956,21 +956,42 @@ let recurse_in_proof a b proof cores_with_info =
 
 (*assume cnf for A and B*)
 let interpolate_with_proof a b =
-  (*TODO when conj only, bypass the get_unsat_core*)
+  (*when conj only, bypass the get_unsat_core*)
   let a = AstUtil.cnf (AstUtil.simplify a) in
   let b = AstUtil.cnf (AstUtil.simplify b) in
   let a = AstUtil.normalize_only (AstUtil.remove_lit_clash a) in
   let b = AstUtil.normalize_only (AstUtil.remove_lit_clash b) in
+  let a_cnf = AstUtil.cnf a in
+  let b_cnf = AstUtil.cnf b in
     match (a,b) with
     | (True,_) | (_,False)-> True
     | (False,_)| (_,True) -> False
     | _->
       begin
-        let a = AstUtil.cnf a in
-        let b = AstUtil.cnf b in
-        let ab = AstUtil.normalize_only (And [a; b]) in
-          Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
-          let (cores_with_info, proof) = SatPL.unsat_cores_with_proof ab in
-          let it = recurse_in_proof a b proof cores_with_info in
-            AstUtil.simplify it
+        if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
+          begin
+            Message.print Message.Debug (lazy "Interpolate: formula is conj only");
+            let core_with_info =
+              NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And [a; b]))
+            in
+              build_interpolant a b [core_with_info]
+            (*
+            let proof =
+              let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
+              let core = match core_with_info with (c,_,_) -> c in
+                SatPL.make_proof_without_solver ab core
+            in
+              ([core_with_info], proof)
+            *)
+          end
+        else
+          begin
+            let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
+              Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
+            let (cores_with_info, proof) = 
+              SatPL.unsat_cores_with_proof ab
+            in
+            let it = recurse_in_proof a_cnf b_cnf proof cores_with_info in
+              AstUtil.simplify it
+          end
       end

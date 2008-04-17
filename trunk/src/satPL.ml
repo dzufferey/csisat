@@ -390,3 +390,59 @@ let unsat_cores_with_proof formula =
         end
     in
       test_and_refine ()
+
+let make_proof_with_solver formula cores =
+  let solver = get_solver true in
+  let f = AstUtil.cnf (AstUtil.simplify formula) in
+    solver#init f;
+    List.iter (fun x -> solver#add_clause (reverse x)) cores;
+    if solver#solve then
+      begin
+        failwith "SatPL, make_proof: called with a sat formula"
+      end
+    else
+      begin
+        solver#get_proof
+      end
+
+(** assume the formula + cores is unsat
+ * formula is a Conjunction
+ *)
+let make_proof_without_solver formula core =
+  let to_resolv = match core with
+    | And lst -> List.fold_left (fun acc x -> AstUtil.PredSet.add x acc) AstUtil.PredSet.empty lst
+    | _ -> failwith "SatPL, make_proof_without_solver: core is not a conj"
+  in
+  let lst = match formula with 
+    | And lst -> lst
+    | _ -> failwith "SatPL, make_proof_without_solver: formula is not a conj"
+  in
+  let clause_of_set set =
+    let lst = AstUtil.PredSet.fold (fun x acc -> (AstUtil.contra x ):: acc) set [] in
+      new DpllClause.clause (Or lst) false
+  in
+  let rec build_proof proof to_resolv lst = match lst with
+    | x::xs ->
+      begin
+        if AstUtil.PredSet.mem x to_resolv then
+          begin
+            let clause = new DpllClause.clause (Or [x]) false in
+            let to_resolv = AstUtil.PredSet.remove x to_resolv in
+            let prf = DpllProof.RPNode (AstUtil.proposition_of_lit x, proof, DpllProof.RPLeaf clause, clause_of_set to_resolv) in
+              if AstUtil.PredSet.is_empty to_resolv then
+                prf
+              else
+                build_proof prf to_resolv xs
+          end
+        else
+          begin
+            build_proof proof to_resolv xs
+          end
+      end
+    | [] ->
+      begin
+        assert(AstUtil.PredSet.is_empty to_resolv);
+        proof
+      end
+  in
+    build_proof (DpllProof.RPLeaf (clause_of_set to_resolv)) to_resolv lst
