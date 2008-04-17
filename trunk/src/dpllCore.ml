@@ -334,7 +334,7 @@ class system =
                       in
                         assert(not new_unsat_disj#has_el_and_contra);
                         let new_prf = if keep_proof then
-                            RPNode (pivot, proof, prf, new_unsat_disj)
+                            RPNode (List.hd (get_proposition pivot), proof, prf, new_unsat_disj)
                           else
                             RPLeaf new_unsat_disj
                         in
@@ -384,7 +384,7 @@ class system =
                       in
                         assert(not new_unsat_disj#has_el_and_contra);
                         let new_prf = if keep_proof then
-                            RPNode (pivot, proof, prf, new_unsat_disj)
+                            RPNode (List.hd (get_proposition pivot), proof, prf, new_unsat_disj)
                           else
                             RPLeaf new_unsat_disj
                         in

@@ -222,33 +222,35 @@ let test_unsat_core_with_pl () =
   in
     List.iter test [f1;f2;f3;f4;f5]
 
+let interpolate_eq () =
+  let tests = [
+      "& [ = a b = c d ~= a e ]; & [ = b c = d e ]";
+      "& [ = a b = c d = a e ]; & [ = b c = d e ~= b e]";
+      "& [ = a b ]; & [ ~= a b ]";
+      "& [ ~= a b ]; & [ = a b ]"
+    ]
+  in
+    List.iter ( fun str ->
+        let lst = FociParser.parse_foci str in
+        let a = List.hd lst in
+        let b = List.hd (List.tl lst) in
+        let it = Dag.interpolate_eq a b in
+          Message.print Message.Normal (lazy("is: "^(AstUtil.print it)));
+          if (SatPL.is_sat (And[ a ; Not it])) then Message.print Message.Error (lazy "FAILURE: A |= I");
+          if (SatPL.is_sat (And[ it ; b])) then Message.print Message.Error (lazy "FAILURE: I /\\ B")
+      ) tests
+
 let interpolate_and_test a b =
   try
     Message.print Message.Debug (lazy("interpolant for "^(AstUtil.print a)^" and "^(AstUtil.print b)));
-    let it = Interpolate.interpolate a b in
+    SatPL.set_solver "my_dpll"; (*TODO*)
+    let it = Interpolate.interpolate_with_proof a b in (*TODO*)
+    SatPL.set_solver "pico"; (*TODO*)
       Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
       if (SatPL.is_sat (AstUtil.simplify (And[ a ; Not it]))) then Message.print Message.Error (lazy "FAILURE: A |= I");
       if (SatPL.is_sat (AstUtil.simplify (And[ it ; b]))) then Message.print Message.Error (lazy "FAILURE: I /\\ B")
   with SAT_FORMULA f ->
     Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
-
-(*CLP examples
-  [f(x) > 0, x = y], [f(y) =< 0]
-  [f(a) = b+5, f(f(a)) >= b+1], [f(c) = d+4, d = b+1, f(f(c)) < b+1]
-  [f(x, z) >= 1, x = y+1, z =< a, z >= b], [f(y+1, z) =< 0, a =< z, b >= z]
-  [f(a) = b+5, f(f(a)) >= b+1], [f(c) = d+4, d = b+1, f(f(c)) < b+1]
-  [a =< b, a >= c, f(a) =< 1], [b =< d, c >= d, f(d) >= 2]
-  [f(x) >= 1], [f(y) =< -1, x =< y, x >= y]
-  [f(x, z) >= 1, x = y+1, z =< a, z >= b], [f(y+1, z) =< 0, a =< z, b >= z]
-  [x = y], [f(x) = 0, f(y) = 1]
-  [f(x) = 0, f(y) = 1], [x = y]
-  [x = y, z = 0], [f(x+a) = p, f(y+b) = q, a = b, p-q+z = 1]
-  [f(x+a)=p, f(y+b) = q, a = b, p-q+z = 1], [x = y, z = 0]
-  [x = y, z = 0], [f(x+a) = p, f(y+b) = q, a = b, f(p+c) = s, f(q+d) = t, c = d, s-t+z = 1]
-  [f(x+a) = p, f(y+b) = q, a = b, f(p+c) = s, f(q+d) = t, c = d, s-t+z = 1], [x = y, z = 0]
-  [x = y], [f(x) = 1, f(a) = 0, y = a]
-  [x =< p, x >= q, f(x) = 0], [p =< y, q >= y, f(y) = 1]
- *)
 
 let test_find_common_li () =
   let f1 = AstUtil.simplify ( List.hd (FociParser.parse_foci
@@ -262,6 +264,24 @@ let test_unsat_EUF () =
       "& [ ~= f2[c_5] f2[c_6] = c_0 f1[c_3 c_0] = c_1 f1[c_0 c_3]  = f1[c_0 c_3] f1[c_3 c_0] = c_1 f1[c_0 c_4] = c_5 f1[c_4 c_0]  = f1[c_0 c_4] f1[c_4 c_0] = c_0 f1[c_6 c_0] = c_6 f1[c_6 c_1] ]"
      )) in
    assert (not (SatUIF.is_uif_sat f))
+
+let interpolate_eq_proof () =
+  let tests = [
+      "& [ = a b = c d ~= a e ]; & [ = b c = d e ]";
+      "& [ = a b = c d = a e ]; & [ = b c = d e ~= b e]";
+      "& [ = a b ]; & [ ~= a b ]";
+      "& [ ~= a b ]; & [ = a b ]"
+    ]
+  in
+    List.iter ( fun str ->
+        let lst = FociParser.parse_foci str in
+        let a = List.hd lst in
+        let b = List.hd (List.tl lst) in
+        let it = Interpolate.interpolate_with_proof a b in
+          Message.print Message.Normal (lazy("is: "^(AstUtil.print it)));
+          if (SatPL.is_sat (And[ a ; Not it])) then Message.print Message.Error (lazy "FAILURE: A |= I");
+          if (SatPL.is_sat (And[ it ; b])) then Message.print Message.Error (lazy "FAILURE: I /\\ B")
+      ) tests
 
 let interpolate_test () =
   let clp_tests = [
@@ -311,17 +331,20 @@ let read_input () =
     with _ -> (*EOF*)
       FociParser.parse_foci (Buffer.contents buffer)
 
+let interpolant_test it a b =
+  if (SatPL.is_sat (AstUtil.simplify (And[ a ; Not it]))) then Message.print Message.Error (lazy "FAILURE: A |= I");
+  if (SatPL.is_sat (AstUtil.simplify (And[ it ; b]))) then Message.print Message.Error (lazy "FAILURE: I /\\ B")
+
 let interpolate_in () =
   let lst = read_input () in
   let a = List.hd lst in
   let b = List.hd (List.tl lst) in
-    if !(Config.check) then
-      interpolate_and_test a b
-    else 
-      try
-        let it = Interpolate.interpolate a b in
-          Message.print Message.Normal (lazy(FociPrinter.print_foci [it]))
-      with SAT_FORMULA f ->
+    try
+      (*let it = Interpolate.interpolate a b in (*TODO*)*)
+      let it = Interpolate.interpolate_with_proof a b in
+        Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
+        if !(Config.check) then interpolant_test it a b
+    with SAT_FORMULA f ->
         Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
     
 let sat_only () =
@@ -336,19 +359,6 @@ let sat_only () =
     else
       Message.print Message.Normal  (lazy "unsatisfiable")
 
-(*
-let unsat_core_uif =
-  let f = List.hd (FociParser.parse_foci
-          "& [ = a b  = c a = f [ a ] _1 = d c = _2 f [ d ] ~= _1 _2 ]"
-     ) in
-      Message.print Message.Normal (lazy("core for "^(AstUtil.print f)^" is "^(AstUtil.print (SatUIF.unsat_core f))))
-let unsat_core_uif =
-  let f = List.hd (FociParser.parse_foci
-          "& [ = a b  = c a = f [ a ] 1 = d c = 2 f [ d ] ]"
-     ) in
-      Message.print Message.Normal (lazy("core for "^(AstUtil.print f)^" is "^(AstUtil.print (NelsonOppen.unsat_core f))))
-*)
-
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
   Gc.print_stat stdout;
@@ -357,6 +367,7 @@ let stat () =
 
 let main =
   Random.self_init ();
+  (*interpolate_test ();*)
   if !(Config.sat_only) then
     sat_only ()
   else

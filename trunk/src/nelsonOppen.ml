@@ -212,7 +212,7 @@ let put_theory_split_var def eq =
  *  Assume the given formula is And [...] (job of sat solver)
  * @return (theory, eq)
  *      theory is LI | UIF | SATISFIABLE : LI or UIF indicate with part detected the unsatifiability
- *      eq is applied congrunence
+ *      eq is applied congruence or LA deduction
  * TODO when to deduce, when to test for SAT ??
  *)
 let is_liuif_sat_with_eq formula =

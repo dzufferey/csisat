@@ -550,8 +550,19 @@ let interpolate_eq a b =
     ignore (graph_a#is_satisfiable a, graph_b#is_satisfiable b);
     interpolate_from_graph graph_a graph_b
 
-let find_common_expr expr_a expr_b graph_a graph_b common_var common_sym =
+let find_common_expr_graph expr_a expr_b graph_a graph_b common_var common_sym =
   let eqs = (graph_a#get_given_eq @ graph_b#get_given_eq) in
+  let path = bfs eqs expr_a expr_b in
+  let is_cst e = match e with
+    | Constant _ -> true
+    | _ -> false
+  in
+    try
+      List.find (fun x -> (not (is_cst x)) && (AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0)))) path
+    with Not_found ->
+      List.find (fun x -> AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) path
+
+let find_common_expr expr_a expr_b eqs common_var common_sym =
   let path = bfs eqs expr_a expr_b in
   let is_cst e = match e with
     | Constant _ -> true

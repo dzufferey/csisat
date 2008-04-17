@@ -25,6 +25,11 @@ class clause =
       | Or lst -> List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty lst
       | _ -> failwith "DPLL: clause expect a disjunction"
     method get_propositions = propositions (*oups, means literals*)
+
+    (*OrdSet*)
+    method literals = 
+      let lst = PredSet.fold (fun e acc -> e::acc) propositions [] in
+        OrdSet.list_to_ordSet lst
     
     val learned = l
     method is_learned = learned
