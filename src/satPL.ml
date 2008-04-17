@@ -20,16 +20,16 @@ open PicoInterface
 open DpllCore
 (**module of satisifability for propositionnal logic*)
 
-let solver = ref "pico"
+let solver = ref "my_dpll"
 
 let set_solver str = match str with
   | "pico" -> solver := "pico"
   | "my_dpll" -> solver := "my_dpll"
   | _ -> failwith "SatPL: unknown SAT solver"
 
-let get_solver () = match !solver with
-  | "pico" -> new picosat false
-  | "my_dpll" -> new my_dpll false
+let get_solver prf = match !solver with
+  | "pico" -> new picosat prf
+  | "my_dpll" -> new my_dpll prf
   | _ -> failwith "SatPL: unknown SAT solver"
 
 (**return a formula on CNF
@@ -183,11 +183,10 @@ let unabstract_not dico clause =
   in
     Or lst
 
-let clauses = ref []
-
 let reverse formula = match formula with
   | And lst -> Or (List.map AstUtil.contra lst)
-  | e -> failwith ("satPL: reverse expect a disjunction, found"^(AstUtil.print e))
+  | Or lst -> failwith ("satPL: reverse expect a conj, found"^(AstUtil.print (Or lst)))
+  | e -> Or [AstUtil.contra e] (*abstract can return atoms*)
 
 let is_pl_sat formula =
   let f =
@@ -196,7 +195,7 @@ let is_pl_sat formula =
       | (_,_,f) -> f
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
-  let solver = get_solver () in
+  let solver = get_solver false in
     solver#init f;
     solver#solve
 
@@ -208,7 +207,7 @@ let is_sat formula =
   | False -> false
   | formula ->
     begin
-      let solver = get_solver () in
+      let solver = get_solver false in
       let (atom_to_pred, pred_to_atom, f) =
         (*if is already in cnf ...*)
         if AstUtil.is_cnf formula then
@@ -265,7 +264,7 @@ let is_sat formula =
  *  assume NNF
  *)
 let unsat_cores_LIUIF formula =
-  let solver = get_solver () in
+  let solver = get_solver false in
   let cores = ref [] in
   let (atom_to_pred, pred_to_atom, f) =
     (*if is already in cnf ...*)
@@ -283,17 +282,6 @@ let unsat_cores_LIUIF formula =
   let f = AstUtil.cnf (AstUtil.simplify f) in
     Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
     solver#init f;
-    ignore (
-      match f with
-      | And lst ->
-        begin
-          let iter f = match f with
-            | Or lst -> clauses := lst::!clauses;
-            | _ -> failwith "..."
-          in
-            List.iter iter lst
-        end
-      | _ -> failwith "..." );
     let rec test_and_refine () =
       if solver#solve then
         begin
@@ -315,7 +303,6 @@ let unsat_cores_LIUIF formula =
               let clause = abstract pred_to_atom unsat_core in
               let contra = reverse clause in
                 solver#add_clause contra;
-                clauses := List.tl !clauses; (*pop to keep only original clauses in the stack*)
                 test_and_refine ()
           with SAT -> raise (SAT_FORMULA assign)
         end
@@ -375,3 +362,31 @@ let unsat_cores_LIUIF formula =
     in
       test_and_refine ()
 
+let unsat_cores_with_proof formula =
+  let solver = get_solver true in
+  let cores = ref [] in
+  let f = AstUtil.cnf (AstUtil.simplify formula) in
+    Message.print Message.Debug (lazy("cnf formula is "^(AstUtil.print f)));
+    solver#init f;
+    let rec test_and_refine () =
+      if solver#solve then
+        begin
+          Message.print Message.Debug (lazy "found potentially SAT assign");
+          let assign =  solver#get_solution in
+          (*TODO config can force a theory*)
+          try
+            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info (And assign) in
+              Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
+              cores := core_with_info::!cores;
+              let contra = reverse unsat_core in
+                solver#add_clause contra;
+                test_and_refine ()
+          with SAT -> raise (SAT_FORMULA (And assign))
+        end
+      else
+        begin
+          Message.print Message.Debug (lazy "No potentially SAT assign");
+          (!cores, solver#get_proof)
+        end
+    in
+      test_and_refine ()

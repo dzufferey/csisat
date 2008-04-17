@@ -198,62 +198,7 @@ let rec simplify_expr expr =
                   Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));
                   pruned2
 
-(*TODO to have a simpler implementation, organize the simplify_expr like reduction rules of lambda calculus.
- * code would be easier to maintains (and less buggy), but it would be much slower
- *)
-let rec normalize tree =
-  match tree with
-  | And ilst ->
-    let new_lst =
-      OrdSet.list_to_ordSet (
-      List.filter (fun x -> x <> True) (
-      List.fold_left
-      ( fun acc x -> 
-        match x with
-        | And lst -> lst @ acc
-        | _ -> x::acc
-      )
-      [] (List.map normalize ilst)))
-    in
-      if List.exists (fun x -> x = False) new_lst then
-        False
-      else
-        begin
-          match new_lst with
-          | x::[] -> x
-          | [] -> True
-          | lst -> And lst
-        end
-  | Or ilst ->
-    let new_lst =
-      OrdSet.list_to_ordSet (
-      List.fold_left
-      ( fun acc x -> 
-        match x with
-        | Or lst -> lst @ acc
-        | _ -> x::acc
-      )
-      [] (List.map normalize ilst))
-    in 
-      if List.exists (fun x -> x = True) new_lst then
-        True
-      else
-        begin
-          match (List.filter (fun x -> x <> False) new_lst) with
-          | x::[] -> x
-          | [] -> if new_lst = [] then True else False
-          | lst -> Or lst
-        end
-  | Not i -> let n = normalize i in
-    begin
-      match n with
-      | True -> False
-      | False -> True
-      | Lt (e1, e2) -> Leq(e2, e1)
-      | Leq (e1, e2) -> Lt(e2, e1)
-      | Not e -> e
-      | _ as n -> Not n
-    end
+let simplify_literals tree = match tree with
   | Eq (e1, e2) ->
     let (se1,se2) = (simplify_expr e1, simplify_expr e2) in 
     let c = compare se1 se2 in
@@ -272,7 +217,29 @@ let rec normalize tree =
       Leq(se1,se2)
   | p -> p
 
-let rec normalize_only pred = match pred with
+
+(*no And or Or*)
+let rec is_atomic formula = match formula with
+  | False | True -> true
+  | Eq _ | Lt _ | Leq _ | Atom _ -> true
+  | And _ | Or _ -> false
+  | Not p -> is_atomic p
+
+(*return the ¬a, assuming a is a proposition
+ * if a is not a proposition, then the returned value is not normalized
+ *)
+let contra x = match x with
+  | True -> False
+  | False -> True
+  | Lt (e1, e2) -> Leq(e2, e1)
+  | Leq (e1, e2) -> Lt(e2, e1)
+  | Not e -> e
+  | _ as n -> Not n
+
+(* perform step of simplification on a formula
+ *)
+let rec normalize_common proposition_simplification tree =
+  match tree with
   | And ilst ->
     let new_lst =
       OrdSet.list_to_ordSet (
@@ -283,7 +250,7 @@ let rec normalize_only pred = match pred with
         | And lst -> lst @ acc
         | _ -> x::acc
       )
-      [] (List.map normalize ilst)))
+      [] (List.map (normalize_common proposition_simplification) ilst)))
     in
       if List.exists (fun x -> x = False) new_lst then
         False
@@ -303,7 +270,7 @@ let rec normalize_only pred = match pred with
         | Or lst -> lst @ acc
         | _ -> x::acc
       )
-      [] (List.map normalize ilst))
+      [] (List.map (normalize_common proposition_simplification) ilst))
     in 
       if List.exists (fun x -> x = True) new_lst then
         True
@@ -314,17 +281,51 @@ let rec normalize_only pred = match pred with
           | [] -> if new_lst = [] then True else False
           | lst -> Or lst
         end
-  | Not i -> let n = normalize i in
-    begin
-      match n with
-      | True -> False
-      | False -> True
-      | Lt (e1, e2) -> Leq(e2, e1)
-      | Leq (e1, e2) -> Lt(e2, e1)
-      | Not e -> e
-      | _ as n -> Not n
-    end
-  | rest -> rest
+  | Not i -> let n = normalize_common proposition_simplification i in contra n
+  | p -> proposition_simplification p
+
+let normalize tree = normalize_common simplify_literals tree
+let normalize_only tree = normalize_common (fun x -> x) tree
+
+(** Check that x and ¬x does not appears in a And/Or
+ * assume the formula was normalized before
+ *)
+let rec remove_lit_clash tree =
+  let check lst =
+    let seen = Hashtbl.create 20 in
+    let rec chk_insert lst = match lst with
+      | x::xs ->
+        begin
+          if is_atomic x then
+            begin
+              let c = contra x in
+                if not (Hashtbl.mem seen c) then
+                  begin
+                    Hashtbl.add seen x ();
+                    chk_insert xs
+                  end
+                else true
+            end
+          else chk_insert xs
+        end
+      | [] -> false
+    in
+      chk_insert lst  
+  in
+    match tree with
+    | And lst ->
+      begin
+        let lst = List.map remove_lit_clash lst in
+          if check lst then False
+          else And lst
+      end
+    | Or lst ->
+      begin
+        let lst = List.map remove_lit_clash lst in
+          if check lst then True
+          else Or lst
+      end
+    | t -> t
 
 
 let rec order_eq eq = match eq with
@@ -417,7 +418,7 @@ let dnf tree =
     Or (List.map (fun x -> And x) (process tree))
 
 
-let rec simplify pred =  
+let simplify pred =  
   Message.print Message.Debug (lazy("  simplifing:  " ^ (print_pred pred)));
   let p = push_negation false pred in
     Message.print Message.Debug (lazy("  push:        " ^ (print_pred p)));
@@ -508,6 +509,15 @@ let get_subterm_nnf pred =
   in
     process pred
 
+let proposition_of_lit x = match x with
+  | Not (Eq _ as eq) -> eq
+  | Eq _ as eq -> eq
+  | Lt _ as lt -> lt
+  | Leq (e1,e2) -> Lt(e2,e1)
+  | Not (Atom _ as at) -> at
+  | Atom _ as at -> at
+  | err -> failwith ("AstUtil, proposition_of_lit: not a literal "^(print err))
+
 (*OrdSet*)
 let get_proposition pred =
   let rec process pred = match pred with
@@ -536,16 +546,6 @@ let get_proposition_set pred =
     | Atom _ as a -> PredSet.singleton a
   in
     process pred
-
-(*return the ¬a, assuming a is a proposition*)
-let contra x = normalize_only (Not x)
-
-(*no And or Or*)
-let rec is_atomic formula = match formula with
-  | False | True -> true
-  | Eq _ | Lt _ | Leq _ | Atom _ -> true
-  | And _ | Or _ -> false
-  | Not p -> is_atomic p
 
 (*return the variables of a predicate*)
 (*OrdSet*)

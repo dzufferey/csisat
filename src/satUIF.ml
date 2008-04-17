@@ -569,3 +569,66 @@ let unsat_core formula =
             end
           | _ -> failwith "SatUIF: unsat_core (2)"
       end
+
+let find_common_expr a b ea eb common_var common_sym =
+  match (a,b,ea,eb) with
+  | (And a_lst, And b_lst, Application(fa, argsa) ,Application(fb,argsb)) ->
+    begin
+      let args = List.map2
+        (fun arg brg ->
+          if arg <> brg then Dag.find_common_expr arg brg (a_lst @ b_lst) common_var common_sym
+          else arg
+        )
+        argsa argsb
+      in
+        assert(fa=fb);
+        Application(fa, args) 
+    end
+  | _ -> failwith "SatUIF, find_common_expr: expected Ands and Applications"
+
+
+(** This method is more restrictive than its name says
+ * it is supposed to interpolate in a specific case of the NelsonOppen framework
+ * 
+ * it assumes:
+ *  a /\ b contains no negation.
+ *  nea and neb are Applications
+ *  Not (Eq (nea, neb)) is a contradiction
+ *)
+let interpolate_euf a_side eq a b =
+  let a_expr = AstUtil.get_expr a in
+  let b_expr = AstUtil.get_expr b in
+
+  let graph_a = new Dag.dag a_expr in
+  let graph_b = new Dag.dag b_expr in
+    ignore (graph_a#is_satisfiable a, graph_b#is_satisfiable b);
+    match eq with
+    | Eq (Application(_, args1), Application(_, args2)) ->
+      begin
+        let args = List.map2
+          (fun a b ->
+            let eq = AstUtil.order_eq (Eq(a,b)) in
+              if a_side then
+                begin
+                  graph_a#create_needed_nodes eq;
+                  graph_a#add_neq (Not eq)
+                end
+              else
+                begin
+                  graph_b#create_needed_nodes eq;
+                  graph_b#add_neq (Not eq)
+                end;
+              let it =
+                try
+                  Dag.interpolate_from_graph graph_a graph_b
+                with SAT ->
+                  False
+              in
+                if a_side then graph_a#remove_neq (Not eq) else graph_b#remove_neq (Not eq);
+                it
+          )
+          args1 args2
+        in
+          Or args
+      end
+    | _ -> failwith "SatUIF, interpolate_euf: expected Ands"
