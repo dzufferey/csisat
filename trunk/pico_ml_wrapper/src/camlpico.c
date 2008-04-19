@@ -15,8 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include<caml/mlvalues.h>
-#include<caml/alloc.h>
+#include <caml/mlvalues.h>
+#include <caml/alloc.h>
+#include <caml/memory.h>
 #include <picosat.h>
 
 /* the methods comment were directly taken from 'picosat.h' */
@@ -149,4 +150,26 @@ CAMLprim value usedlit(value lit)
 CAMLprim value corelit(value lit)
 {
     return Val_int(picosat_corelit(Int_val(lit)));
+}
+
+//#include <stdio.h>
+
+//CAMLprim value end_of_proof(){ return Val_int(EOP);}
+value get_proof(value unit)
+{
+    CAMLparam0();
+    CAMLlocal1 (array);
+    int* proof = picosat_get_proof();
+    int size = 0;
+    while(proof[size] != EOP){
+        size++;
+    }
+    //printf("EOP is: %i\n", EOP);
+    //printf("proof has size: %i\n", size);
+    array = caml_alloc_tuple(size);
+    int i;
+    for(i = 0; i < size; ++i){
+        Store_field(array, i, Val_int(proof[i]));
+    }
+    CAMLreturn (array);
 }

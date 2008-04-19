@@ -31,3 +31,6 @@ external sat: int -> int = "sat"
 external deref: int -> int = "deref"
 external usedlit: int -> int = "usedlit"
 external corelit: int -> int = "corelit"
+
+(*external end_of_proof: unit -> int = "end_of_proof"*)
+external get_proof: unit -> int array = "get_proof"

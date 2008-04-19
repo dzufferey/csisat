@@ -85,13 +85,10 @@ class clause =
       (Utils.string_list_cat ", "
         (PredSet.fold (fun x acc -> (print x)::acc) propositions []))
 
-    method to_string_dimacs =
+    method to_string_dimacs atom_to_int =
       (Utils.string_list_cat " "
         (PredSet.fold
-          (fun x acc -> match x with
-            | Atom i -> (string_of_int i)::acc
-            | Not(Atom i) -> (string_of_int (-i))::acc
-            | _ -> failwith "not an atom")
+          (fun x acc -> (string_of_int (atom_to_int x))::acc)
           propositions ["0"]))
     
     method to_string_detailed =

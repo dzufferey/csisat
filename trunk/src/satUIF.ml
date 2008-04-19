@@ -18,7 +18,7 @@
 open Ast
 
 (*TODO UIF interpolation*)
-(*make those classes extand Dag*)
+(*make those classes extend Dag*)
 
 class node = 
   fun
@@ -629,6 +629,6 @@ let interpolate_euf a_side eq a b =
           )
           args1 args2
         in
-          Or args
+          args
       end
     | _ -> failwith "SatUIF, interpolate_euf: expected Ands"

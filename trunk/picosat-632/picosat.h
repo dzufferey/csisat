@@ -184,5 +184,11 @@ void picosat_write_extended_trace (FILE * trace_file);
  */
 void picosat_write_rup_trace (FILE * trace_file);
 
+/* Return an array of int where every cell is the next value of the proof in
+ * EXTENDED_TRACECHECK_TRACE_FMT format.
+ * The proof finishes by EOP.
+ */
+#define EOP ((int)(1 << 31)) /* 2^31 -1, max caml int32*/
+int* picosat_get_proof();
 /*------------------------------------------------------------------------*/
 #endif

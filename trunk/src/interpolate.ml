@@ -26,7 +26,7 @@ let side_to_string s = match s with
 
 let splitN_unsat_cores terms_lst mixed =
   let terms = Array.of_list terms_lst in
-  let parts = Array.make (List.length terms_lst) [] in
+  let parts = Array.make (Array.length terms) [] in
   let rec process x =
     Array.iteri
       (fun i term ->
@@ -36,6 +36,26 @@ let splitN_unsat_cores terms_lst mixed =
     List.iter process mixed;
     Array.to_list parts
 
+(* this should be used only when boolean contradicion are not important (i.e. sat solver took care of them)
+ * The blocking clauses can intorduce equalities that are not part of A or B
+ *)
+let splitN_unsat_cores_set proposition_lst mixed =
+  let props = Array.of_list proposition_lst in
+  let parts = Array.make (Array.length props) [] in
+  let rec process x =
+    let assigned = ref false in
+      (*new lit introduced by blocking clause, put it in the leftmost or rightmostpart*)
+      Array.iteri
+        (fun i term ->
+          if not !assigned && AstUtil.PredSet.mem (AstUtil.proposition_of_lit x) term then 
+            begin
+              parts.(i) <- x::(parts.(i));
+              assigned := true
+            end
+        ) props;
+  in
+    List.iter process mixed;
+    Array.to_list parts
 
 (** LA and EUF are equalities interpolating theories
  *  so ti is possible the mkae terms local if an equality is not AB-pure
@@ -99,16 +119,18 @@ let make_deduc_local th side common_var common_sym a_eq a_li b_eq b_li eq =
  * @param theory is the theory that find the contradiction
  * @param eq_deduced is a list is deduced equalities (from first to last) with the theory that leads to the deduction
  *)
-let partial_interpolant a_term b_term (core, theory, eq_deduced) =
+let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
   Message.print Message.Debug (lazy("processing core: "^(AstUtil.print core)));
   let core_lst = match core with
     | And lst -> lst
     | _ -> failwith "Interpolate, process_core: expected And"
   in
-  let (a_part, b_part) = match splitN_unsat_cores [a_term;b_term] core_lst with 
+  let (a_part, b_part) = match splitN_unsat_cores_set [a_prop;b_prop] core_lst with 
     | x::y::[] -> (x,y)
     | _ -> failwith "Interpolate, process_core: error in splitN"
   in
+  Message.print Message.Debug (lazy("A part: "^(AstUtil.print (And a_part))));
+  Message.print Message.Debug (lazy("B part: "^(AstUtil.print (And b_part))));
   let oa_part = OrdSet.list_to_ordSet a_part in
   let ob_part = OrdSet.list_to_ordSet b_part in
   let (a_part, b_part) = (OrdSet.substract oa_part ob_part, ob_part) in (*follows the projection def of CADE05-interpolants*)
@@ -165,7 +187,7 @@ let partial_interpolant a_term b_term (core, theory, eq_deduced) =
                   begin
                     let lst1 = ClpLI.interpolate_clp [And !a_part_li; And (Lt(e1,e2)::!b_part_li)] in
                     let lst2 = ClpLI.interpolate_clp [And !a_part_li; And (Lt(e2,e1)::!b_part_li)] in
-                    let it =  AstUtil.simplify  (Or [List.hd lst1; List.hd lst2]) in
+                    let it =  AstUtil.simplify  (And [List.hd lst1; List.hd lst2]) in
                       (B, it)
                   end
                 else
@@ -181,9 +203,9 @@ let partial_interpolant a_term b_term (core, theory, eq_deduced) =
           (*| EUF ->*)
             begin
               if s = A then
-                (A, SatUIF.interpolate_euf true eq (And !a_part_eq) (And !b_part_eq))
+                (A, Or (SatUIF.interpolate_euf true eq (And !a_part_eq) (And !b_part_eq)))
               else
-                (B, SatUIF.interpolate_euf false eq (And !a_part_eq) (And !b_part_eq))
+                (B, And (SatUIF.interpolate_euf false eq (And !a_part_eq) (And !b_part_eq)))
             end
           | _ -> failwith "Interpolate, partial_interpolant: theory ??"
         in
@@ -912,10 +934,10 @@ let recurse_in_proof a b proof cores_with_info =
   (*cache to replicate subproof*)
   let cache = Hashtbl.create 100 in
 
-  let a_term = AstUtil.get_subterm_nnf a in
-  let b_term = AstUtil.get_subterm_nnf b in
-  let set_a_prop = AstUtil.get_proposition_set (And a_term) in
-  let set_b_prop = AstUtil.get_proposition_set (And b_term) in
+  let a_prop = AstUtil.get_proposition_set a in
+  let b_prop = AstUtil.get_proposition_set b in
+  let set_a_prop = AstUtil.get_proposition_set a in
+  let set_b_prop = AstUtil.get_proposition_set b in
   let rec recurse prf = match prf with
     | DpllProof.RPNode (pivot, left, right, result) ->
       if Hashtbl.mem cache result then Hashtbl.find cache result
@@ -948,7 +970,7 @@ let recurse_in_proof a b proof cores_with_info =
         match lookup_cl clause with
         | ACl -> False
         | BCl -> True
-        | ThCl (c,t,i) -> partial_interpolant a_term b_term (c,t,i)
+        | ThCl (c,t,i) -> partial_interpolant a_prop b_prop (c,t,i)
         | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof in not a clause !!!"
       end
   in
@@ -968,21 +990,13 @@ let interpolate_with_proof a b =
     | (False,_)| (_,True) -> False
     | _->
       begin
-        if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
+        if false && AstUtil.is_conj_only a && AstUtil.is_conj_only b then
           begin
             Message.print Message.Debug (lazy "Interpolate: formula is conj only");
             let core_with_info =
               NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And [a; b]))
             in
               build_interpolant a b [core_with_info]
-            (*
-            let proof =
-              let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
-              let core = match core_with_info with (c,_,_) -> c in
-                SatPL.make_proof_without_solver ab core
-            in
-              ([core_with_info], proof)
-            *)
           end
         else
           begin

@@ -494,6 +494,20 @@ let get_subterm pred =
   in
     process pred
 
+let get_subterm_set pred =
+  let rec process pred = match pred with
+    | False -> PredSet.empty
+    | True -> PredSet.empty
+    | And lst as an -> List.fold_left (fun acc x -> PredSet.union acc (process x)) (PredSet.singleton an) lst
+    | Or lst as o -> List.fold_left (fun acc x -> PredSet.union acc (process x)) (PredSet.singleton o) lst
+    | Not p as n -> PredSet.union (PredSet.singleton n) (process p)
+    | Eq _ as eq -> PredSet.singleton eq
+    | Lt _ as lt -> PredSet.singleton lt
+    | Leq _ as leq -> PredSet.singleton leq
+    | Atom _ as a -> PredSet.singleton a
+  in
+    process pred
+
 (*OrdSet*)
 let get_subterm_nnf pred =
   let rec process pred = match pred with
