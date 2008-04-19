@@ -409,7 +409,7 @@ class system =
               end
         with Stack.Empty ->
           begin (*now we have a proof of unsat*)
-            Message.print Message.Debug (lazy(string_of_proof prf));
+            Message.print Message.Debug (lazy(tracecheck_of_proof prf));
             assert ((get_result prf)#get_propositions = PredSet.empty);
             resolution_proof <- Some prf;
             possibly_sat <- false
@@ -470,7 +470,7 @@ class system =
         end
 
     method solve =
-      Message.print Message.Debug (lazy("DPLL, status: "^(self#to_string)));
+      (*Message.print Message.Debug (lazy("DPLL, status: "^(self#to_string)));*)
       if possibly_sat then
         begin
         Message.print Message.Debug (lazy("DPLL, system is possibly sat."));

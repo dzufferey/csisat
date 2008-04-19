@@ -4405,6 +4405,160 @@ write_trace (FILE * file, int fmt)
 #endif
 }
 
+/**
+ * method to access the zhains without pinting to a file
+ */
+
+static int* proof = NULL;
+static int cursor = 0;
+#define PROOF_BLOCK 10000
+static int current_size;
+static void add_int_to_proof(int i)
+{
+  if(cursor >= current_size){
+    current_size += PROOF_BLOCK;
+    proof = realloc(proof, current_size);
+  }
+  proof[cursor] = i;
+  cursor++;
+}
+
+static int
+my_write_idx (unsigned idx)
+{
+  return EXPORTIDX (idx);
+}
+static void
+my_trace_lits (Cls * cls)
+{
+  Lit **p, **eol = end_of_lits (cls);
+
+  assert (cls);
+  assert (cls->core);
+
+  for (p = cls->lits; p < eol; p++)
+    {
+      int lit = LIT2INT (*p);
+      add_int_to_proof(lit);
+    }
+
+  add_int_to_proof(0);
+}
+static void
+my_trace_zhain (unsigned idx, Zhn * zhain)
+{
+  unsigned prev, this, delta, i;
+  Znt *p, byte;
+  Cls * cls;
+
+  assert (zhain);
+  assert (zhain->core);
+
+  int id = my_write_idx (idx);
+  add_int_to_proof(id);
+
+  cls = IDX2CLS (idx);
+  assert (cls);
+  my_trace_lits (cls);
+
+  i = 0;
+  delta = 0;
+  prev = 0;
+
+  for (p = zhain->znt; (byte = *p); p++, i += 7)
+    {
+      delta |= (byte & 0x7f) << i;
+      if (byte & 0x80)
+	continue;
+
+      this = prev + delta;
+
+      int id = my_write_idx (this);
+      add_int_to_proof(id);
+
+      prev = this;
+      delta = 0;
+      i = -7;
+    }
+
+  add_int_to_proof(0);
+  
+}
+static void
+my_trace_clause (unsigned idx, Cls * cls)
+{
+  assert (cls);
+  assert (cls->core);
+  assert (!cls->learned);
+  assert (CLS2IDX (cls) == idx);
+
+  int id = my_write_idx (idx);
+  add_int_to_proof(id);
+
+  my_trace_lits (cls);
+
+  add_int_to_proof(0);
+
+}
+static int*
+get_proof()
+{
+#ifdef TRACE
+  if (proof != NULL){
+    free(proof);
+  }
+  proof = malloc(PROOF_BLOCK * (sizeof(int)));
+  current_size = PROOF_BLOCK;
+  cursor = 0;
+
+
+  Cls *cls, ** p;
+  Zhn *zhain;
+  unsigned i;
+
+  core ();
+
+  for (p = SOC; p != EOC; p = NXC (p))
+    {
+      cls = *p;
+
+      if (oclauses <= p && p < eoo)
+	{
+	  i = OIDX2IDX (p - oclauses);
+	  assert (!cls || CLS2IDX (cls) == i);
+	}
+      else
+	{
+          assert (lclauses <= p && p < eol);
+	  i = LIDX2IDX (p - lclauses);
+	}
+
+      zhain = IDX2ZHN (i);
+
+      if (zhain)
+	{
+	  if (zhain->core)
+	    {
+		my_trace_zhain (i, zhain);
+	    }
+	}
+      else if (cls)
+	{
+	  if (cls->core)
+	    my_trace_clause (i, cls);
+	}
+    }
+  add_int_to_proof(EOP);
+  return proof;
+#endif
+}
+int *
+picosat_get_proof(){
+  return get_proof();
+}
+////
+
+
 static void
 write_core_wrapper (FILE * file, int fmt)
 {

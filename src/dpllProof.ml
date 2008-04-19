@@ -58,6 +58,28 @@ let string_of_proof prf =
     Buffer.contents buffer
 
 let tracecheck_of_proof prf =
+  let counter = ref 0 in
+  let get_fresh_index () = counter := !counter + 1; !counter in
+  let index_to_atom = Hashtbl.create 500 in
+  let atom_to_index = Hashtbl.create 500 in
+  let get_index_atom atom =
+    assert(is_atomic atom);
+    let proposition = List.hd (get_proposition atom) in
+    let index =
+      if Hashtbl.mem atom_to_index proposition then
+        begin
+          Hashtbl.find atom_to_index proposition
+        end
+      else
+        begin
+          let index = get_fresh_index () in
+            Hashtbl.add atom_to_index proposition index;
+            Hashtbl.add index_to_atom index proposition;
+            index
+        end
+    in
+      if atom = proposition then index else -index
+  in
   let buffer = Buffer.create 10000 in
   let indexes = Hashtbl.create 1000 in
   let counter = ref 1 in
@@ -85,7 +107,7 @@ let tracecheck_of_proof prf =
           begin
             Buffer.add_string buffer (string_of_int (get_index cl));
             Buffer.add_char buffer ' ';
-            Buffer.add_string buffer (cl#to_string_dimacs);
+            Buffer.add_string buffer (cl#to_string_dimacs get_index_atom);
             Buffer.add_string buffer " 0\n"
           end
         | RPNode (pivot,left,right,new_cl) ->
@@ -94,7 +116,7 @@ let tracecheck_of_proof prf =
             print_prf right;
             Buffer.add_string buffer (string_of_int (get_index new_cl));
             Buffer.add_char buffer ' ';
-            Buffer.add_string buffer (new_cl#to_string_dimacs);
+            Buffer.add_string buffer (new_cl#to_string_dimacs get_index_atom);
             Buffer.add_char buffer ' ';
             Buffer.add_string buffer (string_of_int (get_index (get_result left)));
             Buffer.add_char buffer ' ';

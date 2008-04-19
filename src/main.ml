@@ -359,6 +359,14 @@ let sat_only () =
     else
       Message.print Message.Normal  (lazy "unsatisfiable")
 
+let test_pico_prf () =
+  let formula = List.hd (FociParser.parse_foci "& [ | [1 2] | [1 ~2] | [~1 2] | [~1 ~2]]" ) in
+  let solver = new PicoInterface.picosat true in
+    solver#init formula;
+    assert(not (solver#solve));
+    solver#get_proof
+
+
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
   Gc.print_stat stdout;
@@ -367,7 +375,7 @@ let stat () =
 
 let main =
   Random.self_init ();
-  (*interpolate_test ();*)
+  (*let _ = test_pico_prf () in*)
   if !(Config.sat_only) then
     sat_only ()
   else

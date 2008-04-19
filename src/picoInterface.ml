@@ -19,6 +19,8 @@
 open Ast
 open AstUtil
 open SatInterface
+open DpllClause
+open DpllProof
 
 let initialized = ref false;
 
@@ -27,7 +29,6 @@ class picosat with_proof =
     inherit sat_solver with_proof
 
     initializer
-      assert (not with_proof); (*TODO*)
       if !initialized then Camlpico.reset ();
       Camlpico.init ();
       initialized := true;
@@ -54,6 +55,12 @@ class picosat with_proof =
           end
       in
         if atom = proposition then index else -index
+    method private get_atom index =
+      let at = Hashtbl.find index_to_atom (abs index) in
+        if index < 0 then
+          AstUtil.normalize_only (Not at)
+        else
+          at
 
     method init formulae = match formulae with
       | And lst -> List.iter (fun x -> self#add_clause x) lst
@@ -91,5 +98,93 @@ class picosat with_proof =
         in
           List.map (fun (atom, value) -> if value then atom else normalize_only (Not atom)) lst
         
-    method get_proof = failwith "Pico: not proof support for the moment, sorry"
+    method get_proof =
+      let idx_to_clause = Hashtbl.create 1000 in
+      let raw = Camlpico.get_proof () in
+      let (_,_,_,seps) = Array.fold_left
+        (fun (start, current, nb0, seps) x ->
+          if x = 0 then
+            begin
+              if nb0 >= 1 then
+                (current + 1, current + 1, 0, (start,current - start + 1)::seps)
+              else (start, current + 1, nb0 + 1, seps) 
+            end
+          else (start, current + 1, nb0, seps) 
+        ) (0,0,0,[]) raw
+      in
+      (* structure the zhains*)
+      let zhains = List.rev_map 
+        (fun (start,len) ->
+          let raw_zhain = Array.sub raw start len in
+          let idx = raw_zhain.(0) in
+          let lits = ref [] in
+          let parents = ref [] in
+          let i = ref 1 in
+            while raw_zhain.(!i) <> 0 do
+              assert (!i < Array.length raw_zhain);
+              lits := (raw_zhain.(!i)) :: !lits;
+              i := !i + 1
+            done;
+            i := !i + 1;
+            while raw_zhain.(!i) <> 0 do
+              assert (!i < Array.length raw_zhain);
+              parents := (raw_zhain.(!i)) :: !parents;
+              i := !i + 1
+            done;
+            assert(!i = ((Array.length raw_zhain) -1));
+            (*buils the clauses*)
+            let atoms = List.map self#get_atom !lits in
+            let cl = new clause (Or atoms) false in
+              Hashtbl.add idx_to_clause idx cl;
+              (idx, cl, !parents)
+        ) seps
+      in
+        Message.print Message.Debug (lazy("#zhains "^(string_of_int (List.length zhains))));
+        (*build the proof*)
+        let proof_cache = Hashtbl.create 1000 in
+        List.iter
+          (fun (id, clause, parents) ->
+            Message.print Message.Debug (lazy("building proof for zhain "^(string_of_int id)));
+            (*assume the proof is "in order"*)
+            if (List.length parents) = 0 then
+              begin
+                Hashtbl.add proof_cache id (RPLeaf clause)
+              end
+            else
+              begin
+                assert ((List.length parents) > 1);
+                let prf = List.fold_left
+                  (fun left id ->
+                    Message.print Message.Debug (lazy("searching "^(string_of_int id)));
+                    let right = Hashtbl.find proof_cache id in
+                    let cll = get_result left in
+                    let clr = get_result right in
+                    let left_lit = cll#get_propositions in
+                    let right_lit = clr#get_propositions in
+                    let neg_right_lit = AstUtil.PredSet.fold
+                      (fun x acc -> AstUtil.PredSet.add (AstUtil.contra x) acc)
+                      right_lit AstUtil.PredSet.empty
+                    in
+                    let pivot_set = AstUtil.PredSet.inter left_lit neg_right_lit in
+                      assert((AstUtil.PredSet.cardinal pivot_set) = 1);
+                      (*TODO the order of the parents is arbitrary*)
+                    let pivot = AstUtil.proposition_of_lit (AstUtil.PredSet.choose pivot_set) in
+                      let new_lits =
+                        AstUtil.PredSet.fold (fun x acc -> x::acc)
+                          (AstUtil.PredSet.remove (AstUtil.contra pivot)
+                            (AstUtil.PredSet.remove pivot
+                              (AstUtil.PredSet.union left_lit right_lit))) []
+                      in
+                      let new_cl = new clause (Or new_lits) false in
+                        RPNode(pivot, left, right, new_cl)
+                  )
+                  (Hashtbl.find proof_cache (List.hd parents)) (List.tl parents)
+                in
+                  Hashtbl.add proof_cache id prf
+              end
+          ) zhains;
+          let (last,_,_) = List.hd (List.rev zhains) in
+            Message.print Message.Debug (lazy("searching "^(string_of_int last)));
+            Hashtbl.find proof_cache last
+
   end
