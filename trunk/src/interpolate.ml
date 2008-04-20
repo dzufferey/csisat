@@ -248,8 +248,8 @@ let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
       )
       ([],[], []) lst
   in
-  let it = List.fold_left
-      (fun it (th,lst) ->
+  let it = List.fold_right
+      (fun (th,lst) it ->
         let (a_its, b_its, mixed_its) = split_side lst in
           if th = NelsonOppen.UIF then
             begin
@@ -279,7 +279,7 @@ let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
                   ^" M: "^(Utils.string_list_cat ", "(List.map AstUtil.print c)))
             end
       )
-      final_it its
+      its final_it 
   in 
     AstUtil.simplify it
 
@@ -590,23 +590,22 @@ let build_interpolant a b cores_with_info =
     let print_it ((side, it), _)= match side with | A -> "A:"^(AstUtil.print it) | B -> "B:"^(AstUtil.print it) | Mixed -> "Mixed:"^(AstUtil.print it) in
       Message.print Message.Debug (lazy("partial_deduced_it are: "^(Utils.string_list_cat ", " (List.map print_it partial_deduced_it))));
     let recompose_final_it it = 
-      let andAcc = ref [it] in
-      let orAcc = ref [] in
-        List.iter
-          (fun ((side, it), eq_opt) ->
+      List.fold_right
+        (fun ((side, pit), eq_opt) it ->
+          match eq_opt with
+          | None -> (*normal case*)
             begin
-              match side with (*TODO check this part (not recursive def!)*)
-              | A -> orAcc := it::!orAcc
-              | B -> andAcc := it::!andAcc
+              match side with
+              | A -> Or [it;pit]
+              | B -> And [it;pit]
               | Mixed -> failwith "Interpolate, recompose_final_it: mixed interpolant!"
-            end;
-            begin
-              match eq_opt with
-              | None -> ()
-              | Some eq -> andAcc := eq::!andAcc
             end
-          ) partial_deduced_it;
-        Or ((And !andAcc)::!orAcc)
+          | Some eq -> (*LA case*)
+            begin
+              Or [(And [it;eq]); pit]
+            end
+        )
+        partial_deduced_it it
     in
 
     let final_it = match theory with
@@ -755,7 +754,6 @@ let rec trie_lookup trie literals =
   match literals with
   | x::xs as lst ->
     begin
-      (*let lt = List.hd (AstUtil.get_proposition x) in*)
       let lt = AstUtil.proposition_of_lit x in
       match trie with
       | TrieNode (lit, has, has_not, not_present, _) ->
@@ -990,7 +988,7 @@ let interpolate_with_proof a b =
     | (False,_)| (_,True) -> False
     | _->
       begin
-        if false && AstUtil.is_conj_only a && AstUtil.is_conj_only b then
+        if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
           begin
             Message.print Message.Debug (lazy "Interpolate: formula is conj only");
             let core_with_info =
