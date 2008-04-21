@@ -182,8 +182,11 @@ class dag = fun expr ->
           begin
             let (eq,neq) = split_eq_neq [] [] lst in
               List.iter (self#add_constr) eq;
-              not (List.exists self#neq_contradiction neq)
+              not (List.exists self#neq_contradiction neq || self#has_contradiction)
           end
+        | Eq _ as eq -> self#add_constr eq; not self#has_contradiction
+        | True -> not self#has_contradiction
+        | False ->  self#create_and_add_constr (Not (Eq (Constant 0.0, Constant 0.0))); false
         | _ -> failwith "Dag: only for a conjunction of eq/ne"
 
     (* test if the '!=' are respected and return the failing cstrs*)
@@ -214,11 +217,17 @@ class dag = fun expr ->
       match eq with
       | Eq(e1,e2) ->
         begin
-          let n1 = (self#get_node e1)#find in
-          let n2 = (self#get_node e2)#find in
-            n1 = n2
+          try
+            let n1 = (self#get_node e1)#find in
+            let n2 = (self#get_node e2)#find in
+              n1 = n2
+          with Not_found -> false
         end
       | _ -> failwith "Dag, entailed: expected EQ"
+
+    (** try to get an expr that is equal*)
+    method project_expr expr targets =
+      List.find (fun x -> self#entailed (Eq (expr, x))) targets
 
     (** return a list of new deduced equalities
      *  the returned equalities are then put in the set of equalities
@@ -514,7 +523,7 @@ let interpolate_from_graph graph_a graph_b =
       begin
         let a_expr = OrdSet.list_to_ordSet (List.flatten graph_a#get_cc) in
         let b_expr = OrdSet.list_to_ordSet (List.flatten graph_b#get_cc) in
-        let common_expr = OrdSet.intersection (OrdSet.list_to_ordSet a_expr) (OrdSet.list_to_ordSet b_expr) in
+        let common_expr = OrdSet.intersection a_expr b_expr in
         
         let (proj_a_eq,proj_a_neq) = split_eq_neq [] [] (graph_a#project common_expr) in
         let (proj_b_eq,proj_b_neq) = split_eq_neq [] [] (graph_b#project common_expr) in
@@ -593,3 +602,83 @@ let unsat_core formula =
           end
         | _ -> failwith "Dag: unsat_core (2)"
       end
+
+(*experimantal code*)
+(*TODO tests*)
+let interpolate_eq_lst common_var common_sym lst =
+  let common_var = Array.of_list common_var in
+  let common_sym = Array.of_list common_sym in
+  
+  let find_proof neq eqs = match neq with
+     | Not (Eq(e1,e2)) ->
+       begin
+         let path = bfs eqs e1 e2 in
+           path_to_eq path
+       end
+     | _ -> failwith "Dag: find_proof"
+  in
+
+  let exprs = List.map AstUtil.get_expr_set lst in
+  let (cumulative_expr,graphs) =
+    let (_,_,cumulative_expr,gr) = List.fold_left2
+      (fun (exprs,formula_lst,accExpr,accGr) expr lst ->
+        let exprs = AstUtil.ExprSet.union exprs expr in
+        let exprs_lst = AstUtil.ExprSet.fold (fun x acc -> x::acc) exprs [] in
+        let graph = new dag exprs_lst in
+        let formula = AstUtil.normalize_only (And [lst;formula_lst]) in
+        let _ = graph#is_satisfiable formula in
+          (exprs, formula, exprs::accExpr,graph::accGr)
+      )
+      (AstUtil.ExprSet.empty,True,[],[]) exprs lst
+    in
+      (Array.of_list (List.rev cumulative_expr), Array.of_list (List.rev gr))
+  in
+
+  let graph = graphs.((Array.length graphs) -1) in
+    if not (graph#has_contradiction) then 
+      raise SAT
+    else
+      begin
+        let brocken = List.hd (graph#test_for_contradition) in
+        let brocken_eq = match brocken with
+          |Not (Eq _ as eq) -> eq
+          | _ -> failwith "Dag, interpolate_eq_lst (1)"
+        in
+        let eqs = List.map (fun l -> match l with
+            | And conj -> List.filter (fun x -> match x with Eq _ -> true | _ -> false) conj
+            | Eq _ as eq -> [eq]
+            | _ -> []
+          ) lst
+        in
+        let path = find_proof brocken (List.flatten eqs) in
+        let its = Array.make ((Array.length graphs) -1) True in
+          for i = 0 to (Array.length its) -1 do
+            let graph = graphs.(i) in
+              if graph#entailed brocken_eq then
+                its.(i) <- False
+              else
+                begin
+                  let local_path = List.filter (fun eq -> graph#entailed eq) path in
+                  let expr =
+                    AstUtil.ExprSet.filter
+                      (fun x -> AstUtil.only_vars_and_symbols common_var.(i) common_sym.(i) (Eq(x,Constant 0.0)))
+                      cumulative_expr.(i) 
+                  in
+                  let expr_lst = AstUtil.ExprSet.fold (fun x acc -> x::acc) expr [] in
+                  let common =
+                    List.map
+                      (fun eq -> match eq with
+                        | Eq (e1,e2) ->
+                          AstUtil.order_eq
+                            (Eq(graph#project_expr e1 expr_lst,
+                                graph#project_expr e2 expr_lst))
+                        | _ -> failwith "Dag, interpolate_eq_lst (2)"
+                      )
+                      local_path
+                  in
+                    its.(i) <- (And common)
+                end
+          done;
+          Array.to_list its
+      end
+

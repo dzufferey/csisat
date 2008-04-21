@@ -29,12 +29,12 @@ let options =
     ("-LAsolver", Arg.String LIUtils.set_solver,
       "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
     ("-SATsolver", Arg.String SatPL.set_solver,
-      "Choose which SAT solver to use.\n Options: pico, my_dpll (default: pico).")
+      "Choose which SAT solver to use.\n Options: pico, my_dpll (default: my_dpll). Extracting the proof from PicoSat is buggy. So we don't recommend PicoSat")
   ]
 
 let usage = (
   "CSIsat is an open-source interpolating decision procedure for LA+EUF.\n"^
-  "Version 1.0.1, 2008-02-08.\n\n"^
+  "Version 1.1, 2008-04-21.\n\n"^
   "Reads the query from stdin and writes the answer to stdout.\n\n"^
   "If the input formula is satisfiable,\n CSIsat writes \"Satisfiable: <formula>\" on stderr.\n"^
   "'formula' implies the conjunction of the two input formula.\n"^
