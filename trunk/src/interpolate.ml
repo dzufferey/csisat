@@ -193,10 +193,6 @@ let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
                 else
                   begin
                     assert(false)
-                    (*
-                    assert(s = Mixed);
-                    (Mixed, SatLI.find_separating_terms (And (!a_part_li @ !b_part_li)) e1 e2 common_var common_sym)
-                    *)
                   end
             end
           | NelsonOppen.UIF ->
@@ -283,6 +279,185 @@ let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
   in 
     AstUtil.simplify it
 
+(****************************)
+(***** experimental code ****)
+(*TODO finish and test*)
+(*
+let partial_interpolant_lst lst_prop (core, theory, eq_deduced) =
+  Message.print Message.Debug (lazy("processing core: "^(AstUtil.print core)));
+  let core_lst = match core with
+    | And lst -> lst
+    | _ -> failwith "Interpolate, process_core: expected And"
+  in
+  let lst_part = splitN_unsat_cores_set lst_prop core_lst in
+  
+  let make_common lst =
+    let a_side =
+      let (lst,_) = List.fold_left
+        (fun (res,acc) x -> let new_set = OrdSet.union x acc in (new_set::res, new_set) )
+        ([], []) lst
+      in
+        List.rev (List.tl lst)
+    in
+    let b_side =
+      let (lst,_) = List.fold_right
+        (fun x (res,acc) -> let new_set = OrdSet.union x acc in (new_set::res, new_set) )
+        lst ([], [])
+      in
+        List.tl lst
+    in
+      List.map2 (fun a b -> OrdSet.intersection a b) a_side b_side
+  in
+  let lst_vars = List.map (fun x -> AstUtil.get_var (And x)) lst_part in
+  let common_var = make_common lst_vars in
+  let lst_sym = List.map (fun x -> AstUtil.get_fct_sym (And x)) lst_part in
+  let common_sym = make_common lst_sym in
+
+  (* returns a pairs i,j where i is the leftmost part expr is in, and j the rightmost *)
+  let side expr =
+    let _min = ref 100000 in
+    let _max = ref (-1) in
+    let _ = List.fold_left2
+        (fun i vars syms ->
+          if AstUtil.only_vars_and_symbols vars syms (Eq (expr, Constant 0.0)) then
+            begin
+              _min := min !_min i;
+              _max := max !_max i;
+            end;
+          i + 1
+        ) 0 lst_vars lst_sym
+    in
+      assert(!_min >= 0);
+      assert(!_max >= 0);
+      assert(!_max >= !_min);
+      (!_min,!_max)
+  in
+
+  let part_eq = Array.of_list (List.map (fun part -> List.filter (fun x -> match x with | Leq _ | Lt _ -> false | _ -> true) part) lst_part) in
+  let part_li = Array.of_list (List.map (fun part -> List.filter (fun x -> match x with | Not _ -> false | _ -> true) part) lst_part) in
+
+  (*TODO*)
+  (* partial interplants for  A /\ B /\ ¬eq |- false *)
+  let process_deduction (th, eq) =
+    Message.print Message.Debug (lazy("process deduction: "^(AstUtil.print eq)));
+    match eq with
+    | Eq (e1,e2) as eq ->
+      begin
+        let queries = make_deduc_local_lst th side common_var common_sym part_eq part_li eq in
+        let compute_it (s, eq) =
+          Message.print Message.Debug (lazy("compute_it for : "^(AstUtil.print eq)));
+          match th with
+          | NelsonOppen.LI ->
+          (*| LA ->*)
+          (* for LA one of the two side only is non-trivial *)
+            begin
+              let (e1,e2) = match eq with
+                | Eq(e1,e2) -> (e1,e2)
+                | _ -> failwith "Interpolate, compute_it: not Eq !?"
+              in
+                if s = A then
+                  begin
+                    let lst1 = ClpLI.interpolate_clp [And(Lt(e1,e2)::!a_part_li); And !b_part_li] in
+                    let lst2 = ClpLI.interpolate_clp [And(Lt(e2,e1)::!a_part_li); And !b_part_li] in
+                    let it =  AstUtil.simplify  (Or [List.hd lst1; List.hd lst2]) in
+                      (A, it)
+                  end
+                else if s = B then
+                  begin
+                    let lst1 = ClpLI.interpolate_clp [And !a_part_li; And (Lt(e1,e2)::!b_part_li)] in
+                    let lst2 = ClpLI.interpolate_clp [And !a_part_li; And (Lt(e2,e1)::!b_part_li)] in
+                    let it =  AstUtil.simplify  (And [List.hd lst1; List.hd lst2]) in
+                      (B, it)
+                  end
+                else
+                  begin
+                    assert(false)
+                  end
+            end
+          | NelsonOppen.UIF ->
+          (*| EUF ->*)
+            begin
+              if s = A then
+                (A, Or (SatUIF.interpolate_euf true eq (And !a_part_eq) (And !b_part_eq)))
+              else
+                (B, And (SatUIF.interpolate_euf false eq (And !a_part_eq) (And !b_part_eq)))
+            end
+          | _ -> failwith "Interpolate, partial_interpolant: theory ??"
+        in
+        let new_it = List.map compute_it queries in
+          Message.print Message.Debug (lazy("deduction its: "^(Utils.string_list_cat ", "(List.map (fun (x,y) -> (side_to_string x)^" "^(AstUtil.print y)) new_it))));
+          List.iter2
+            (fun (s, eq) (_s, it) -> match s with
+              | A -> ( a_part_eq := eq::!a_part_eq; a_part_li := eq::!a_part_li )
+              | B -> ( b_part_eq := eq::!b_part_eq; b_part_li := eq::!b_part_li )
+              | Mixed ->
+                begin
+                  assert(s=_s);
+                  assert(th = NelsonOppen.LI);
+                  match (eq,it) with
+                  | (Eq(ea,eb),Lt(e1,e2)) ->
+                    let eqa = AstUtil.order_eq (Eq(ea,e1)) in
+                      (a_part_eq := eqa::!a_part_eq; a_part_li := eqa::!a_part_li);
+                    let eqb = AstUtil.order_eq (Eq(eb,e1)) in
+                    ( b_part_eq := eqb::!b_part_eq; b_part_li := eqb::!b_part_li )
+                  | _ -> failwith "Interpolate, partial_interpolant: about LI middle term"
+                end)
+            queries new_it;
+          (th, new_it)
+      end
+    | err -> failwith ("Interpolate, partial_interpolant: deduction is not an equality -> "^(AstUtil.print err))
+  in
+  let its = List.map process_deduction eq_deduced in
+  let final_it = match theory with
+    | NelsonOppen.UIF (*EUF*) -> Dag.interpolate_eq common_var common_sym (AstUtil.to_list part_eq)
+    | NelsonOppen.LI (*LA*) ->  ClpLI.interpolate_clp (Array.to_list part_li)
+    | _ -> failwith "Interpolate, partial_interpolant: theory ?!?"
+  in
+    (*recompose using the inductive definition*)
+  let split_side lst =
+    List.fold_left
+      (fun (accA,accB,accMixed) (s,it) -> match s with
+        | A -> (it::accA, accB, accMixed)
+        | B -> (accA, it::accB, accMixed)
+        | Mixed -> (accA, accB, it::accMixed)
+      )
+      ([],[], []) lst
+  in
+  let it = List.fold_right
+      (fun (th,lst) it ->
+        let (a_its, b_its, mixed_its) = split_side lst in
+          if th = NelsonOppen.UIF then
+            begin
+              assert(mixed_its = []);
+              And ((Or (it::a_its))::b_its)
+            end
+          else
+            begin
+              assert(th=NelsonOppen.LI);
+              match (a_its, b_its, mixed_its) with
+              | (lst,[],[]) -> Or (it::lst)
+              | ([],lst,[]) -> And (it::lst)
+              | ([],[],[Lt(t_m, t_p)]) -> assert(false) (*Or [And [it;AstUtil.order_eq (Eq(t_p,t_m))]; Lt(t_m,t_p)]*)
+              | (a,b,[]) ->
+                begin
+                  (*Mixed queries*)
+                  let relevant = List.filter(fun x -> match x with Lt(e1,e2) -> true | _ -> false) a in
+                    match relevant with
+                    | Lt(e1,e2)::_ -> Or [(And [it;AstUtil.order_eq (Eq(e1,e2))]); Lt(e1,e2)]
+                    | [] -> it
+                    | _ -> failwith "Interpolate, partial_interpolant: unreachable part!!"
+                end
+              | (a,b,c) ->
+                failwith ("Interpolate, partial_interpolant: LA interpolants A: "
+                  ^(Utils.string_list_cat ", "(List.map AstUtil.print a))
+                  ^" B: "^(Utils.string_list_cat ", "(List.map AstUtil.print b))
+                  ^" M: "^(Utils.string_list_cat ", "(List.map AstUtil.print c)))
+            end
+      )
+      its final_it 
+  in 
+    AstUtil.simplify it
+*)
 
 (******************************************************)
 (*******  WARNING:  DEPRECATED CODE  ******************)
@@ -670,225 +845,12 @@ let interpolate a b =
 (************************************************)
 (************************************************)
 
-(*end of trie: what kind of clause*)
+(*end of tree: what kind of clause*)
 type eot_t = ACl (*A clause*)
            | BCl (*B clause*)
+           | NCl of int (*# clause for path interpolation*)
            | ThCl of predicate * NelsonOppen.contradiction_in * ((NelsonOppen.contradiction_in * predicate) list)
            | NotCl (*Not a clause*)
-(*
-TODO
-(* TRIE for a fast type of clause lookup
- * The order of the variables is the same as an OrdSet (see ordSet.ml)
- * !! in fact it is a mix between a trie and a decision tree
- *)
-
-type trie_t = TrieNode of predicate * trie_t * trie_t * trie_t * eot_t (*pivot, yes, no, not present, eot*)
-            | TrieLeaf of eot_t
-
-let print_eot eot = match eot with
-  | ACl -> "A"
-  | BCl -> "B"
-  | ThCl _ -> "theory clause"
-  | NotCl -> "not a clause"
-
-let isThCl eot = match eot with
-  | ThCl _ -> true
-  | _ -> false
-
-let print_trie trie =
-  let buffer = Buffer.create 1024 in
-  let fill_offset offset = 
-    for i = 1 to offset do
-      Buffer.add_char buffer ' '
-    done;
-  in
-  let rec iter trie offset = match trie with
-    | TrieNode (lit, t1, t2, t3, eot) ->
-      begin
-        fill_offset offset;
-        Buffer.add_string buffer "node: ";
-        Buffer.add_string buffer (AstUtil.print lit);
-        Buffer.add_string buffer ", with eot: ";
-        Buffer.add_string buffer (print_eot eot);
-        Buffer.add_char buffer '\n';
-        fill_offset offset;
-        Buffer.add_string buffer "has:\n";
-        iter t1 (offset+2);
-        fill_offset offset;
-        Buffer.add_string buffer "has not:\n";
-        iter t2 (offset+2);
-        fill_offset offset;
-        Buffer.add_string buffer "not present:\n";
-        iter t3 (offset+2)
-      end
-    | TrieLeaf eot ->
-      begin
-        fill_offset offset;
-        Buffer.add_string buffer "leaf: ";
-        Buffer.add_string buffer (print_eot eot);
-        Buffer.add_char buffer '\n';
-      end
-  in
-    iter trie 0;
-    Buffer.contents buffer
-
-(** sort the literals for an trie operation
- * @param literals the literals to order
- *)
-let trie_order_literals literals =
-  let zipped = List.map (fun x -> (AstUtil.proposition_of_lit x, x)) literals in
-  (*let zipped = List.map (fun x -> (List.hd (AstUtil.get_proposition x), x)) literals in*)
-  let custom_compare (p1,_) (p2,_) = compare p1 p2 in
-  let sorted = OrdSet.remove_duplicates (List.sort custom_compare zipped) in
-    assert ((List.map fst sorted) = (OrdSet.remove_duplicates (List.map fst sorted)));
-    List.map snd sorted
-
-
-(** search in the trie if the given clause is present
- * @param trie
- * @param literals the list of literals of the clause, proposition (not lit) ordered as an OrdSet!
- *)
-let rec trie_lookup trie literals =
-  Message.print Message.Debug (lazy("lookup "^(Utils.string_list_cat "," (List.map AstUtil.print literals))));
-  Message.print Message.Debug (lazy("in "^(print_trie trie)));
-  match literals with
-  | x::xs as lst ->
-    begin
-      let lt = AstUtil.proposition_of_lit x in
-      match trie with
-      | TrieNode (lit, has, has_not, not_present, _) ->
-        begin
-          if lt < lit then NotCl
-          else if lt = lit then
-            begin
-              if x = lt then trie_lookup has xs
-              else trie_lookup has_not xs
-            end
-          else trie_lookup not_present lst
-        end
-      | TrieLeaf _ -> NotCl
-    end
-  | [] ->
-    begin
-      match trie with
-      | TrieNode (_,_,_,_,eot) | TrieLeaf eot -> eot
-    end
-
-
-(** insert in the trie the given clause and return a new trie
- * @param trie
- * @param literals the list of literals of the clause, proposition ordered as an OrdSet!
- * @param eot what kind of clause (A,B,Theory)
- *)
-let rec trie_insert trie literals eot =
-  Message.print Message.Debug (lazy("inserting "^(Utils.string_list_cat "," (List.map AstUtil.print literals))^" with "^(print_eot eot)));
-  Message.print Message.Debug (lazy("in "^(print_trie trie)));
-  match literals with
-  | x::xs  as lst ->
-    begin
-      (*let lt = List.hd (AstUtil.get_proposition x) in*)
-      let lt = AstUtil.proposition_of_lit x in
-      match trie with
-      | TrieNode (lit, has, has_not, not_present, _eot) ->
-        begin
-          if lt < lit then
-            begin
-              Message.print Message.Debug (lazy("TrieNode <"));
-              if lt = x then
-                TrieNode(lt, trie_insert (TrieLeaf NotCl) xs eot, TrieLeaf NotCl, trie, NotCl)
-              else
-                TrieNode(lt, TrieLeaf NotCl, trie_insert (TrieLeaf NotCl) xs eot, trie, NotCl)
-            end
-          else if lt = lit then
-            begin
-              Message.print Message.Debug (lazy("TrieNode ="));
-              if lt = x then
-                TrieNode(lt, trie_insert has xs eot, has_not, not_present, _eot)
-              else
-                TrieNode(lt, has, trie_insert has_not xs eot, not_present, _eot)
-            end
-          else (*lt > lit*)
-            begin
-              assert (lt > lit);
-              Message.print Message.Debug (lazy("TrieNode >"));
-              TrieNode(lit, has, has_not, trie_insert not_present lst eot, _eot)
-            end
-        end
-      | TrieLeaf _eot -> 
-        if lt = x then
-          TrieNode(lt, trie_insert (TrieLeaf NotCl) xs eot, TrieLeaf NotCl, TrieLeaf NotCl, _eot)
-        else
-          TrieNode(lt, TrieLeaf NotCl, trie_insert (TrieLeaf NotCl) xs eot, TrieLeaf NotCl, _eot)
-    end
-  | [] ->
-    begin
-      match trie with
-      | TrieNode (a,b,c,d,NotCl) -> TrieNode (a,b,c,d,eot)
-      | TrieLeaf NotCl -> TrieLeaf eot
-      | TrieNode (a,b,c,d,_eot) ->
-        begin
-          (*if both in A and B then A (*seem not to change the interpolant (and should not)*)*)
-          if eot = _eot then trie
-          else
-            begin
-              assert(not (isThCl _eot) && not (isThCl eot));
-              TrieNode (a,b,c,d,ACl)
-            end
-        end
-      | TrieLeaf _eot ->
-        begin
-          (*if both in A and B then A*)
-          if eot = _eot then trie
-          else
-            begin
-              assert(not (isThCl _eot) && not (isThCl eot));
-              TrieLeaf ACl
-            end
-            (*begin
-              Message.print Message.Error (lazy("expected "^(print_eot eot)));
-              Message.print Message.Error (lazy("found "^(print_eot _eot)));
-              assert false
-            end*)
-        end
-    end
-(*End of trie section*)
-
-(** builds the clause trie from A B and theory deduced clauses
- *)
-let build_trie a b cores_with_info =
-  let rec build_trie_one_side trie clause_lst eot =
-    match clause_lst with
-    | x::xs ->
-      begin
-        match x with
-        | Or lst ->
-          begin
-            let cl = trie_order_literals lst in
-              build_trie_one_side (trie_insert trie cl eot) xs eot
-          end
-        | _ -> failwith  "Interpolate, build_trie: not in CNF (3)"
-      end
-    | [] -> trie
-  in
-  let build_trie_core trie (core,th,info) =
-    let lits = 
-      match SatPL.reverse core with
-      | Or lst -> trie_order_literals lst
-      | _ -> failwith "Interpolate, build_trie: core is not a conj"
-    in
-      trie_insert trie lits (ThCl (core,th,info))
-  in
-  let t1 = match a with
-    | And lst -> build_trie_one_side (TrieLeaf NotCl) lst ACl
-    | _ -> failwith "Interpolate, build_trie: not in CNF (1)"
-  in
-  let t2 = match b with
-    | And lst -> build_trie_one_side t1 lst BCl
-    | _ -> failwith "Interpolate, build_trie: not in CNF (2)"
-  in
-    List.fold_left (fun trie core_with_info -> build_trie_core trie core_with_info) t2 cores_with_info
-*)
-
 
 (** build the interpolant by recurssing in the proof
  * @param a
@@ -934,8 +896,6 @@ let recurse_in_proof a b proof cores_with_info =
 
   let a_prop = AstUtil.get_proposition_set a in
   let b_prop = AstUtil.get_proposition_set b in
-  let set_a_prop = AstUtil.get_proposition_set a in
-  let set_b_prop = AstUtil.get_proposition_set b in
   let rec recurse prf = match prf with
     | DpllProof.RPNode (pivot, left, right, result) ->
       if Hashtbl.mem cache result then Hashtbl.find cache result
@@ -943,7 +903,7 @@ let recurse_in_proof a b proof cores_with_info =
         begin
           let left_it = recurse left in
           let right_it = recurse right in
-          let it = match (AstUtil.PredSet.mem pivot set_a_prop, AstUtil.PredSet.mem pivot set_b_prop) with
+          let it = match (AstUtil.PredSet.mem pivot a_prop, AstUtil.PredSet.mem pivot b_prop) with
             | (true, true) ->
               if (DpllProof.get_result left)#has pivot then
                 begin
@@ -968,15 +928,14 @@ let recurse_in_proof a b proof cores_with_info =
         match lookup_cl clause with
         | ACl -> False
         | BCl -> True
+        | NCl _ -> failwith "Interpolate, recurse_in_proof: NCl when not using path interpolation !!!"
         | ThCl (c,t,i) -> partial_interpolant a_prop b_prop (c,t,i)
         | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof in not a clause !!!"
       end
   in
     recurse proof
 
-(*assume cnf for A and B*)
 let interpolate_with_proof a b =
-  (*when conj only, bypass the get_unsat_core*)
   let a = AstUtil.cnf (AstUtil.simplify a) in
   let b = AstUtil.cnf (AstUtil.simplify b) in
   let a = AstUtil.normalize_only (AstUtil.remove_lit_clash a) in
@@ -990,6 +949,7 @@ let interpolate_with_proof a b =
       begin
         if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
           begin
+            (*when conj only, bypass the get_unsat_core*)
             Message.print Message.Debug (lazy "Interpolate: formula is conj only");
             let core_with_info =
               NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And [a; b]))
@@ -1007,3 +967,151 @@ let interpolate_with_proof a b =
               AstUtil.simplify it
           end
       end
+
+(*******************)
+(*experimental code*)
+(*TODO finish and test*)
+(*
+let recurse_in_proof_lst lst proof cores_with_info =
+  let clause_to_side = Hashtbl.create 1000 in
+  let add_disj_to_side disj side =
+    let lits = 
+      match disj with
+      | Or lst -> OrdSet.list_to_ordSet lst
+      | err -> failwith ("Interpolate, clause_to_side: core is not a disj (1) "^(AstUtil.print err))
+    in
+      Hashtbl.add clause_to_side lits side
+  in
+  let add_core (core,th,info) =
+    let lits = 
+      match SatPL.reverse core with
+      | Or lst -> OrdSet.list_to_ordSet lst
+      | err -> failwith ("Interpolate, clause_to_side: core is not a disj (2) "^(AstUtil.print err))
+    in
+      Hashtbl.add clause_to_side lits (ThCl (core,th,info))
+  in
+  let lookup_cl cl =
+    try
+      Hashtbl.find clause_to_side (cl#literals)
+    with Not_found -> NotCl
+  in
+  let _ = List.fold_left
+    (fun i x ->
+      let _ = match x with
+        | And lst -> List.iter (fun x -> add_disj_to_side x (NCl i)) lst
+        | _ -> failwith "Interpolate, build_trie: not in CNF (1)"
+      in
+        i+1)
+    0 lst
+  in
+  let _ = List.iter (fun x -> add_core x) cores_with_info in
+
+  (*cache to replicate subproof*)
+  let cache = Hashtbl.create 100 in
+
+  (*list of pairs each element correspond to a possible cut in the input*)
+  let lst_prop = List.map AstUtil.get_proposition_set lst in
+  (*TODO assert length = |lst_prop| -1*)
+  let ab_lst_prop =
+    let a_side =
+      let (lst,_) = List.fold_left
+        (fun (res,acc) x -> let new_set = AstUtil.PredSet.union x acc in (new_set::res, new_set) )
+        ([], AstUtil.PredSet.empty) lst_prop
+      in
+        List.rev (List.tl lst)
+    in
+    let b_side =
+      let (lst,_) = List.fold_right
+        (fun x (res,acc) -> let new_set = AstUtil.PredSet.union x acc in (new_set::res, new_set) )
+        lst_prop ([], AstUtil.PredSet.empty)
+      in
+        List.tl lst
+    in
+      List.map2 (fun x y -> (x,y)) a_side b_side
+  in
+
+  (*recursively build the interpolant from the proof*)
+  let rec recurse prf = match prf with
+    | DpllProof.RPNode (pivot, left, right, result) ->
+      if Hashtbl.mem cache result then Hashtbl.find cache result
+      else
+        begin
+          let left_it = recurse left in
+          let right_it = recurse right in
+          let rec build_it_lst acc lit rit prop = match (lit,rit,prop) with
+            | (left_it::ls, right_it::rs, (a_prop,b_prop)::ps) ->
+              begin
+                let it =
+                  match (AstUtil.PredSet.mem pivot a_prop, AstUtil.PredSet.mem pivot b_prop) with
+                  | (true, true) ->
+                      if (DpllProof.get_result left)#has pivot then
+                        begin
+                          assert ((DpllProof.get_result right)#has_not pivot);
+                          And [Or [pivot ;left_it]; Or [Not pivot ;right_it]]
+                        end
+                      else
+                        begin
+                          assert ((DpllProof.get_result left)#has_not pivot);
+                          assert ((DpllProof.get_result right)#has pivot);
+                          And [Or [Not pivot ;left_it]; Or [pivot ;right_it]]
+                        end
+                  | (true, false) -> Or [left_it; right_it]
+                  | (false, true) -> And [left_it; right_it]
+                  | (false, false) -> failwith "Interpolate, recurse_in_proof: pivot does not belong to any side"
+                in
+                  build_it_lst (it::acc) ls rs ps
+              end
+            | ([],[],[]) -> List.rev acc
+            | _ -> failwith "Interpolate, interpolate_with_proof_lst: match error (1)"
+          in
+          let it = build_it_lst [] left_it right_it ab_lst_prop
+          in
+            Hashtbl.add cache result it;
+            it
+        end
+    | DpllProof.RPLeaf clause ->
+      begin
+        match lookup_cl clause with
+        | NCl i ->
+          List.rev (snd (
+            List.fold_left
+              (fun (n, acc) _ ->
+                if i <= n then (n+1, False::acc) else (n+1, True::acc))
+              (0,[]) lst_prop))
+        | ThCl (c,t,i) -> partial_interpolant_lst lst_prop (c,t,i)
+        | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof in not a clause !!!"
+      end
+  in
+    recurse proof
+*)
+
+
+(*
+let interpolate_with_proof_lst lst =
+  let lst = List.map (fun x ->  AstUtil.cnf (AstUtil.simplify x)) lst in
+  let lst = List.map (fun x -> AstUtil.normalize_only (AstUtil.remove_lit_clash x)) lst in
+  (*TODO trivial cases *)
+    begin
+      if List.for_all AstUtil.is_conj_only lst then
+        begin
+          (*when conj only, bypass the get_unsat_core*)
+          Message.print Message.Debug (lazy "Interpolate: formula is conj only");
+          let core_with_info =
+            NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And lst))
+          in
+            (*build_interpolant_lst lst [core_with_info]*)
+            partial_interpolant_lst lst core_with_info
+        end
+      else
+        begin
+          let lst_cnf = List.map AstUtil.cnf lst in
+          let whole = AstUtil.normalize_only (And lst_cnf) in
+            Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
+          let (cores_with_info, proof) = 
+            SatPL.unsat_cores_with_proof whole
+          in
+          let its = recurse_in_proof_lst lst_cnf proof cores_with_info in
+            List.map AstUtil.simplify its
+        end
+    end
+*)

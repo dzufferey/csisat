@@ -443,7 +443,7 @@ module PredSet = Set.Make(Pred)
 (**************************************)
 
 (** return the expressions of a predicate*)
-let get_expr pred =
+let get_expr_set pred =
   let rec process pred = match pred with
     | False -> ExprSet.empty
     | True ->  ExprSet.empty
@@ -455,7 +455,10 @@ let get_expr pred =
     | Leq (e1,e2) -> ExprSet.add e2 (ExprSet.singleton e1)
     | Atom _ -> ExprSet.empty
   in
-    ExprSet.fold (fun x acc -> x::acc) (process pred) []
+    process pred
+
+let get_expr pred =
+    ExprSet.fold (fun x acc -> x::acc) (get_expr_set pred) []
 
 let get_expr_deep pred =
   let rec process_expr expr = match expr with
