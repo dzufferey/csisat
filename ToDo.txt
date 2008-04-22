@@ -1,12 +1,14 @@
 sat solver:
-	-get proof
+	-remove bug in get proof for PicoSat
 
 LA:
-    -get implied equalites (faster incremental implementation ??)
-    -overapprox for the unsat core -> faster
+    -get implied equalites:
+     faster incremental implementation ?? (seems not any faster)
+    -over-approx for the unsat core -> faster
+    -use the arbitrary precision solver (when no more that experimental)
 
 EUF:
-	-improve the unsat core (overappoximation)
+	-improve the unsat core (over-approximation)
 
 Nelson Oppen:
 
@@ -15,7 +17,8 @@ DL:
 
 
 Delayed theory combination:
-    -needed ??
+    -needed ?? (not really )
 
 General:
-    -multiple interpolant from one query (path)
+    -multiple interpolant from one query (path): finish the code
+    -cleanup the code
