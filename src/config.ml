@@ -29,7 +29,7 @@ let options =
     ("-LAsolver", Arg.String LIUtils.set_solver,
       "Choose the LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
     ("-SATsolver", Arg.String SatPL.set_solver,
-      "Choose the SAT solver to use.\n Options: my_dpll, pico (default: my_dpll). The PicoSAT integration is experimental.")
+      "Choose the SAT solver to use.\n Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.")
   ]
 
 let usage = (

@@ -20,16 +20,16 @@ open PicoInterface
 open DpllCore
 (**module of satisifability for propositionnal logic*)
 
-let solver = ref "my_dpll"
+let solver = ref "csi_dpll"
 
 let set_solver str = match str with
   | "pico" -> solver := "pico"
-  | "my_dpll" -> solver := "my_dpll"
+  | "csi_dpll" -> solver := "csi_dpll"
   | _ -> failwith "SatPL: unknown SAT solver"
 
 let get_solver prf = match !solver with
   | "pico" -> new picosat prf
-  | "my_dpll" -> new my_dpll prf
+  | "csi_dpll" -> new csi_dpll prf
   | _ -> failwith "SatPL: unknown SAT solver"
 
 (**return a formula on CNF

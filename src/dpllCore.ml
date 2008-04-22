@@ -503,7 +503,7 @@ class system =
 (*** Wrapper ***)
 open SatInterface
 
-class my_dpll with_proof =
+class csi_dpll with_proof =
   object
     inherit sat_solver with_proof
     val sys = new system with_proof
