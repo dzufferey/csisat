@@ -2,10 +2,14 @@ RM = rm -rf
 PWD = $(shell pwd)
 
 INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
-LIBS = -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lm -lglpk -lpicosat -lcamlpico -lcamlglpk'
-GLPK = /usr/lib/libglpk.a
-STATIC = 
-#STATIC = -ccopt '-static'
+
+ifndef STATIC
+GLPK =
+LIBS = -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lglpk -lpicosat -lcamlpico -lcamlglpk'
+else
+GLPK = /usr/lib/libglpk.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a #for GLPK 4.28
+LIBS = -ccopt '-static' -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lm -ldl -lltdl -lz -lglpk -lpicosat -lcamlpico -lcamlglpk'
+endif
 
 OCAML_OPT_C = $(shell if which ocamlopt.opt 2> /dev/null > /dev/null ; then echo ocamlopt.opt; else echo ocamlopt; fi)
 
@@ -44,7 +48,7 @@ TARGET = bin/csisat
 
 
 all: glpk pico picosat $(FILES)
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(STATIC) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
