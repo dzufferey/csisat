@@ -2,12 +2,13 @@ RM = rm -rf
 PWD = $(shell pwd)
 
 INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
+LIB_GLPK_DIR = /usr/local/lib
 
 ifndef STATIC
-GLPK = /usr/lib/libglpk.a #for GLPK 4.24
+GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
 LIBS = -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lglpk -lpicosat -lcamlpico -lcamlglpk'
 else
-GLPK = /usr/lib/libglpk.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a #for GLPK 4.28
+GLPK = $(LIB_GLPK_DIR)/libglpk.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a # for GLPK 4.28
 LIBS = -ccopt '-static' -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lm -ldl -lltdl -lz -lglpk -lpicosat -lcamlpico -lcamlglpk'
 endif
 
