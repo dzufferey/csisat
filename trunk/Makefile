@@ -4,7 +4,7 @@ PWD = $(shell pwd)
 INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
 
 ifndef STATIC
-GLPK =
+GLPK = /usr/lib/libglpk.a #for GLPK 4.24
 LIBS = -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lglpk -lpicosat -lcamlpico -lcamlglpk'
 else
 GLPK = /usr/lib/libglpk.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a #for GLPK 4.28
