@@ -1,0 +1,21 @@
+sat solver:
+	-get proof
+
+LA:
+    -get implied equalites (faster incremental implementation ??)
+    -overapprox for the unsat core -> faster
+
+EUF:
+	-improve the unsat core (overappoximation)
+
+Nelson Oppen:
+
+DL:
+	-add difference logic
+
+
+Delayed theory combination:
+    -needed ??
+
+General:
+    -multiple interpolant from one query (path)
