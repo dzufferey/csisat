@@ -1,5 +1,5 @@
-sat solver:
-	-remove bug in get proof for PicoSat
+PicoSAT integration:
+	-fix known bug in getting the proof for PicoSat
 
 LA:
     -get implied equalites:
