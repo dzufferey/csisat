@@ -27,9 +27,9 @@ let options =
     ("-sat", Arg.Unit (fun () -> sat_only := true),
       "Check for satisfiability only (no interplolation).\n Writes only \"satisfiable\" or \"unsatisfiable\" to stdout.");
     ("-LAsolver", Arg.String LIUtils.set_solver,
-      "Choose which LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
+      "Choose the LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
     ("-SATsolver", Arg.String SatPL.set_solver,
-      "Choose which SAT solver to use.\n Options: pico, my_dpll (default: my_dpll). Extracting the proof from PicoSat is buggy. So we don't recommend PicoSat")
+      "Choose the SAT solver to use.\n Options: my_dpll, pico (default: my_dpll). The PicoSAT integration is experimental.")
   ]
 
 let usage = (
