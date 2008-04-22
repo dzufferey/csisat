@@ -1,7 +1,7 @@
 CSIsat is an open-source interpolating decision procedure for LA+EUF.
 
 Usage:
-Reads the query from stdin and writes the answer to stdout.
+Reads the query from stdin and writes the result to stdout.
 
 If the input formula is satisfiable, 
 CSIsat writes "Satisfiable: <formula>" on stderr.
@@ -12,10 +12,14 @@ Options:
 --help   Print this information.
 -debug   Print debug information.
 -check   Check the computed interpolant.
--sat     Check for satisfiability only (no interplolation).
+-sat     Check for satisfiability only (no interpolation).
          Writes only "satisfiable" or "unsatisfiable" to stdout.
--solver  Choose which LA solver to use.
+-LAsolver Choose the LA solver to use.
          Options: simplex, simplex_wo_presolve, interior (default: simplex).
+-SATsolver Choose the SAT solver to use.
+         Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.
+-help  Display this list of options.
+--help  Display this list of options.
 
 Input language:
 The language is similar to Foci.

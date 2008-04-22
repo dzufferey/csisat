@@ -12,8 +12,8 @@ The Makefile assumes the following:
     or glpk_ml_wrapper/Makefile for GLPK.
   - For static linking, the files 'libglpk.a', 'libz.a', 'libltdl.a', and
     'libdl.a' are located in '/usr/lib/'.
-    If this is not the case, please modify the GLPK variable in the Makefile.
-    This variable and LIBS are adapted for GLPK 4.28.
-    In the case of dynamic linking, the makefile does not depend on the
+    If this is not the case, please modify variable GLPK in the Makefile.
+    This variable, and LIBS, are adapted for GLPK 4.28.
+    In the case of dynamic linking, the Makefile does not depend on the
     version of GLPK.
 To compile a statically linked version, run 'make STATIC=1'.
