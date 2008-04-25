@@ -1,0 +1,9 @@
+#!/bin/sh
+
+for f in collated/*.foci; do
+    echo $f
+    ./test_collated_csisat < $f
+done
+
+./test_alone_csisat short
+

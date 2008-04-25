@@ -1,0 +1,6 @@
+#!/bin/sh
+
+for f in $1/*foci; do
+    echo testing $f
+    ../bin/csisat -check < $f > /dev/null
+done
