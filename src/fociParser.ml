@@ -230,6 +230,7 @@ let parse_foci input_string =
            | '(' formula ')'
            | '=' term term
            | '<=' term term
+           | '<' term term
            | '&' '[' formula_lst ']'
            | '|' '[' formula_lst ']'
            | '~' formula
@@ -261,11 +262,19 @@ let parse_foci input_string =
       begin
         next_char();
         if !current <> '=' then
-          failwith "foci parsing: syntax error (<=)";
-        next_token();
-        let t1 = term () in
-        let t2 = term () in
-          Leq(t1,t2)
+          begin
+            next_token2();
+            let t1 = term () in
+            let t2 = term () in
+              Lt(t1,t2)
+          end
+        else
+          begin
+            next_token();
+            let t1 = term () in
+            let t2 = term () in
+              Leq(t1,t2)
+          end
       end
     | '&' ->
       begin
