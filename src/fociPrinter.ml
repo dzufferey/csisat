@@ -50,7 +50,7 @@ let rec print_foci_predicate pred = match pred with
     in "| [ " ^ preds_string ^ "] "
   | Not pred1 -> "~ " ^ (print_foci_predicate pred1)
   | Eq (exp1, exp2) -> "= " ^ (print_foci_expression exp1) ^ (print_foci_expression exp2)
-  | Lt (exp1, exp2) -> "< " ^ (print_foci_expression exp1) ^ (print_foci_expression exp2)
+  | Lt (exp1, exp2) -> "~<= " ^ (print_foci_expression exp2) ^ (print_foci_expression exp1)
   | Leq (exp1, exp2) -> "<= " ^ (print_foci_expression exp1) ^ (print_foci_expression exp2)
   | Atom i -> "atom"^(string_of_int i)^" "
 

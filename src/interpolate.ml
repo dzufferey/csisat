@@ -15,6 +15,10 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(* this file is mostly based on Yorsh et al.
+ * "A Combination Method for Generating Interpolants" (CADE05)
+ * and Rybalchenko et al. "Constraint Solving for Interpolation"
+ *)
 open Ast
 
 type side_t = A | B | Mixed
