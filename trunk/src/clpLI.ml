@@ -15,6 +15,10 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(* This file is based on Rybalchenko et al. "Constraint Solving for Interpolation"
+ * http://www.mpi-sws.mpg.de/~rybal/papers/vmcai07-constraints-for-interpolation.pdf
+ *)
+
 open Ast
 open AstUtil
 open LIUtils
