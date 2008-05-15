@@ -266,6 +266,7 @@ let interpolate_in () =
         (*path interpolant case*)
         (*TODO as soon as the path interpolation code is done, remove this part*)
         assert(List.length lst > 2);
+        (*
         let rec mk_queries acc_q acc_a lst = match lst with
           | [x] -> List.rev acc_q
           | [] -> failwith "main.ml: building queries"
@@ -273,6 +274,15 @@ let interpolate_in () =
         in
           let queries = mk_queries [] [] lst in
             List.iter (fun (a,b) -> it a b) queries
+        *)
+        try
+          let its = Interpolate.interpolate_with_one_proof lst in
+            List.iter (fun it ->
+              Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
+            ) its
+          (*TODO add check*)
+        with SAT_FORMULA f ->
+          Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
       end
 
 let sat_only () =
