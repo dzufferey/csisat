@@ -245,9 +245,7 @@ let interpolant_test it a b =
 
 let interpolate_in () =
   let lst = read_input () in
-  let a = List.hd lst in
-  let b = List.hd (List.tl lst) in
-    assert((List.length lst) = 2);
+  let it a b = 
     try
       (*let it = Interpolate.interpolate a b in *)
       let it = Interpolate.interpolate_with_proof a b in
@@ -255,7 +253,28 @@ let interpolate_in () =
         if !(Config.check) then interpolant_test it a b
     with SAT_FORMULA f ->
         Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
-    
+  in
+    if (List.length lst) = 2 then
+      begin
+        (*normal case*)
+        let a = List.hd lst in
+        let b = List.hd (List.tl lst) in
+          it a b
+      end
+    else
+      begin
+        (*path interpolant case*)
+        (*TODO as soon as the path interpolation code is done, remove this part*)
+        assert(List.length lst > 2);
+        let rec mk_queries acc_q acc_a lst = match lst with
+          | [x] -> List.rev acc_q
+          | [] -> failwith "main.ml: building queries"
+          | x::xs -> mk_queries ((And(x::acc_a),And xs)::acc_q) (x::acc_a) xs
+        in
+          let queries = mk_queries [] [] lst in
+            List.iter (fun (a,b) -> it a b) queries
+      end
+
 let sat_only () =
   let formula = AstUtil.simplify (And (read_input ())) in
   let ans = if AstUtil.is_conj_only formula then
