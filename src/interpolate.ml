@@ -947,8 +947,8 @@ let interpolate_with_proof a b =
   let a_cnf = AstUtil.cnf a in
   let b_cnf = AstUtil.cnf b in
     match (a,b) with
-    | (True,_) | (_,False)-> True
-    | (False,_)| (_,True) -> False
+    | (True,_) | (_,False)-> True (*TODO check the other part for unsat when true*)
+    | (False,_)| (_,True) -> False (*TODO check the other part for unsat when true*)
     | _->
       begin
         if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
@@ -970,6 +970,63 @@ let interpolate_with_proof a b =
             let it = recurse_in_proof a_cnf b_cnf proof cores_with_info in
               AstUtil.simplify it
           end
+      end
+
+let interpolate_with_one_proof lst =
+  let lst = List.map (fun x -> AstUtil.cnf (AstUtil.simplify x)) lst in
+  let norms = List.map (fun x -> AstUtil.normalize_only (AstUtil.remove_lit_clash x)) lst in
+  let all = AstUtil.normalize_only (And norms) in
+
+  let rec mk_queries acc_q acc_a lst = match lst with
+    | [x] -> List.rev acc_q
+    | [] -> failwith "Interpolate: building queries"
+    | x::xs ->
+      begin
+        let acc_a = AstUtil.normalize_only (And [x;acc_a]) in
+        let b =  AstUtil.normalize_only (And xs) in
+          mk_queries ((acc_a,b)::acc_q) acc_a xs
+      end
+  in
+  let queries = mk_queries [] True norms in
+    if all == False then
+      begin
+        (*find the fist occurence of false*)
+        let already = ref false in
+        let scan =
+          List.fold_left (fun acc x ->
+            if !already then False::acc
+            else if x = False then
+              begin
+                already := true;
+                False::acc
+              end
+            else True::acc)
+          [] norms
+        in
+        let scan = List.rev (List.tl scan) in
+          assert(List.exists (fun x -> x == False) scan);
+          scan
+      end
+    else if AstUtil.is_conj_only all then
+      begin
+        Message.print Message.Debug (lazy "Interpolate: formula is conj only");
+        let core_with_info =
+          NelsonOppen.unsat_LIUIF (AstUtil.normalize_only all)
+        in
+          List.map (fun (a,b) -> build_interpolant a b [core_with_info]) queries
+      end
+    else
+      begin
+        let cnfs = List.map AstUtil.cnf norms in
+        let all = AstUtil.normalize_only (And cnfs) in
+          Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
+        let (cores_with_info, proof) = 
+          SatPL.unsat_cores_with_proof all
+        in
+          List.map ( fun (a,b) ->
+            let it = recurse_in_proof (AstUtil.cnf a) (AstUtil.cnf b) proof cores_with_info in
+              AstUtil.simplify it
+            ) queries
       end
 
 (*******************)

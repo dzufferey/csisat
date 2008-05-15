@@ -50,7 +50,7 @@ TARGET = bin/csisat
 version:
 	$(shell svn info > version.txt)
 
-all: version glpk pico picosat $(FILES)
+all: glpk pico picosat $(FILES) version 
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
