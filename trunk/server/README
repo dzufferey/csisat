@@ -4,3 +4,6 @@ The assumptions are that every line read (stdin) is a different query.
 It is usefull when you have multiple queries, but that you don't want to care
 about the process mangement. The argument given to the server are given to
 the children processes. It means you can run the server as CsiSat.
+
+REQUIREMENT:
+    -assume that CsiSat is in the path
