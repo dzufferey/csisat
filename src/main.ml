@@ -297,6 +297,10 @@ let sat_only () =
     else
       Message.print Message.Normal  (lazy "unsatisfiable")
 
+let tests_ronuding () = 
+  let expr = Leq(Sum [Coeff (0.25, Variable "x"); Coeff (0.66666667, Variable "y")], Constant 0.0) in
+    Message.print Message.Normal (lazy (AstUtil.print (LIUtils.round_coeff expr)))
+
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
   Gc.print_stat stdout;

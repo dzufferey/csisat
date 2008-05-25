@@ -104,3 +104,79 @@ let edges_to_graph_not_directed edges =
           Hashtbl.replace graph y (x::alreadyy)
       ) edges;
     graph
+
+(* build the list of primes *)
+let prime_list n =
+  let rec is_prime lst_prime x =
+    match lst_prime with
+    | p::ps ->
+      if (x mod p) = 0 then
+        false
+      else
+		    if p*p > x then
+		      true
+		    else
+          is_prime ps x
+    | [] -> true
+  in
+    let rec build_list acc i =
+      if i > n then
+        acc
+      else
+        begin
+          if is_prime acc i then
+            build_list (i::acc) (i+1)
+          else
+            build_list acc (i+1)
+        end
+    in
+      build_list [] 2
+
+(* gives the prime number decomposition of a number
+ * assume n is positive
+ *)
+let factorise n = 
+  if n = 1 then [1] (*!!!*)
+  else
+    begin
+      let primes = List.rev (prime_list (int_of_float (sqrt (float_of_int n)))) in
+        let c = ref n in
+        let rec iter acc x =
+          match x with
+          | [] -> acc
+          | y::ys ->
+              if (!c mod y) = 0 then
+                begin
+                  c := !c / y;
+                  iter (y::acc) x
+                end
+              else
+                iter acc ys
+         in
+          let result = iter [] primes in
+            if !c <> 1 then
+              !c :: result
+            else
+              result
+    end
+
+(** power of integers
+ *  assume exponent to be >= 0
+ *)
+let rec power base exponent =
+  let rec pow acc base exponent = 
+    if exponent = 0 then acc
+    else if (exponent mod 2) = 0 then pow acc (base * base) (exponent / 2)
+    else
+      begin
+       assert ((exponent mod 2) = 1); 
+       pow (acc * base) base (exponent -1)
+      end
+  in
+    pow 1 base exponent
+
+let round n =
+  let (f,i) = modf n in
+    if f < (-0.5) then i -. 1.
+    else if f >= 0.5 then i +. 1.
+    else i
