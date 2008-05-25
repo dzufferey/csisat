@@ -17,6 +17,7 @@
 
 let check = ref false
 let sat_only = ref false
+let round = ref false
 
 let options = 
   [
@@ -29,7 +30,9 @@ let options =
     ("-LAsolver", Arg.String LIUtils.set_solver,
       "Choose the LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
     ("-SATsolver", Arg.String SatPL.set_solver,
-      "Choose the SAT solver to use.\n Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.")
+      "Choose the SAT solver to use.\n Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.");
+    ("-round", Arg.Unit (fun () -> round := true),
+      "Try to round the coefficient to integer values. WARNING: still experimental")
   ]
 
 let usage = (

@@ -248,7 +248,10 @@ let interpolate_in () =
   let it a b = 
     try
       (*let it = Interpolate.interpolate a b in *)
-      let it = Interpolate.interpolate_with_proof a b in
+      let it =
+        if !(Config.round) then LIUtils.round_coeff (Interpolate.interpolate_with_proof a b)
+        else Interpolate.interpolate_with_proof a b
+      in
         Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
         if !(Config.check) then interpolant_test it a b
     with SAT_FORMULA f ->
@@ -276,7 +279,10 @@ let interpolate_in () =
             List.iter (fun (a,b) -> it a b) queries
         *)
         try
-          let its = Interpolate.interpolate_with_one_proof lst in
+          let its = (*Interpolate.interpolate_with_one_proof lst in*)
+            if !(Config.round) then List.map LIUtils.round_coeff (Interpolate.interpolate_with_one_proof lst)
+            else Interpolate.interpolate_with_one_proof lst 
+          in
             List.iter (fun it ->
               Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
             ) its
@@ -298,7 +304,7 @@ let sat_only () =
       Message.print Message.Normal  (lazy "unsatisfiable")
 
 let tests_ronuding () = 
-  let expr = Leq(Sum [Coeff (0.25, Variable "x"); Coeff (0.66666667, Variable "y")], Constant 0.0) in
+  let expr = Leq(Sum [Coeff (-.0.4, Variable "x"); Coeff (0.4, Variable "y")], Constant (-.2.0)) in
     Message.print Message.Normal (lazy (AstUtil.print (LIUtils.round_coeff expr)))
 
 let stat () =

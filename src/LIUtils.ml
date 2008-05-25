@@ -142,8 +142,13 @@ let round_coeff li_cstr =
   (* return a denom that seems to works well*)
   let best_denom coeff =
     let is_close_to_int n =
-      let frac = n -. (floor n) in
-        (frac /. n) <= rounding_precision
+      if n = 0. then true
+      else
+        begin
+          let frac = abs_float((Utils.round n) -. n) in
+            Message.print Message.Debug (lazy("LIUtils, best_denom: rest is " ^ (string_of_float frac)));
+            (frac /. n) <= rounding_precision
+        end
     in
     let frac = (abs_float coeff) -. (floor (abs_float coeff)) in
     let rec test_denom i =
@@ -154,7 +159,9 @@ let round_coeff li_cstr =
         end
       else 1 (*did no t found anything*)
     in
-      test_denom 1
+      let res = test_denom 1 in
+        Message.print Message.Debug (lazy("LIUtils, best_denom: denom of " ^ (string_of_float coeff) ^ " is " ^ (string_of_int res)));
+        res
   in
   (* get all the coeffs/csts that appears in the predicate *)
   (*TODO move this part in AstUtil*)
@@ -214,6 +221,7 @@ let round_coeff li_cstr =
     (*builds the final number*)
     let lcm = ref 1 in
       Array.iteri (fun i n -> lcm := !lcm * (Utils.power i n)) result;
+      Message.print Message.Debug (lazy("LIUtils, round_coefffor: lcm is " ^ (string_of_int !lcm)));
       scale_and_round (float_of_int !lcm) li_cstr
 
   
