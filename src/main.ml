@@ -295,7 +295,11 @@ let interpolate_in () =
 
 let sat_only () =
   let formula = AstUtil.simplify (And (read_input ())) in
-  let ans = if AstUtil.is_conj_only formula then
+  let ans =
+    (*catch the trivial cases because NelsonOppen expect none trivial formula*)
+    if formula = True then true
+    else if formula = False then false
+    else if AstUtil.is_conj_only formula then
      NelsonOppen.is_liuif_sat formula
     else
      SatPL.is_sat formula

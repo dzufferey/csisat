@@ -198,23 +198,31 @@ let rec simplify_expr expr =
                   Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));
                   pruned2
 
-let simplify_literals tree = match tree with
+let rec simplify_literals tree = match tree with
+  | Eq (Constant c1, Constant c2) -> if c1 = c2 then True else False
   | Eq (e1, e2) ->
     let (se1,se2) = (simplify_expr e1, simplify_expr e2) in 
     let c = compare se1 se2 in
-      if c = 0 then True
-      else if c <= 0 then Eq(se1, se2)
-      else Eq (se2, se1)
+    let res = if c = 0 then True
+              else if c <= 0 then Eq(se1, se2)
+              else Eq (se2, se1)
+    in
+      if res <> tree then simplify_literals res
+      else res
   | Lt (Constant c1, Constant c2) ->
     if c1 < c2 then True else False
   | Lt (e1, e2) ->
     let (se1,se2) = (simplify_expr e1, simplify_expr e2) in 
-      Lt(se1,se2)
+    let res = Lt(se1,se2) in
+      if res <> tree then simplify_literals res
+      else res
   | Leq (Constant c1, Constant c2) ->
     if c1 <= c2 then True else False
   | Leq (e1, e2) ->
     let (se1,se2) = (simplify_expr e1, simplify_expr e2) in 
-      Leq(se1,se2)
+    let res = Leq(se1,se2) in
+      if res <> tree then simplify_literals res
+      else res
   | p -> p
 
 
