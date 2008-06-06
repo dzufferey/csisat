@@ -268,27 +268,29 @@ let interpolate_in () =
       begin
         (*path interpolant case*)
         (*TODO as soon as the path interpolation code is done, remove this part*)
-        assert(List.length lst > 2);
-        (*
-        let rec mk_queries acc_q acc_a lst = match lst with
-          | [x] -> List.rev acc_q
-          | [] -> failwith "main.ml: building queries"
-          | x::xs -> mk_queries ((And(x::acc_a),And xs)::acc_q) (x::acc_a) xs
-        in
-          let queries = mk_queries [] [] lst in
-            List.iter (fun (a,b) -> it a b) queries
-        *)
-        try
-          let its = (*Interpolate.interpolate_with_one_proof lst in*)
-            if !(Config.round) then List.map LIUtils.round_coeff (Interpolate.interpolate_with_one_proof lst)
-            else Interpolate.interpolate_with_one_proof lst 
-          in
-            List.iter (fun it ->
-              Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
-            ) its
-          (*TODO add check*)
-        with SAT_FORMULA f ->
-          Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
+        if List.length lst < 2 then 
+          begin
+            Message.print Message.Error
+              (lazy
+                ("Interpolation is for 2 or more formula. Only "^
+                 (string_of_int (List.length lst))^
+                 " formula found."));
+            Message.print Message.Error (lazy("If you only want to check satisfiability, run with option '-sat'."))
+          end
+        else
+          begin
+            try
+              let its = (*Interpolate.interpolate_with_one_proof lst in*)
+                if !(Config.round) then List.map LIUtils.round_coeff (Interpolate.interpolate_with_one_proof lst)
+                else Interpolate.interpolate_with_one_proof lst 
+              in
+                List.iter (fun it ->
+                  Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
+                ) its
+              (*TODO add check*)
+            with SAT_FORMULA f ->
+              Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
+          end
       end
 
 let sat_only () =

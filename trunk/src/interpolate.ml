@@ -947,8 +947,18 @@ let interpolate_with_proof a b =
   let a_cnf = AstUtil.cnf a in
   let b_cnf = AstUtil.cnf b in
     match (a,b) with
-    | (True,_) | (_,False)-> True (*TODO check the other part for unsat when true*)
-    | (False,_)| (_,True) -> False (*TODO check the other part for unsat when true*)
+    | (True,_) ->
+      begin
+        if not (SatPL.is_sat b) then True
+        else raise (SAT_FORMULA b)
+      end
+    | (_,False) -> True
+    | (False,_) -> False
+    | (_,True) ->
+      begin
+        if not (SatPL.is_sat a) then False
+        else raise (SAT_FORMULA a)
+      end
     | _->
       begin
         if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
