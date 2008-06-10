@@ -567,12 +567,9 @@ let unsat_LIUIF conj =
         | Some x -> x
         | None ->
           begin
-            unsat_core_with_info conj
-          (*
             match is_liuif_sat_with_eq conj with
             | (SATISFIABLE, _) -> raise (SAT_FORMULA conj)
             | (t, eq) -> (conj, t, eq)
-          *)
           end
       end
     | _ -> failwith "NelsonOppen: not a conjunction"
