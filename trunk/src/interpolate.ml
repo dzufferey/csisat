@@ -117,13 +117,15 @@ let make_deduc_local th side common_var common_sym a_eq a_li b_eq b_li eq =
     | _ -> failwith "Interpolate, make_deduc_local: expected EQ"
 
 (** buids a partial interpolant from an unsat formula with Nelson Oppen style deduced equalities
+ * @param a
  * @param a_terms is the set of terms present in A
+ * @param b
  * @param b_terms is the set of terms present in B
  * @param core is the unsat formula
  * @param theory is the theory that find the contradiction
  * @param eq_deduced is a list is deduced equalities (from first to last) with the theory that leads to the deduction
  *)
-let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
+let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
   Message.print Message.Debug (lazy("processing core: "^(AstUtil.print core)));
   let core_lst = match core with
     | And lst -> lst
@@ -236,6 +238,21 @@ let partial_interpolant a_prop b_prop (core, theory, eq_deduced) =
   let final_it = match theory with
     | NelsonOppen.UIF (*EUF*) -> Dag.interpolate_eq (And !a_part_eq) (And !b_part_eq)
     | NelsonOppen.LI (*LA*) ->  List.hd (ClpLI.interpolate_clp [And !a_part_li; And !b_part_li])
+    | NelsonOppen.BOOL -> 
+      (*!! this happens when bypassing SAT solver !!->*)
+      begin
+        let a_term = AstUtil.get_subterm_nnf a in
+        let b_term = AstUtil.get_subterm_nnf b in
+        let (a_part, _) = match splitN_unsat_cores [a_term;b_term] core_lst with 
+          | x::y::[] -> (x,y)
+          | _ -> failwith "Interpolate, process_core: error in splitN"
+        in
+          match a_part with
+          | [] -> True
+          | x::[] -> x
+          | x::y::[] -> False
+          | _ -> failwith "Interpolate: direct contradiction with more than two elements !?!"
+      end
     | _ -> failwith "Interpolate, partial_interpolant: theory ?!?"
   in
     (*recompose using the inductive definition*)
@@ -463,392 +480,6 @@ let partial_interpolant_lst lst_prop (core, theory, eq_deduced) =
     AstUtil.simplify it
 *)
 
-(******************************************************)
-(*******  WARNING:  DEPRECATED CODE  ******************)
-(** need rewrite! it does not need a proof, but DNF ***)
-(** can be good to interpolant formula in DNF *********)
-(******************************************************)
-
-let build_interpolant a b cores_with_info =
-  
-  let a_term = AstUtil.get_subterm_nnf a in
-    Message.print Message.Debug (lazy("a_term: "^(Utils.string_list_cat ", " (List.map AstUtil.print a_term))));
-
-  let b_term = AstUtil.get_subterm_nnf b in
-    Message.print Message.Debug (lazy("b_term: "^(Utils.string_list_cat ", " (List.map AstUtil.print b_term))));
-
-  let a_dnf = match AstUtil.dnf a with 
-    | Or lst -> List.map (fun x -> match x with | And l -> OrdSet.list_to_ordSet l | _ -> failwith "Interpolate: DNF(2)") lst
-    | _ ->  failwith "interpolate: DNF"
-  in
-  let b_dnf = match AstUtil.dnf b with 
-    | Or lst -> List.map (fun x -> match x with | And l -> OrdSet.list_to_ordSet l | _ -> failwith "Interpolate: DNF(2)") lst
-    | _ ->  failwith "interpolate: DNF"
-  in
-
-  (*TODO improve*)
-  let find_matching_assignement a_only b_only common =
-    let b_possible = List.filter (fun l -> (OrdSet.intersection b_only l) = b_only) b_dnf in
-    let how_many l = List.length (OrdSet.intersection l common) in
-    let rec find_max lst =
-      snd (List.fold_left (fun (n,better) l -> let nn = how_many l in if nn > n then (nn,l) else (n,better)) (-1,[]) lst)
-    in
-    let rec find_min lst =
-      snd (List.fold_left (fun (n,better) l -> let nn = how_many l in if nn < n then (nn,l) else (n,better)) (1000000000,[]) lst)
-    in
-    let b_max = find_max b_possible in
-    let diff = OrdSet.union a_only (OrdSet.substract common b_max) in
-    let a_possible = List.filter (fun l -> (OrdSet.intersection diff l) = diff) a_dnf in
-    let a_min = find_min a_possible in
-      (OrdSet.intersection (OrdSet.union a_only common) a_min, OrdSet.intersection (OrdSet.union b_only common) b_max)
-  in
-  
-  (*to keep partial interpolant*)
-  let a_parts = ref [] in
-  let it_table = Hashtbl.create 13 in
-  (*****************************)
-
-  (*compute interpolant for each core*)
-  let process_core  (core, theory, eq_deduced) =
-    Message.print Message.Debug (lazy("processing core: "^(AstUtil.print core)));
-    
-    let core_lst = match core with
-      | And lst -> lst
-      | _ -> failwith "Interpolate, process_core: expected And"
-    in
-    let (a_part, b_part) = match splitN_unsat_cores [a_term;b_term] core_lst with 
-      | x::y::[] -> (x,y)
-      | _ -> failwith "Interpolate, process_core: error in splitN"
-    in
-    let oa_part = OrdSet.list_to_ordSet a_part in
-    let ob_part = OrdSet.list_to_ordSet b_part in
-    let common_term = OrdSet.intersection  oa_part ob_part in
-    let (a_part, b_part) = 
-      if common_term = [] then
-          (a_part, b_part)
-      else
-         find_matching_assignement (OrdSet.substract oa_part common_term) (OrdSet.substract ob_part common_term) common_term
-    in
-
-    let a_part_expr = AstUtil.get_expr_deep (And a_part) in
-    let b_part_expr = AstUtil.get_expr_deep (And b_part) in
-      Message.print Message.Debug (lazy("A part : "^(Utils.string_list_cat ", "(List.map AstUtil.print a_part))));
-      Message.print Message.Debug (lazy("B part : "^(Utils.string_list_cat ", "(List.map AstUtil.print b_part))));
-    let side expr =
-      match (List.mem expr a_part_expr , List.mem expr b_part_expr) with
-      | (true, true) -> Mixed
-      | (true, false) -> A
-      | (false, true) -> B
-      | (false, false) -> failwith ("Interpolate: "^(AstUtil.print_expr expr)^" belongs to no side.")
-    in
-
-
-    let graph_a = new Dag.dag (a_part_expr)  in
-    let a_part_eq = List.filter (fun x -> match x with | Leq _ | Lt _ -> false | _ -> true) a_part in
-    let a_part_li = List.filter (fun x -> match x with | Not _ -> false | _ -> true) a_part in
-    let _ = graph_a#is_satisfiable (And a_part_eq) (*inject cstr*) in
-    
-    let graph_b = new Dag.dag (b_part_expr)  in
-    let b_part_eq = List.filter (fun x -> match x with | Leq _ | Lt _ -> false | _ -> true) b_part in
-    let b_part_li = List.filter (fun x -> match x with | Not _ -> false | _ -> true) b_part in
-    let _ = graph_b#is_satisfiable (And b_part_eq) (*inject cstr*) in
-
-    let common_var = OrdSet.intersection (OrdSet.list_to_ordSet (AstUtil.get_var (And a_part))) (OrdSet.list_to_ordSet (AstUtil.get_var (And b_part)))in
-      Message.print Message.Debug (lazy("common var are: "^(Utils.string_list_cat ", "(List.map AstUtil.print_expr common_var))));
-    let common_sym = OrdSet.intersection (AstUtil.get_fct_sym (And a_part)) (AstUtil.get_fct_sym (And b_part))in
-      Message.print Message.Debug (lazy("common sym are: "^(Utils.string_list_cat ", " common_sym)));
-    (*let common_expr = OrdSet.intersection (OrdSet.list_to_ordSet a_part_expr) (OrdSet.list_to_ordSet b_part_expr) in*)
-    a_parts := OrdSet.union [a_part] !a_parts;
-    
-    (*already applied eq -> for LI ...*)
-    let applied = ref [] in
-    let applied_to_a_b theory = match theory with
-      | NelsonOppen.LI ->
-        List.fold_left 
-          (fun (accA, accB) (part, eq) ->
-            match part with
-            | A -> (eq::accA, accB)
-            | B -> (accA, eq::accB)
-            | Mixed -> failwith "Interpolate, applied_to_a_b: found Mixed"
-          ) (a_part_li, b_part_li) !applied
-      | NelsonOppen.UIF ->
-        List.fold_left 
-          (fun (accA, accB) (part, eq) ->
-            match part with
-            | A -> (eq::accA, accB)
-            | B -> (accA, eq::accB)
-            | Mixed -> failwith "Interpolate, applied_to_a_b: found Mixed"
-          ) (a_part_eq, b_part_eq) !applied
-      | _ -> failwith "Interpolate: apply unsupported theory"
-    in
-    let apply ((side,eq) as seq) =
-      Message.print Message.Debug (lazy("applying: "^(AstUtil.print eq)));
-      applied := seq::!applied; 
-      match side with (*can introduce new term -> linear combinations*)
-      | A -> graph_a#create_and_add_constr eq 
-      | B -> graph_b#create_and_add_constr eq 
-      | Mixed -> failwith "Interpolate, apply: found Mixed"
-    in
-
-    let neg_eq eq = match eq with
-      | Eq (e1,e2) -> (Lt(e1,e2),Lt(e2,e1))
-      | e -> failwith ("Interpolate, neg_ls: found "^(AstUtil.print e))
-    in
-
-  
-    let li_flag = ref false in
-    let li_it_for_deduc (side, eq) = match side with
-      | A ->
-        begin
-          let (case1,case2) = neg_eq eq in
-          let (a_part,b_part) = applied_to_a_b NelsonOppen.LI in
-          let lst1 = ClpLI.interpolate_clp [And(case1::a_part); And b_part] in
-          let lst2 = ClpLI.interpolate_clp [And(case2::a_part); And b_part] in
-          let it = AstUtil.simplify  (Or [List.hd lst1; List.hd lst2]) in
-            (A, it)
-        end
-        | B ->
-        begin
-          let (case1,case2) = neg_eq eq in
-          let (a_part,b_part) = applied_to_a_b NelsonOppen.LI in
-          let lst1 = ClpLI.interpolate_clp [And a_part; And (case1::b_part)] in
-          let lst2 = ClpLI.interpolate_clp [And a_part; And (case2::b_part)] in
-          let it = AstUtil.simplify  (And [List.hd lst1; List.hd lst2]) in
-            (B, it)
-        end
-      | Mixed -> failwith "Interpolate, li_it_for_deduc: found Mixed"
-    in
-    
-    (* does not change the underlying graphs *)
-    let uif_it_for_deduc (side, eq) = match side with
-      | A ->
-        begin
-          Message.print Message.Debug (lazy("uif_it_for_deduc A: "^(AstUtil.print eq)));
-          (*TODO the new term is congruent, and Dag don't do congruence...*)(*BUG BUG*)
-          (*if exists ok, else goes down to the args*)
-          graph_a#create_needed_nodes eq;
-          graph_a#add_neq (Not eq);
-          let it = Dag.interpolate_from_graph graph_a graph_b in
-            graph_a#remove_neq (Not eq);
-            (A, it)
-        end
-        | B ->
-        begin
-          Message.print Message.Debug (lazy("uif_it_for_deduc B: "^(AstUtil.print eq)));
-          graph_b#create_needed_nodes eq;
-          graph_b#add_neq (Not eq);
-          let it = Dag.interpolate_from_graph graph_a graph_b in
-            graph_b#remove_neq (Not eq);
-            (B, it)
-        end
-      | Mixed -> failwith "Interpolate, uif_it_for_deduc: found Mixed"
-    in
-
-    let make_eq_local ea eb =
-       try
-         let m = Dag.find_common_expr_graph ea eb graph_a graph_b common_var common_sym in
-         let eq_a = AstUtil.order_eq (Eq(ea,m)) in
-         let eq_b = AstUtil.order_eq (Eq(eb,m)) in
-           [(B, eq_b);(A, eq_a)]
-       with Not_found -> 
-           begin
-             (*reaching this means that decudction comes from LA*)
-             let all_cstr = 
-               let (a_l, b_l) = applied_to_a_b NelsonOppen.LI in
-                 And (a_l @ b_l)
-             in
-             let m = SatLI.find_common_expr all_cstr ea common_var common_sym in
-             let eq_a = AstUtil.order_eq (Eq(ea,m)) in
-             let eq_b = AstUtil.order_eq (Eq(eb,m)) in
-               li_flag := true; (*HACK !!!*)
-               [(A, eq_a);(B, eq_b)]
-           end
-    in
-    
-    let make_deduc_local eq = match eq with
-        | Eq (e1,e2) as eq ->
-          begin
-            match (side e1, side e2) with
-            | (A,A) | (A,Mixed) | (Mixed,A) -> [(A, eq)]
-            | (B,B) | (Mixed,B) | (B,Mixed) | (Mixed,Mixed) -> [(B, eq)]
-            | (A,B) -> make_eq_local e1 e2
-            | (B,A) -> make_eq_local e2 e1
-          end
-      | _ -> failwith "Interpolate, li_it_for_deduc: expected EQ"
-    in
-    
-    let it_for_deduct query_fct eq =
-      match make_deduc_local eq with
-      | x::y::[] as lst -> (query_fct x, lst)(*make_deduc_local makes it such that pinking the first is sufficient*)
-      | x::[] as lst -> (query_fct x, lst)
-      | _ -> failwith "Interpolate, it_for_deduct: ..."
-    in
-
-    let process_deduction ((_, eq) as ded) =
-      Message.print Message.Debug (lazy("processing deduction: "^(AstUtil.print eq)));
-      match ded with
-      | (NelsonOppen.LI, eq) ->
-        begin
-          let (it,eq_lst) = it_for_deduct li_it_for_deduc eq in
-            List.iter apply eq_lst;
-            if !li_flag then (*HACK !!*)
-              begin
-                li_flag := false;
-                match it with
-                  | (A,Lt (e1,e2)) -> [(it,Some( AstUtil.order_eq (Eq(e1,e2))))]
-                  | (_, True) -> [((B,True),None)]
-                  | (A,err) -> failwith ("Interpolate, process_deduction, eq_to_keep: found A, "^(AstUtil.print err))
-                  | (B,err) -> failwith ("Interpolate, process_deduction, eq_to_keep: found B, "^(AstUtil.print err))
-                  | (Mixed,err) -> failwith ("Interpolate, process_deduction, eq_to_keep: found Mixed, "^(AstUtil.print err))
-              end
-            else
-              begin
-                [(it,None)]
-              end
-        end
-      | (NelsonOppen.UIF, (Eq((Application(s1, args1) as e1), (Application(s2,args2) as e2)) as eq) ) ->
-        begin (*arguments*)
-          (*side of args is same as congruence*)
-          let (side1,side2) =
-              begin
-                match (side e1, side e2) with
-                | (A,A) | (A,Mixed) | (Mixed,A) -> (A, A)
-                | (B,B) | (Mixed,B) | (B,Mixed) | (Mixed,Mixed) -> (B,B)
-                | s -> s
-              end
-          in
-          let args_for_top_fct = ref [] in
-          let args_it_tmp = List.map2
-            (fun x y -> if side1 = side2 then
-                begin
-                  let seq = (side1, AstUtil.order_eq (Eq (x,y))) in
-                    ((uif_it_for_deduc seq), [seq])
-                end
-              else
-                begin
-                  let (ea,eb) = if side1 = A then (x,y) else (y,x) in
-                    Message.print Message.Debug (lazy("from A : "^(AstUtil.print_expr ea)));
-                    Message.print Message.Debug (lazy("from B : "^(AstUtil.print_expr eb)));
-                    match make_eq_local ea eb with
-                    | ((_,Eq(x1,x2)) as x)::((_,Eq(y1,y2)))::[] as lst ->
-                      begin
-                        begin
-                          match ((x1=y1)||(x1=y2),(x2=y1)||(x2=y2)) with
-                          | (true,_) -> args_for_top_fct := x1::!args_for_top_fct
-                          | (_,true) -> args_for_top_fct := x2::!args_for_top_fct
-                          | _ -> failwith "Interpolate, process_deduction: no middle term!!"
-                        end;
-                        (uif_it_for_deduc x, lst)(*make_deduc_local makes it such that picking the first is sufficient*)
-                      end
-                    | _ -> failwith "Interpolate, process_deduction: expected 2"
-                end
-            ) args1 args2
-          in
-          let args_it =
-            List.fold_left
-              (fun acc (it, eq_lst) ->
-                List.iter apply eq_lst;
-                (it,None)::acc
-              ) [] args_it_tmp
-          in
-            (*List.iter apply eq_lst;*)
-            if side1 = side2 then apply (side1, eq)
-            else
-              begin
-                let m = Application(s1, List.rev !args_for_top_fct) in
-                 apply (side1, AstUtil.order_eq (Eq(e1,m)));
-                 apply (side2, AstUtil.order_eq (Eq(e2,m)))
-              end;
-            args_it
-        end
-      | (NelsonOppen.UIF, _) -> failwith "Interpolate, process_deduction: UIF match error"
-      | _ -> failwith "deduction from unsupported theory"
-    in
-    
-    let partial_deduced_it = List.flatten (List.map process_deduction eq_deduced) in
-    let print_it ((side, it), _)= match side with | A -> "A:"^(AstUtil.print it) | B -> "B:"^(AstUtil.print it) | Mixed -> "Mixed:"^(AstUtil.print it) in
-      Message.print Message.Debug (lazy("partial_deduced_it are: "^(Utils.string_list_cat ", " (List.map print_it partial_deduced_it))));
-    let recompose_final_it it = 
-      List.fold_right
-        (fun ((side, pit), eq_opt) it ->
-          match eq_opt with
-          | None -> (*normal case*)
-            begin
-              match side with
-              | A -> Or [it;pit]
-              | B -> And [it;pit]
-              | Mixed -> failwith "Interpolate, recompose_final_it: mixed interpolant!"
-            end
-          | Some eq -> (*LA case*)
-            begin
-              Or [(And [it;eq]); pit]
-            end
-        )
-        partial_deduced_it it
-    in
-
-    let final_it = match theory with
-      | NelsonOppen.LI ->
-        begin
-          let (a_part,b_part) = applied_to_a_b NelsonOppen.LI in
-          let it = List.hd (ClpLI.interpolate_clp [And a_part; And b_part]) in
-            Message.print Message.Debug (lazy("last it is: "^(AstUtil.print it)));
-            recompose_final_it it
-        end
-      | NelsonOppen.UIF ->
-        begin
-          let it = Dag.interpolate_from_graph graph_a graph_b in
-            Message.print Message.Debug (lazy("last it is: "^(AstUtil.print it)));
-            recompose_final_it it
-        end
-      | NelsonOppen.BOOL ->
-        begin
-          match a_part with
-          | [] -> True
-          | x::[] -> x
-          | x::y::[] -> False
-          | _ -> failwith "Interpolate: direct contradiction with more than two elements !?!"
-        end
-      | _ -> failwith "interpolate: SAT or unsupported theory"
-    in
-      Hashtbl.add it_table a_part final_it
-
-  in
-    List.iter process_core cores_with_info;
-
-    (*build final interpolant*)
-    let a_dnf_parts = List.map (fun olst -> 
-          List.filter (fun l ->
-            let ol = OrdSet.list_to_ordSet l in
-              (OrdSet.intersection ol olst) = ol
-            ) !a_parts
-      ) a_dnf
-    in
-    (*let a_dnf_parts = List.filter (fun l -> l <> []) a_dnf_parts in*)
-      AstUtil.simplify (Or (List.map (fun l -> And (List.map (fun x -> And (Hashtbl.find_all it_table x)) l)) a_dnf_parts))
-
-let interpolate a b =
-  let a = AstUtil.simplify a in
-  let b = AstUtil.simplify b in
-  let ab = AstUtil.normalize_only (And [a; b]) in
-  let cores_with_info =
-    if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
-      begin
-        Message.print Message.Debug (lazy "Interpolate: formula is conj only");
-        [NelsonOppen.unsat_LIUIF (AstUtil.simplify ab)]
-      end
-    else
-      begin
-        Message.print Message.Debug (lazy "Interpolate: using sat solver");
-        SatPL.unsat_cores_LIUIF ab
-      end
-  in
-    build_interpolant a b cores_with_info
-(************************************************)
-(************************************************)
-(************************************************)
-(************************************************)
-
 (*end of tree: what kind of clause*)
 type eot_t = ACl (*A clause*)
            | BCl (*B clause*)
@@ -933,15 +564,32 @@ let recurse_in_proof a b proof cores_with_info =
         | ACl -> False
         | BCl -> True
         | NCl _ -> failwith "Interpolate, recurse_in_proof: NCl when not using path interpolation !!!"
-        | ThCl (c,t,i) -> partial_interpolant a_prop b_prop (c,t,i)
+        | ThCl (c,t,i) -> partial_interpolant a a_prop b b_prop (c,t,i)
         | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof in not a clause !!!"
       end
   in
     recurse proof
 
+let lazy_cnf formula =
+  let (atom_to_pred, pred_to_atom, f) =
+    (*if is already in cnf ...*)
+    if AstUtil.is_cnf formula then
+      begin
+        Message.print Message.Debug (lazy("already in CNF"));
+        (Hashtbl.create 0, Hashtbl.create 0, AstUtil.cnf formula)
+      end
+    else 
+      begin
+        Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
+        AstUtil.equisatisfiable formula
+      end
+  in
+    (atom_to_pred, pred_to_atom, f)
+
+
 let interpolate_with_proof a b =
-  let a = AstUtil.cnf (AstUtil.simplify a) in
-  let b = AstUtil.cnf (AstUtil.simplify b) in
+  let (_,_,a) = lazy_cnf (AstUtil.simplify a) in
+  let (_,_,b) = lazy_cnf (AstUtil.simplify b) in
   let a = AstUtil.normalize_only (AstUtil.remove_lit_clash a) in
   let b = AstUtil.normalize_only (AstUtil.remove_lit_clash b) in
   let a_cnf = AstUtil.cnf a in
@@ -961,29 +609,38 @@ let interpolate_with_proof a b =
       end
     | _->
       begin
-        if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
-          begin
-            (*when conj only, bypass the get_unsat_core*)
-            Message.print Message.Debug (lazy "Interpolate: formula is conj only");
-            let core_with_info =
-              NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And [a; b]))
-            in
-              build_interpolant a b [core_with_info]
-          end
-        else
-          begin
-            let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
-              Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
-            let (cores_with_info, proof) = 
-              SatPL.unsat_cores_with_proof ab
-            in
-            let it = recurse_in_proof a_cnf b_cnf proof cores_with_info in
-              AstUtil.simplify it
-          end
+        let it =
+          if AstUtil.is_conj_only a && AstUtil.is_conj_only b then
+            begin
+              (*when conj only, bypass the get_unsat_core*)
+              Message.print Message.Debug (lazy "Interpolate: formula is conj only");
+              let core_with_info =
+                NelsonOppen.unsat_LIUIF (AstUtil.normalize_only (And [a; b]))
+              in
+                let a_prop = AstUtil.get_proposition_set a in
+                let b_prop = AstUtil.get_proposition_set b in
+                  partial_interpolant a a_prop b b_prop core_with_info
+                (*
+                build_interpolant a b [core_with_info]
+                *)
+            end
+          else
+            begin
+              let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
+                Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
+              let (cores_with_info, proof) = 
+                SatPL.unsat_cores_with_proof ab
+              in
+                recurse_in_proof a_cnf b_cnf proof cores_with_info
+            end
+        in
+          (*as the introduced atoms are local to each side,
+            they should not apprears in the interpolant*)
+          AstUtil.simplify it
       end
 
 let interpolate_with_one_proof lst =
-  let lst = List.map (fun x -> AstUtil.cnf (AstUtil.simplify x)) lst in
+  let lst = List.map (fun x -> let (_,_,f) = lazy_cnf (AstUtil.simplify x) in f) lst in
   let norms = List.map (fun x -> AstUtil.normalize_only (AstUtil.remove_lit_clash x)) lst in
   let all = AstUtil.normalize_only (And norms) in
 
@@ -1023,7 +680,12 @@ let interpolate_with_one_proof lst =
         let core_with_info =
           NelsonOppen.unsat_LIUIF (AstUtil.normalize_only all)
         in
-          List.map (fun (a,b) -> build_interpolant a b [core_with_info]) queries
+          List.map (fun (a,b) ->
+              let a_prop = AstUtil.get_proposition_set a in
+              let b_prop = AstUtil.get_proposition_set b in
+                partial_interpolant a a_prop b b_prop core_with_info
+              (* build_interpolant a b [core_with_info] *)
+            ) queries
       end
     else
       begin

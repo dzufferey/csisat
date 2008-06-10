@@ -78,6 +78,7 @@ let interpolate_in () =
     if (List.length lst) = 2 then
       begin
         (*normal case*)
+        (*TODO as soon as the path interpolation code is as good as the 2 el. case, remove this part*)
         let a = List.hd lst in
         let b = List.hd (List.tl lst) in
           it a b
@@ -85,7 +86,6 @@ let interpolate_in () =
     else
       begin
         (*path interpolant case*)
-        (*TODO as soon as the path interpolation code is done, remove this part*)
         if List.length lst < 2 then 
           begin
             Message.print Message.Error

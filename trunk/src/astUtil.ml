@@ -787,3 +787,100 @@ let split_formula_LI_UIF pred =
       in
         (lst, [], [], [])
     end
+
+
+(**return an equisatisfiable formula on CNF
+ * and a hashtable atoms to the corresponding subterm
+ * assume NNF
+ * TODO let leaves ...
+ *)
+let counter_equisat = ref 0
+let equisatisfiable pred =
+  let dico = Hashtbl.create 23 in
+  let pred_to_atom = Hashtbl.create 23 in
+  let get_rep p =
+    try Hashtbl.find pred_to_atom p
+    with Not_found ->
+      begin
+        counter_equisat := 1 + !counter_equisat;
+        let atom = Atom !counter_equisat in
+          Hashtbl.replace dico atom p;
+          Hashtbl.replace pred_to_atom p atom;
+          atom
+      end
+  in
+  let rep pred = match pred with
+    | True -> True
+    | False -> False
+    | And _ as an -> get_rep an
+    | Or _ as o -> get_rep o
+    | Not _ as n -> n
+    | Eq _ as eq -> eq
+    | Lt _ as lt -> lt
+    | Leq (e1,e2) -> (Not (Lt (e2, e1)))
+    | Atom _ as a -> a
+  in
+  let enc pred = match pred with
+    | False | True | Eq _ | Lt _ | Atom _ | Leq _ | Not _ -> True
+    | And lst as pp ->
+      begin
+        let p = rep pp in
+        let repr = List.map rep lst in
+        let one_false = List.map (fun x -> Or [Not p; x]) repr in
+        let neg =  List.map (fun x -> Not x) repr in
+          And ((Or (p::neg))::one_false)
+      end
+    | Or lst as pp ->
+      begin
+        let p = rep pp in
+        let repr = List.map rep lst in
+        let one_true = List.map (fun x -> Or [Not x; p]) repr in
+          And ((Or ((Not p)::repr))::one_true)
+      end
+    (*
+    | Leq (e1,e2) as leq ->
+      begin
+        let outer = rep leq in
+        let inner = rep (Lt (e2 ,e1)) in
+          And [Or[Not outer; Not inner];Or[outer; inner]](*like Not*)
+      end
+    | Not p as pp ->
+      begin
+        let outer = rep pp in
+        let inner = rep p in
+          And [Or[Not outer; Not inner];Or[outer; inner]]
+      end
+    *)
+  in
+    let subterm = get_subterm pred in
+      (dico, pred_to_atom, normalize_only (And ((rep pred)::(List.map enc subterm))))
+
+let unabstract_equisat dico formula =
+  let rec process formula = match formula with
+    | And lst -> And (List.map process lst)
+    | Or lst -> Or (List.map process lst)
+    | Not p -> Not (process p)
+    | Eq _ as eq -> eq
+    | Lt _ as lt ->  lt
+    | Leq(e1,e2) -> (Not (Lt(e2,e1)))
+    | Atom _ as a -> process (Hashtbl.find dico a)
+    | True -> True
+    | False -> False
+  in
+    normalize_only (process formula)
+
+(*assume NNF*)
+let remove_equisat_atoms formula =
+  let rec process formula = match formula with
+    | Atom _  -> True
+    | Not Atom _ -> True
+    | And lst -> And (List.map process lst)
+    | Or lst -> Or (List.map process lst)
+    | Not _ as np -> np
+    | Eq _ as eq -> eq
+    | Lt _ as lt ->  lt
+    | Leq(e1,e2) -> (Not (Lt(e2,e1)))
+    | True -> True
+    | False -> False
+  in
+    normalize_only (process formula)
