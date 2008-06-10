@@ -43,6 +43,7 @@ FILES = \
 	$(OBJ)/satPL.cmx \
 	$(OBJ)/interpolate.cmx \
 	$(OBJ)/config.cmx \
+	$(OBJ)/tests.cmx \
 	$(OBJ)/main.cmx
 
 TARGET = bin/csisat

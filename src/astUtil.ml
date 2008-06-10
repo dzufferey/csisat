@@ -390,6 +390,7 @@ let is_cnf_strict f = match f with
   | _ -> false
 
 let cnf tree =
+  Message.print Message.Debug (lazy("convertinf to CNF:  " ^ (print_pred tree)));
   let rec process t = match t with
     | And lst -> Utils.rev_flatten (List.rev_map process lst)
     | Or lst ->
