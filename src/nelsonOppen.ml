@@ -469,6 +469,9 @@ let precise_unsat_core formula =
     end
 
 let unsat_core_with_info formula =
+  (*TODO when adding the support for atoms in input,
+    this breaks the fact the SAT_FORMULA implies the conj of input*)
+  let formula = AstUtil.remove_equisat_atoms formula in
   match theory_of formula with
   | EUF ->
     begin
@@ -554,6 +557,9 @@ let unsat_LIUIF conj =
       end
     | [] -> None
   in
+  (*TODO when adding the support for atoms in input,
+    this breaks the fact the SAT_FORMULA implies the conj of input*)
+  let conj = AstUtil.remove_equisat_atoms conj in
     match conj with
     | And lst ->
       begin
@@ -561,9 +567,12 @@ let unsat_LIUIF conj =
         | Some x -> x
         | None ->
           begin
+            unsat_core_with_info conj
+          (*
             match is_liuif_sat_with_eq conj with
             | (SATISFIABLE, _) -> raise (SAT_FORMULA conj)
             | (t, eq) -> (conj, t, eq)
+          *)
           end
       end
     | _ -> failwith "NelsonOppen: not a conjunction"
