@@ -469,9 +469,6 @@ let precise_unsat_core formula =
     end
 
 let unsat_core_with_info formula =
-  (*TODO when adding the support for atoms in input,
-    this breaks the fact the SAT_FORMULA implies the conj of input*)
-  let formula = AstUtil.remove_equisat_atoms formula in
   match theory_of formula with
   | EUF ->
     begin
