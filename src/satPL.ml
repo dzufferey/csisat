@@ -373,9 +373,10 @@ let unsat_cores_with_proof formula =
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
           let assign =  solver#get_solution in
-          (*TODO config can force a theory*)
+          (*remove atoms that are in any theory*)
+          let f_assign = AstUtil.remove_equisat_atoms (And assign) in
           try
-            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info (And assign) in
+            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info f_assign in
               Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
               cores := core_with_info::!cores;
               let contra = reverse unsat_core in
