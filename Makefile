@@ -5,7 +5,7 @@ INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
 LIB_GLPK_DIR = /usr/local/lib
 
 ifndef STATIC
-GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
+GLPK = /usr/lib/libglpk.a # Uncomment for GLPK < 4.28
 LIBS = -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wrapper/ -L $(PWD)/picosat-632 -lglpk -lpicosat -lcamlpico -lcamlglpk'
 else
 GLPK = $(LIB_GLPK_DIR)/libglpk.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a # for GLPK 4.28
@@ -48,11 +48,11 @@ FILES = \
 
 TARGET = bin/csisat
 
-version:
-	$(shell svn info > version.txt)
-
 all: glpk pico picosat $(FILES) version 
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
+
+version:
+	$(shell svn info > version.txt)
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
