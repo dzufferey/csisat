@@ -104,7 +104,6 @@ let parse_foci input_string =
       done;
       Buffer.add_char buffer !current;
       next_char();
-      Message.print Message.Debug (lazy (Buffer.contents buffer));
       Buffer.contents buffer
   in
 
@@ -126,6 +125,28 @@ let parse_foci input_string =
           done;
           Buffer.contents buffer
       end
+  in
+
+  let float_of_string_check str =
+    let f = float_of_string str in
+      match classify_float f with
+      | FP_normal -> f
+      | FP_zero -> f
+      | FP_subnormal -> 
+        begin
+          Message.print Message.Debug (lazy ("FP_subnormal: "^(string_of_float f)));
+          f
+        end
+      | FP_infinite -> 
+        begin
+          Message.print Message.Error (lazy "Parsed infinite loating point value. Infinite value not supported.");
+          failwith "inf"
+        end
+      | FP_nan -> 
+        begin
+          Message.print Message.Error (lazy "Parsed NAN floating point value. This leads to unpredictable result.");
+          failwith "nan"
+        end
   in
 
   (*
@@ -172,9 +193,9 @@ let parse_foci input_string =
             let limit = String.index n_str '/' in
             let num = String.sub n_str 0 limit in
             let denom = String.sub n_str (limit + 1) ((String.length n_str) - limit -1) in
-              (float_of_string num) /. (float_of_string denom)
+              (float_of_string_check num) /. (float_of_string_check denom)
           else
-            float_of_string n_str
+            float_of_string_check n_str
         in
           next_token2();
           Coeff ( n, term() )
@@ -191,12 +212,12 @@ let parse_foci input_string =
                 let limit = String.index sym '/' in
                 let num = String.sub sym 0 limit in
                 let denom = String.sub sym (limit + 1) ((String.length sym) - limit -1) in
-                  (float_of_string num) /. (float_of_string denom)
+                  (float_of_string_check num) /. (float_of_string_check denom)
               else
-                float_of_string sym
+                float_of_string_check sym
               in
                 Constant (n)
-            with _ ->
+            with Failure "float_of_string" ->
               Variable sym
           else
             (*uninterpreted_function_symbol*)
@@ -313,7 +334,11 @@ let parse_foci input_string =
           match var with
           | "true" -> True
           | "false" -> False
-          | _ -> Atom (int_of_string var)(*TODO hashtbl for numbering*)
+          | _ ->
+            begin
+              failwith ("Syntax error: \""^var^"\" (propositional variable are not supported for the moment)")
+            (*Atom (int_of_string var)(*TODO hashtbl for numbering*)*)
+            end
       end
   
   (*
