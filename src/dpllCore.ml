@@ -23,11 +23,21 @@ open DpllProof
 (*a simple dpll SAT solver*)
 (*TODO improve*)
 
+(** to store decision level:
+ * -Open    : random choice (decision policy)
+ * -Closed  : choosed after backtracking
+ * -Implied : unit resolution
+ * -TImplied: implied by a theory (bool+T) TODO
+ *)
 type var_assign = Open
                 | Closed of res_proof
                 | Implied of res_proof
                 | TImplied of res_proof
 
+(** DPLL system, mostly a list of clauses
+ * if 'with_prf' then keep the resolution proof in memory
+ * the constructor build an empty system, call the method 'init' with the CNF formula you want
+ *)
 class system =
   fun with_prf ->
   object (self)
@@ -40,7 +50,6 @@ class system =
     val mutable affected = PredSet.empty
     val choices = Stack.create ()
 
-    (*2-list watching*)
     val prop_to_clauses = Hashtbl.create 123
     
     val keep_proof = with_prf
@@ -63,7 +72,6 @@ class system =
       Hashtbl.clear prop_to_clauses;
       Stack.clear choices
 
-    (*2-list watching as ordset*)
     method add_pos_clause_for_prop p cl =
       let (oldp, oldn) = try Hashtbl.find prop_to_clauses p with Not_found -> ([],[]) in
         Hashtbl.replace prop_to_clauses p (OrdSet.union [cl] oldp, oldn)

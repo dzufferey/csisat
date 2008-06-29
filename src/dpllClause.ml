@@ -18,6 +18,9 @@
 open Ast
 open AstUtil
 
+(** Clause: (disjunction of literals) for the sat solver.
+ *  Literals are stored in sets (log lookup/insert/del).
+ *)
 class clause =
   fun disj (l:bool) ->
   object (self)
@@ -31,6 +34,7 @@ class clause =
       let lst = PredSet.fold (fun e acc -> e::acc) propositions [] in
         OrdSet.list_to_ordSet lst
     
+    (** a learned clause comes from the backtracking*)
     val learned = l
     method is_learned = learned
 
@@ -39,7 +43,9 @@ class clause =
       | _ -> failwith "DPLL: clause expect a disjunction"
     val mutable satisfied = PredSet.empty
 
+    (** has litteral ?*)
     method has el = PredSet.mem el propositions
+    (** has ¬litteral ?*)
     method has_not el = PredSet.mem (contra el) propositions
 
     method props = (*proposition in clause not literal*)
@@ -56,6 +62,7 @@ class clause =
 
     method size = PredSet.cardinal left
 
+    (** decision for a variable*)
     method affect atom =
       let contr = contra atom in
       if PredSet.mem atom propositions then
@@ -66,6 +73,7 @@ class clause =
       if PredSet.mem contr propositions then
         left <- PredSet.remove contr left
 
+    (** unassign a variable (during backtracking) *)
     method forget atom =
       let contr = contra atom in
       if PredSet.mem atom propositions then
@@ -78,6 +86,7 @@ class clause =
 
     method get_satisfied = satisfied
 
+    (* Exists x. x and ¬x in clause*)
     method has_el_and_contra =
       PredSet.exists (fun x -> PredSet.mem (contra x) propositions) propositions
     
