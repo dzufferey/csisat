@@ -30,6 +30,7 @@
 
 #define NBSOLVER 1
 //TODO why it only works with one thread ??
+//what library call should be protected
 
 typedef struct {
 	pthread_t thread;
