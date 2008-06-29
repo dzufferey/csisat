@@ -17,10 +17,12 @@
 
 (*TODO
  * keep Lt xor Leq
+ * a <= b  <-> b ~< a
  *)
 
 type theory = EUF | LA | EUF_LA
 
+(*variable or uninterpreted fct*)
 type symbol = string
 
 type expression =
@@ -41,6 +43,7 @@ type predicate =
   | Leq of expression * expression
   | Atom of int (*lit for the satsolver*)
 
+(*is it a propositional AST ?*)
 let rec is_sat_ast p = match p with
   | True | False | Atom _ -> true
   | Not p -> is_sat_ast p
