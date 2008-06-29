@@ -48,14 +48,18 @@ FILES = \
 
 TARGET = bin/csisat
 
-all: glpk pico picosat $(FILES) version 
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
 
-version:
-	$(shell svn info > version.txt)
+all: glpk pico picosat $(FILES)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
+	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/config.ml)
+
+VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
+DATE = $(shell date)
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
+	$(shell if test $< = $(SRC)/config.ml; \
+		then sed -i 's/Version: REV, DATE/Version: revision $(VERSION), $(DATE)/g' $<; fi)
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	mv $(patsubst %.ml, %.cmx, $<) $@
 	mv $(patsubst %.ml, %.cmi, $<) $(patsubst %.cmx, %.cmi, $@)
