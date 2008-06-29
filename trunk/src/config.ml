@@ -15,8 +15,11 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(**check the interpolant*)
 let check = ref false
+(** check the satisfiability, do not compute interpolant*)
 let sat_only = ref false
+(** round coefficient of the interpolant to get integers (!!limited precision)*)
 let round = ref false
 
 let options = 

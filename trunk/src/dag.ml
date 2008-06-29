@@ -17,8 +17,12 @@
 
 open Ast
 
-(*to reason about = and =\=*)
+(*directed acyclic graph to reason about = and =\=*)
 
+(** a node in the graph: uninterpreted fcts or variables.
+ * a variable is an uninterpreted fct of arity 0.
+ * the equivalence classes are managed with an union-find structure (parent field)
+ *)
 class node = 
   fun
     (ffname: string) 
@@ -33,12 +37,6 @@ class node =
     val arity = List.length aargs
     method get_arity = arity
     
-    (*other nodes using it*)
-    val mutable ccparent: node list = []
-    method set_ccparent lst = ccparent <- lst
-    method add_ccparent n = ccparent <- (OrdSet.union ccparent [n])
-    method get_ccparent = ccparent
-    
     (*for equivalence class*)
     val mutable parent: node option = None
     method set_parent n = parent <- Some n
@@ -50,11 +48,6 @@ class node =
             parent <- Some p;
             p
         end
-
-    method union (that: node) = 
-      let n1 = self#find in
-      let n2 = that#find in
-        n1#set_parent n2
 
     method congruent (that: node) =
         self#get_fname = that#get_fname
@@ -71,14 +64,20 @@ class node =
       else
         List.filter (fun (a,b) -> a#find <> b#find) (List.rev_map2 (fun x y -> (x,y)) (self#get_args) (that#get_args))
 
+    (*union of two equivalence classes*)
     method merge (that: node) =
       if self#find <> that#find then
         begin
-            self#union that
+          let n1 = self#find in
+          let n2 = that#find in
+            n1#set_parent n2
         end
     
   end
 
+(** The DAG itself. Basically a set of node with tables to make the translation expr <-> node.
+ * It also remember what was given (what is deduced). 
+ *)
 class dag = fun expr ->
   let table1 = Hashtbl.create 53 in
   let table2 = Hashtbl.create 53 in
@@ -99,17 +98,14 @@ class dag = fun expr ->
     | Application (f, args) as appl ->
       let node_args = (List.map convert_exp args) in
       let new_node  = create_and_add appl f node_args in
-        List.iter (fun n -> n#add_ccparent new_node) node_args;
         new_node
     | Sum lst as sum ->
       let node_args = (List.map convert_exp lst) in
       let new_node  = create_and_add sum "+" node_args in
-        List.iter (fun n -> n#add_ccparent new_node) node_args;
         new_node
     | Coeff (c, e) as coeff ->
       let node_args = (List.map convert_exp  [Constant c; e]) in
       let new_node  = create_and_add coeff "*" node_args in
-        List.iter (fun n -> n#add_ccparent new_node) node_args;
         new_node
   in
   let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
@@ -120,16 +116,19 @@ class dag = fun expr ->
     method get_expr n = Hashtbl.find node_to_expr n
     method get_nodes = Hashtbl.copy nodes
 
+    (** set of equalities*)
     val mutable given_eq = AstUtil.PredSet.empty
     method add_eq eq = given_eq <- AstUtil.PredSet.add eq given_eq
     method was_given_eq eq = AstUtil.PredSet.mem eq given_eq
     method get_given_eq = AstUtil.PredSet.fold (fun x acc -> x::acc) given_eq []
     
+    (** set of disequalities*)
     val mutable given_neq = AstUtil.PredSet.empty
     method add_neq neq = given_neq <- AstUtil.PredSet.add neq given_neq
     method get_given_neq = AstUtil.PredSet.fold (fun x acc -> x::acc) given_neq []
     method remove_neq neq = given_neq <- AstUtil.PredSet.remove neq given_neq
 
+    (** creates the node needed for the predicate (expression not given to the constructor)*)
     method create_needed_nodes pred = match pred with
       | Eq (e1, e2) | Not (Eq (e1, e2)) ->
         begin
@@ -138,6 +137,7 @@ class dag = fun expr ->
         end
       | _ -> failwith "Dag: 'create_needed_nodes' only for N/Eq"
 
+    (** add an equality constraint*)
     method add_constr eq = match eq with
       | Eq (e1, e2) ->
         let n1 = self#get_node e1 in
@@ -146,7 +146,8 @@ class dag = fun expr ->
           n1#merge n2
       | _ -> failwith "Dag: 'add_constr' only for Eq"
 
-   method create_and_add_constr eq = match eq with(*TODO buggy*)
+    (** add an equality constraint, create node is needed*)
+    method create_and_add_constr eq = match eq with(*TODO buggy*)
       | Eq (e1, e2) ->
         let n1 =
             try self#get_node e1
@@ -398,7 +399,6 @@ class dag = fun expr ->
         List.iter (fun e ->
           let new_node = cp#get_node e in
           let old_node = self#get_node e in 
-            new_node#set_ccparent (List.map (Hashtbl.find new_of_old) (old_node#get_ccparent));
             let new_parent = Hashtbl.find new_of_old (old_node#find) in
               if new_parent <> new_node then new_node#set_parent new_parent
           ) expressions;
@@ -406,7 +406,7 @@ class dag = fun expr ->
         List.iter (cp#add_neq) (self#get_given_neq);(*TODO avoid unnecessary list*)
         cp
 
-    method copy_and_extand expr =
+    method copy_and_extend expr =
       let expressions = Hashtbl.fold (fun e _ acc -> e::acc ) nodes [] in
       let cp = new dag (expressions @ expr) in
       let new_of_old = Hashtbl.create (List.length expressions) in
@@ -414,7 +414,6 @@ class dag = fun expr ->
         List.iter (fun e ->
           let new_node = cp#get_node e in
           let old_node = self#get_node e in 
-            new_node#set_ccparent (List.map (Hashtbl.find new_of_old) (old_node#get_ccparent));
             let new_parent = Hashtbl.find new_of_old (old_node#find) in
               if new_parent <> new_node then new_node#set_parent new_parent
           ) expressions;
@@ -424,7 +423,7 @@ class dag = fun expr ->
 
     method merge (graph: dag) =
       let expr = Hashtbl.fold (fun e _ acc -> e::acc ) nodes [] in
-      let cp = graph#copy_and_extand expr in
+      let cp = graph#copy_and_extend expr in
         AstUtil.PredSet.iter cp#add_constr given_eq;
         AstUtil.PredSet.iter cp#add_neq given_neq;
         cp
@@ -448,6 +447,7 @@ let rec split_eq_neq accEq accNeq lst = match lst with
   | c -> failwith ("DAG: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
 
 
+(** breadth first search (shortest path from source to sink): consider equalities as edges *)
 let bfs eqs source sink =
   let eq_to_edges eq = match eq with
     | Eq (x,y) -> (x,y)
@@ -481,6 +481,7 @@ let bfs eqs source sink =
     Queue.push (source, []) queue;
     search ()
 
+(** transform a path in a graph (a -> b -> c) into equalities (a=b, b=c) *)
 let path_to_eq path =
   let eqs = ref [] in
   let rec process lst = match lst with
