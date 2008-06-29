@@ -38,6 +38,10 @@ let rec print_pred p =
 
 let print p = print_pred p
  
+(** convert to NNF
+ * @param negate true means that an odd number of Not were found
+ * @param pred the predicate to convert
+ *)
 let rec push_negation negate pred = match pred with
   | True when negate -> False
   | True -> True
@@ -53,7 +57,10 @@ let rec push_negation negate pred = match pred with
   | p when negate -> Not p
   | p -> p
 
-(*TODO
+(** convert to NNF *)
+let nnf = push_negation false
+
+(* simplifiy an expression, work as follows:
     distribute_coeff
     flatten Sum
     merge coeff + sort
@@ -192,12 +199,15 @@ let rec simplify_expr expr =
             let pruned = prune merged_var in
               (*Message.print Message.Debug (lazy("  prune:       " ^ (print_expr pruned)));*)
               let apps = get_appl pruned in
-              let merged_app =  List.fold_left (fun acc x -> merge_appl x acc) pruned apps in (*BUGGY: apps is not normalized ...*)
+              let merged_app =  List.fold_left (fun acc x -> merge_appl x acc) pruned apps in (*BUGGY: apps are not normalized ...*)
                 (*Message.print Message.Debug (lazy("  merge app:   " ^ (print_expr merged_app)));*)
                 let pruned2 = prune merged_app in
                   Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));
                   pruned2
 
+(** basic simplification steps for literals: constant inequalities, ...
+ * known BUG: loop forever when a float value is NAN
+ *)
 let rec simplify_literals tree = match tree with
   | Eq (Constant c1, Constant c2) -> if c1 = c2 then True else False
   | Eq (e1, e2) ->
@@ -226,14 +236,14 @@ let rec simplify_literals tree = match tree with
   | p -> p
 
 
-(*no And or Or*)
+(** checks that the formula contains no And or Or *)
 let rec is_atomic formula = match formula with
   | False | True -> true
   | Eq _ | Lt _ | Leq _ | Atom _ -> true
   | And _ | Or _ -> false
   | Not p -> is_atomic p
 
-(*return the ¬a, assuming a is a proposition
+(** return the ¬a, assuming a is a proposition
  * if a is not a proposition, then the returned value is not normalized
  *)
 let contra x = match x with
@@ -244,7 +254,8 @@ let contra x = match x with
   | Not e -> e
   | _ as n -> Not n
 
-(* perform step of simplification on a formula
+(** normalisation of formula.
+ * @param proposition_simplification the function called to normalize literals
  *)
 let rec normalize_common proposition_simplification tree =
   match tree with
@@ -336,6 +347,7 @@ let rec remove_lit_clash tree =
     | t -> t
 
 
+(** order equalities, normalisation of equalities*)
 let rec order_eq eq = match eq with
   | And ilst -> And (List.map order_eq ilst)
   | Or ilst -> Or (List.map order_eq ilst)
@@ -347,7 +359,9 @@ let rec order_eq eq = match eq with
       else Eq (e2, e1)
   | p -> p
 
-(*assume NNF*)
+(** check that the formula is conjunctive
+ * assume NNF
+ *)
 let is_conj_only p =
   let no_disj e = match e with
     | Or _ -> false
@@ -359,7 +373,9 @@ let is_conj_only p =
     | _ -> false
 
 
-(*assume NNF*)
+(** check that the formula is CNF
+ * assume NNF
+ *)
 let is_cnf formula =
   let rec contains_no_sub f = match f with
     | And _ | Or _ -> false
@@ -377,6 +393,7 @@ let is_cnf formula =
     | And lst -> List.for_all contains_or_no_sub lst
     | _ -> true
 
+(** cnf strict enforces 'a' as And '[ Or [ a ] ]' *)
 let is_cnf_strict f = match f with
   | And lst ->
     List.for_all (fun x -> match x with 
@@ -389,6 +406,10 @@ let is_cnf_strict f = match f with
     ) lst
   | _ -> false
 
+(** convert a formula to CNF
+ * Expensive (exponential)
+ * assume NNF
+ *)
 let cnf tree =
   Message.print Message.Debug (lazy("convertinf to CNF:  " ^ (print_pred tree)));
   let rec process t = match t with
@@ -408,6 +429,10 @@ let cnf tree =
   in
     And (List.map (fun x -> Or x) (process tree))
 
+(** convert a formula to DNF
+ * Expensive (exponential)
+ * assume NNF
+ *)
 let dnf tree =
   let rec process t = match t with
     | Or lst -> Utils.rev_flatten (List.rev_map process lst)
@@ -429,7 +454,7 @@ let dnf tree =
 
 let simplify pred =  
   Message.print Message.Debug (lazy("  simplifing:  " ^ (print_pred pred)));
-  let p = push_negation false pred in
+  let p = nnf pred in
     Message.print Message.Debug (lazy("  push:        " ^ (print_pred p)));
     let n = normalize p in
       Message.print Message.Debug (lazy("  normalize:   " ^ (print_pred n)));
@@ -451,7 +476,9 @@ module Pred =
 module PredSet = Set.Make(Pred)
 (**************************************)
 
-(** return the expressions of a predicate*)
+(** return the expressions of a predicate as a set.
+ * fetch only top-level expressions
+ *)
 let get_expr_set pred =
   let rec process pred = match pred with
     | False -> ExprSet.empty
@@ -466,9 +493,15 @@ let get_expr_set pred =
   in
     process pred
 
+(** return the expressions of a predicate as a list
+ * fetch only top-level expressions
+ *)
 let get_expr pred =
     ExprSet.fold (fun x acc -> x::acc) (get_expr_set pred) []
 
+(** return the expressions of a predicate as a set.
+ * also fetch subexpressions
+ *)
 let get_expr_deep pred =
   let rec process_expr expr = match expr with
     | Constant _ as c -> ExprSet.singleton c
@@ -491,7 +524,9 @@ let get_expr_deep pred =
     ExprSet.fold (fun x acc -> x::acc) (process_pred pred) []
   
 
-(*OrdSet*)
+(** get all the sub-predicates
+ * returns an OrdSet
+ *)
 let get_subterm pred =
   let rec process pred = match pred with
     | False -> []
@@ -506,6 +541,9 @@ let get_subterm pred =
   in
     process pred
 
+(** get all the sub-predicates
+ * returns an set
+ *)
 let get_subterm_set pred =
   let rec process pred = match pred with
     | False -> PredSet.empty
@@ -520,7 +558,10 @@ let get_subterm_set pred =
   in
     process pred
 
-(*OrdSet*)
+(** get the sub-predicates but does not go inside literals
+ * assume NNF
+ * returns an OrdSet
+ *)
 let get_subterm_nnf pred =
   let rec process pred = match pred with
     | False -> []
@@ -535,6 +576,7 @@ let get_subterm_nnf pred =
   in
     process pred
 
+(** the proposition contained in a literal. *)
 let proposition_of_lit x = match x with
   | Not (Eq _ as eq) -> eq
   | Eq _ as eq -> eq
@@ -573,8 +615,9 @@ let get_proposition_set pred =
   in
     process pred
 
-(*return the variables of a predicate*)
-(*OrdSet*)
+(** return the variables of a predicate.
+ * returns an OrdSet.
+ *)
 let get_var formula =
   let rec process_expr expr = match expr with
     | Constant _ -> []
@@ -586,7 +629,9 @@ let get_var formula =
   let expr = get_expr_deep formula in
     List.fold_left (fun acc x -> OrdSet.union (process_expr x) acc) [] expr
 
-(*OrdSet*)
+(** return the uninterpreted function symbols of a predicate.
+ * returns an OrdSet.
+ *)
 let get_fct_sym formula =
   let rec process_expr expr = match expr with
     | Constant _ -> []
@@ -598,7 +643,7 @@ let get_fct_sym formula =
   let expr = get_expr_deep formula in
     List.fold_left (fun acc x -> OrdSet.union (process_expr x) acc) [] expr
 
-(*does the formula contains only given variable + constant term (no functions)*)
+(** does the formula contains only given variable + constant term (no functions)*)
 let only_vars vars formula =
   let rec only_vars_expr expr = match expr with
     | Constant _ -> true
@@ -634,6 +679,7 @@ let only_vars_and_symbols vars sym formula =
   in
    process_pred formula
 
+(** does formula contains only expression contained in set expr*)
 let only_expr expr formula =
   let rec process_pred formula = match formula with
     | And lst | Or lst -> List.for_all process_pred lst
@@ -643,6 +689,11 @@ let only_expr expr formula =
   in
    process_pred formula
 
+(** transforms predicate 'origin' into '_new'.
+ * @param origin
+ * @param _new
+ * @param formula
+ *)
 let alpha_convert_pred origin _new formula =
   let rec process f = match f with
     | f when f = origin -> _new
@@ -837,24 +888,11 @@ let equisatisfiable pred =
         let one_true = List.map (fun x -> Or [Not x; p]) repr in
           And ((Or ((Not p)::repr))::one_true)
       end
-    (*
-    | Leq (e1,e2) as leq ->
-      begin
-        let outer = rep leq in
-        let inner = rep (Lt (e2 ,e1)) in
-          And [Or[Not outer; Not inner];Or[outer; inner]](*like Not*)
-      end
-    | Not p as pp ->
-      begin
-        let outer = rep pp in
-        let inner = rep p in
-          And [Or[Not outer; Not inner];Or[outer; inner]]
-      end
-    *)
   in
     let subterm = get_subterm pred in
       (dico, pred_to_atom, normalize_only (And ((rep pred)::(List.map enc subterm))))
 
+(** replaces the atoms by the part they represent.*)
 let unabstract_equisat dico formula =
   let rec process formula = match formula with
     | And lst -> And (List.map process lst)
@@ -869,7 +907,10 @@ let unabstract_equisat dico formula =
   in
     normalize_only (process formula)
 
-(*assume NNF*)
+(** formula is an equisatisfiable formula (assignment returned by the satsolver)
+ * removes the atoms, keeps only the theory literals.
+ * assume NNF
+ *)
 let remove_equisat_atoms formula =
   let rec process formula = match formula with
     | Atom _  -> True
