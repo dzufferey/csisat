@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Parsing of argument + configuration variables *)
+
 (**check the interpolant*)
 let check = ref false
 (** check the satisfiability, do not compute interpolant*)

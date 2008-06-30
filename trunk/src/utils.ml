@@ -15,6 +15,13 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** General methods that are independent from other parts.
+ *)
+
+(** Concatenates a list of string, adding a separator between 2 elements.
+ * @param sep the separator
+ * @param lst the list to concatenate
+ *)
 let string_list_cat sep lst =
   let buffer = Buffer.create 10 in
   let rec process lst = match lst with
@@ -25,7 +32,9 @@ let string_list_cat sep lst =
     process lst;
     Buffer.contents buffer
 
-(*lst has at least one element*)
+(** Returns the minimum x of query_fct(x) for x in lst.
+ * Assume that lst has at least one element.
+ *)
 let min_of_list query_fct lst =
   let min_term = ref (List.hd lst) in
   let min_val = ref (query_fct (List.hd lst)) in
@@ -39,6 +48,7 @@ let min_of_list query_fct lst =
       ) lst;
     !min_term
 
+(** Removes the Some of an option *)
 let remove_some lst =
   List.map
     (fun x -> match x with
@@ -46,7 +56,7 @@ let remove_some lst =
       | None -> failwith "remove_some found a None"
     ) lst
 
-(*take the n first element of the list*)
+(** splits a list after position n.*)
 let split_list n lst =
   let acc = ref [] in
   let rec process n lst = match lst with
@@ -62,6 +72,7 @@ let split_list n lst =
   let tail = process n lst in
     (List.rev !acc, tail)
 
+(** map + keep only elements y where fct(x) = Some(y)*)
 let rec map_filter fct lst = match lst with
   | x::xs ->
     begin
@@ -132,8 +143,8 @@ let prime_list n =
     in
       build_list [] 2
 
-(* gives the prime number decomposition of a number
- * assume n is positive
+(** gives the prime number decomposition of a number.
+ * assume n is positive.
  *)
 let factorise n = 
   if n = 1 then [1] (*!!!*)
@@ -160,8 +171,8 @@ let factorise n =
               result
     end
 
-(** power of integers
- *  assume exponent to be >= 0
+(** power of integers.
+ *  Assume exponent to be >= 0
  *)
 let rec power base exponent =
   let rec pow acc base exponent = 
@@ -180,3 +191,6 @@ let round n =
     if f < (-0.5) then i -. 1.
     else if f >= 0.5 then i +. 1.
     else i
+
+let cartesian_product l1 l2 =
+  List.flatten (List.map (fun x -> List.map (fun y -> (x,y)) l2) l1)

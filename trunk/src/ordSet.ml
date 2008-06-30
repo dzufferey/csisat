@@ -16,7 +16,9 @@
  *)
 
 (***************** ORDSETS ********************)
-(* inspired from the Sicstus/SWI prolog library with the same name*)
+(** Ordered sets represented as lists.
+ * This module is inspired from the Sicstus/SWI prolog library with the same name.
+ *)
   
 let remove_duplicates lst =
   let rec process last acc lst = match lst with
@@ -32,7 +34,7 @@ let remove_duplicates lst =
     | x::xs -> process x [x] xs
     | [] -> []
 
-let substract a b =
+let subtract a b =
   let rec process acc a b = match (a,b) with
     | (a,[]) -> (List.rev acc)@a
     | ([],_) -> (List.rev acc)
@@ -82,5 +84,3 @@ let rec mem el lst = match lst with
 
 let list_to_ordSet lst = remove_duplicates (List.sort compare lst)
 
-let cartesian_product l1 l2 =
-  List.flatten (List.map (fun x -> List.map (fun y -> (x,y)) l2) l1)

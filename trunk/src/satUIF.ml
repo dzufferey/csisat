@@ -17,6 +17,8 @@
 
 open Ast
 
+(** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
+
 (*TODO UIF interpolation*)
 (*make those classes extend Dag*)
 
@@ -80,7 +82,7 @@ class node =
           let p1 = self#ccpar in
           let p2 = that#ccpar in
             self#union that;
-            let to_test = OrdSet.cartesian_product p1 p2 in
+            let to_test = Utils.cartesian_product p1 p2 in
               List.iter (fun (x,y) -> if x#find <> y#find && x#congruent y then x#merge y) to_test
         end
     
@@ -91,7 +93,7 @@ class node =
           let p1 = self#ccpar in
           let p2 = that#ccpar in
             self#union that;
-            let to_test = OrdSet.cartesian_product p1 p2 in
+            let to_test = Utils.cartesian_product p1 p2 in
               let cong = List.filter (fun (x,y) -> x#find <> y#find && x#congruent y) to_test in
                 List.fold_left
                   (fun acc (x,y) -> if x#find <> y#find then
@@ -243,16 +245,16 @@ class dag = fun expr ->
           end
         | err -> failwith ("UIF: only for a conjunction of eq/ne"^(AstUtil.print err))
 
-    (* test if the '!=' are respected and return the failing cstrs*)
+    (** Tests if the '!=' are respected and return the failing cstrs*)
     method test_for_contradition =
       let failing = AstUtil.PredSet.filter self#neq_contradiction given_neq in
         AstUtil.PredSet.fold (fun x acc -> x::acc) failing []
 
-    (* for incremental use *)
+    (** for incremental use *)
     method has_contradiction =
       AstUtil.PredSet.exists self#neq_contradiction given_neq
 
-    (** get a list of list of equal expressions *)
+    (** Gets a list of list of equal expressions (connected components). *)
     method get_cc =
       let node_to_cc = Hashtbl.create (Hashtbl.length nodes) in
         Hashtbl.iter (fun e n ->
@@ -277,8 +279,8 @@ class dag = fun expr ->
         end
       | _ -> failwith "SatUIF, entailed: expected EQ"
 
-    (** return a list of new deduced equalities
-     *  the returned equalities are then put in the set of equalities
+    (** Returns a list of new deduced equalities.
+     *  The returned equalities are then put in the set of equalities.
      *)
     method new_equalities =
       let new_eq = ref [] in
@@ -303,9 +305,9 @@ class dag = fun expr ->
         !new_eq
 
 
-    (** return a list a equalities that may change the graph
-     *  this method is for nelson oppen, it is the equalities
-     *  that the LI solver needs to check
+    (** Returns a list equalities that may change the graph.
+     *  This method is for nelson oppen: it is the equalities
+     *  that the LI solver needs to check.
      *)
     method relevant_equalites =
       let eqs = ref AstUtil.PredSet.empty in
@@ -354,10 +356,9 @@ class dag = fun expr ->
       | err -> failwith ("satUIF, is_relevant_equality: found "^(AstUtil.print err))
 
 
-    (** return the 'projection' of the graph on a set of
-     *  restricted variable
-     *  assume that the graph is in a satisfiable state
-     *  @param vars a list of expression considered as UIF term
+    (** Returns the 'projection' of the graph on a set of restricted variables.
+     *  Assumes that the graph is in a satisfiable state
+     *  @param vars a list of expression considered as the target terms
      *)
     method project vars =
       let template: (node * node) list ref = ref [] in
@@ -484,7 +485,7 @@ let common_expression a b =
     (common_sym, common_var)
 
 (*TODO refactore*)
-(*is only an over-approximation*)
+(** is only an over-approximation*)
 let unsat_core formula =
   Message.print Message.Debug (lazy ("SatUIF, unsat core for "^(AstUtil.print formula)));
   let expr = AstUtil.get_expr formula in
@@ -534,7 +535,7 @@ let unsat_core formula =
                                 end
                             ) args1 args2
                           in
-                            ded := OrdSet.substract !ded [eq];(*justify only once*)
+                            ded := OrdSet.subtract !ded [eq];(*justify only once*)
                             eqs := eq::(!eqs);
                             justified := eq::(!justified);
                             And justification
@@ -551,7 +552,7 @@ let unsat_core formula =
                                 end
                             ) [Constant c1; e1] [Constant c2; e2]
                           in
-                            ded := OrdSet.substract !ded [eq];(*justify only once*)
+                            ded := OrdSet.subtract !ded [eq];(*justify only once*)
                             eqs := eq::(!eqs);
                             justified := eq::(!justified);
                             And justification
@@ -587,13 +588,15 @@ let find_common_expr a b ea eb common_var common_sym =
   | _ -> failwith "SatUIF, find_common_expr: expected Ands and Applications"
 
 
-(** This method is more restrictive than its name says
- * it is supposed to interpolate in a specific case of the NelsonOppen framework
+(** This method is more restrictive than its name says.
+ * It is supposed to interpolate in a specific case of the NelsonOppen framework.
  * 
  * it assumes:
  *  a /\ b contains no negation.
- *  nea and neb are Applications
- *  Not (Eq (nea, neb)) is a contradiction
+ * @param  a_side eq is applied to in A/B part.
+ * @param  eq is an application of the congruence axiom, such that (Not eq) is a contradiction.
+ * @param  a the A formula.
+ * @param  b the B formula.
  *)
 let interpolate_euf a_side eq a b =
   let a_expr = AstUtil.get_expr a in

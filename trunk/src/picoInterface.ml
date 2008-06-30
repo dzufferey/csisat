@@ -15,6 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Interface for PicoSat.
+ * As PicoSat is stateful it is not possible to have more than one solver at the time. 
+ *)
 
 open Ast
 open AstUtil

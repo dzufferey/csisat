@@ -15,7 +15,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-(* This file is based on Rybalchenko et al. "Constraint Solving for Interpolation"
+(** This file is based on Rybalchenko et al. "Constraint Solving for Interpolation".
  * http://www.mpi-sws.mpg.de/~rybal/papers/vmcai07-constraints-for-interpolation.pdf
  *)
 
@@ -23,10 +23,13 @@ open Ast
 open AstUtil
 open LIUtils
 
+(** Kind of lambda *)
 type l_type = LT | LEQ | EQ
-type l_info = L of int (*index*)
-            | T of int (*index*)
-            | Lambda of int * int * l_type (*index, block (i.e position in the input list), type*)
+
+(** L and T correspond to additional constraints used to remove the case split of the algorithm. *)
+type l_info = L of int (** index *)
+            | T of int (** index *)
+            | Lambda of int * int * l_type (** index, block (i.e position in the input list), type *)
 
 let index_of info = match info with
   | L i | T i | Lambda (i,_,_) -> i
@@ -40,7 +43,7 @@ let print_lambda lambda = match lambda with
 let print_lambdas lambdas = List.iter print_lambda lambdas
 
 
-(** separate strict, non-strict, and equlity constraints
+(** Separates strict, non-strict, and equlity constraints
  *)
 let split_eq_lt pred =
   let rec process (accLt, accLeq, accEq) pred = match pred with
@@ -56,9 +59,9 @@ let split_eq_lt pred =
     process ([],[],[]) pred
 
 
-(** Exctact the answer and 
- *  returns a list of arrays (L_i) with strict/non-strict indication (blocks in increassing order)
- *  assume that the lambda's are ven from smaller to bigger
+(** Extracts the answer.
+ *  Assumes that the lambda's are sorted from smaller to bigger.
+ *  @return a list of arrays (L_i) with strict/non-strict indication (blocks in increasing order)
  *)
 let extract_answer lp lambdas =
   let rec count_non_strict results lambdas = match lambdas with
@@ -277,7 +280,7 @@ let interpolate_clp lst =
         
 
 
-(* this is the DNF way*)
+(** this is the DNF way*)
 let interpolate lst =
   (*TODO: generalize*)
   if (List.length lst) <> 2 then failwith "no path interpolation for the moment" else ();

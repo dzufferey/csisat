@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Methods related to LInear arithmetic. *)
+
 open Ast
 open AstUtil
 
@@ -22,6 +24,9 @@ exception LP_SOLVER_FAILURE
 
 let solver_error = 1.e-10
 
+(** Solver abstraction.
+ * Only about solving, the problem specification uses GLPK as usual.
+ *)
 type li_solver = {
     solve       : Camlglpk.t -> bool; 
     obj_val     : Camlglpk.t -> float;
@@ -82,9 +87,9 @@ let set_solver str = match str with
   | "interior" -> solver := interior
   | s -> failwith (s^" is not a known LI solver")
 
+(** Not a=b  -> Or( a < b, b < a) *)
 let rec split_neq pred = match pred with
   | And lst -> And (List.map split_neq lst)
-  (*| Or lst ->  Or (List.map split_neq lst)*)
   | Not (Eq(e1, e2)) -> Or [Lt(e1,e2); Lt(e2,e1)]
   | Leq _ | Lt _ | Eq _ as e -> e
   | Or _ -> failwith "split_neq: does not support 'Or'"
@@ -93,8 +98,8 @@ let rec split_neq pred = match pred with
   | False -> Leq(Constant 1.0, Constant 0.0)
   | Not _ -> failwith "split_neq: 'Not' supported onyl with 'Eq'"
   
-(** extract the constant from e1 and e2
- *  return (nonCst_e1 - non_Cst_e2, Cst_e2 - Cst_e1)
+(** Extracts the constant from e1 and e2.
+ *  @return (nonCst_e1 - non_Cst_e2, Cst_e2 - Cst_e1)
  *)
 let extract_constant e1 e2 =
   let rec split (accCst,accRest) expr = match expr with
@@ -116,7 +121,7 @@ let extract_constant e1 e2 =
       (simplify_expr (Sum(e1 @ (List.map negate e2))), Constant ( c2 -. c1))
 
 
-(** put the constraint in the form:
+(** Transforms the constraint into LI normal form:
  *  a_1 * x_1 + a_2 * x_2 + ... </<=/= constant
  *)
 let rec to_normal_li_constraints pred = match pred with 
@@ -131,10 +136,10 @@ let rec to_normal_li_constraints pred = match pred with
   | False -> failwith "to_normal_li_constraints: does not support 'False'"
   | Not _ -> failwith "to_normal_li_constraints: does not support 'Not'"
 
-(** perform some coefficient 'rounding'
+(** Performs some coefficient 'rounding'.
  *  WARNING: this method is NOT exact,
  *           the arbitrary precision solver (coming ...)
- *           would solve this problem
+ *           would solve this problem.
  *)
 let rounding_bound = 10
 let rounding_precision = 1.e-5

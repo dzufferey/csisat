@@ -15,6 +15,12 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Central module to manage the output.
+ * For the sake of efficiency, the string arguments are lazy.
+ * Therefore when the debug output is not activated,
+ * the debug messages are not evaluated.
+ *)
+
 let debug = ref false
 let enable_debug () = debug := true
 

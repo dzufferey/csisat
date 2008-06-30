@@ -17,11 +17,11 @@
 
 open Ast
 
-(*directed acyclic graph to reason about = and =\=*)
+(** Directed acyclic graph to reason about = and =\=*)
 
-(** a node in the graph: uninterpreted fcts or variables.
- * a variable is an uninterpreted fct of arity 0.
- * the equivalence classes are managed with an union-find structure (parent field)
+(** A node in the graph: uninterpreted fct or variable.
+ * A variable is an uninterpreted fct of arity 0.
+ * The equivalence classes are managed with an union-find structure (parent field).
  *)
 class node = 
   fun
@@ -230,7 +230,7 @@ class dag = fun expr ->
     method project_expr expr targets =
       List.find (fun x -> self#entailed (Eq (expr, x))) targets
 
-    (** return a list of new deduced equalities
+    (** Returns a list of new deduced equalities.
      *  the returned equalities are then put in the set of equalities
      *)
     method new_equalities =
@@ -256,9 +256,9 @@ class dag = fun expr ->
         !new_eq
 
 
-    (** return a list a equalities that may change the graph
-     *  this method is for nelson oppen, it is the equalities
-     *  that the LI solver needs to check
+    (** Returns a list a equalities that may change the graph.
+     *  This method is for nelson oppen: it is the equalities
+     *  that the LI solver needs to check.
      *)
     method relevant_equalites =
       let eqs = ref AstUtil.PredSet.empty in
@@ -296,7 +296,7 @@ class dag = fun expr ->
           process cc;
           AstUtil.PredSet.fold (fun x acc -> x::acc) !eqs []
 
-    (** tells if the given equalities may change the graph *)
+    (** Tells if the given equalities may change the graph *)
     method is_relevant_equality eq = match eq with
       | Eq (e1,e2) ->
         begin
@@ -306,20 +306,9 @@ class dag = fun expr ->
         end
       | err -> failwith ("Dag, is_relevant_equality: found "^(AstUtil.print err))
 
-    (** tells if the given equalities is true and may be deduced from congruence*)
-    method is_congruen eq = match eq with
-      | Eq (e1,e2) ->
-        begin
-          let n1 = self#get_node e1 in
-          let n2 = self#get_node e2 in
-            n1#congruent n2
-        end
-      | err -> failwith ("Dag, is_congruen_or_eq: found "^(AstUtil.print err))
-
-    (** return the 'projection' of the graph on a set of
-     *  restricted variable
-     *  assume that the graph is in a satisfiable state
-     *  @param vars a list of expression considered as common term
+    (** Returns the 'projection' of the graph on a set of restricted variables.
+     *  Assumes that the graph is in a satisfiable state.
+     *  @param vars a list of expression considered as the target terms.
      *)
     method project vars =
       let template: (node * node) list ref = ref [] in
