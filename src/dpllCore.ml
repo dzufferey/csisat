@@ -15,24 +15,25 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Part of the DPLL: Core (decision policy,...) *)
+
 open Ast
 open AstUtil
 open DpllClause
 open DpllProof
 
 (*a simple dpll SAT solver*)
-(*TODO improve*)
+(*TODO improve:
+ - drop predicate for integers only
+ - put predicate to atom conversion in the wrapper.
+*)
 
-(** to store decision level:
- * -Open    : random choice (decision policy)
- * -Closed  : choosed after backtracking
- * -Implied : unit resolution
- * -TImplied: implied by a theory (bool+T) TODO
+(** To store the decision level.
  *)
-type var_assign = Open
-                | Closed of res_proof
-                | Implied of res_proof
-                | TImplied of res_proof
+type var_assign = Open (** free choice (decision policy) *)
+                | Closed of res_proof (** after backtracking *)
+                | Implied of res_proof (** unit resolution*)
+                | TImplied of res_proof (** implied by a theory (bool+T) TODO *)
 
 (** DPLL system, mostly a list of clauses
  * if 'with_prf' then keep the resolution proof in memory
@@ -54,10 +55,11 @@ class system =
     
     val keep_proof = with_prf
     val mutable learning_level = 1
-    (** -1: no learning
-     *  0: some learning
-     *  1+: learn clause that are less or equal than value
-     * Warning, cal this method after having called init
+    (** -1: no learning,
+     *  0: some learning,
+     *  1+: learn clause that are less or equal than value.
+     * Default value is 3/2 * average size.
+     * Warning: call this method after having called init.
      *)
     method set_learning_level l = learning_level <- l
 
@@ -102,9 +104,11 @@ class system =
         end
       | _ -> failwith "DPLL: expect CNF"
      
+    (** Is there a contradiction (clause impossible to satisfy) ? *)
     method has_contra = 
       List.exists (fun x -> x#contradiction) unsat_clauses
 
+    (** Does the current assignment satisfy the system ? *)
     method is_sat =
       match unsat_clauses with
       | [] -> true
@@ -120,7 +124,7 @@ class system =
       let newly_sat = List.filter (fun x -> not x#is_sat) _true in
         List.iter (fun x -> x#affect p) _false;
         List.iter (fun x -> x#affect p) _true;
-        unsat_clauses <- OrdSet.substract unsat_clauses newly_sat;
+        unsat_clauses <- OrdSet.subtract unsat_clauses newly_sat;
         Stack.push (p,reason, newly_sat) choices
 
     method forget =
@@ -304,7 +308,7 @@ class system =
               begin
                 let assigned = OrdSet.list_to_ordSet (self#get_assigned_props) in
                 let choices = OrdSet.list_to_ordSet (PredSet.fold (fun x acc -> x::acc) ((get_result prf)#props) []) in
-                let resulting = OrdSet.substract choices assigned in
+                let resulting = OrdSet.subtract choices assigned in
                   if List.length resulting > 0 then
                     begin
                       Message.print Message.Debug (lazy("DPLL, backjumping ended in Open"));

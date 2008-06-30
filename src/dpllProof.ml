@@ -15,13 +15,15 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Part of the DPLL: (resolution) Proof *)
+
 open Ast
 open AstUtil
 open DpllClause
 
-(*a resolution proof*)
-type res_proof = RPNode of predicate * res_proof * res_proof * clause (*pivot left right result*)
-               | RPLeaf of clause
+(** Resolution proof*)
+type res_proof = RPNode of predicate * res_proof * res_proof * clause (** pivot, left, right, result*)
+               | RPLeaf of clause (** A leaf is simply a clause.*)
 
 
 let get_result proof = match proof with

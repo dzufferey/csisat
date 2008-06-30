@@ -15,13 +15,15 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Nelson-Oppen theory combination.*)
+
 open Ast
 
-(* return the unsat core for a formula
- * @param query_fct 'is_at' for a theory
+(** Returns the unsat core for a formula (expensive).
+ * Assumes the theory is convex.
+ * @param query_fct 'is_sat' for a theory
  * @param fomula a formula of the theory in the conjunctive fragment
- * assume the theory in convex
- * raise SAT if the formula is not unsat.
+ * @raise SAT if the formula is not unsat.
  *)
 let unsat_core_for_convex_theory query_fct formula =
   let lst = match formula with
@@ -74,9 +76,8 @@ let unsat_core_for_convex_theory query_fct formula =
          And !unsat_core
        end
 
-(** Nelson Oppen for LI + UIF
- *  Assume the given formula is And [...] (job of sat solver)
- * TODO when to deduce, when to test for SAT ??
+(** Nelson Oppen for LI + UIF.
+ *  Assumes the given formula is And [...] (job of sat solver).
  *)
 let is_liuif_sat formula =
   let new_eq = ref AstUtil.PredSet.empty in
@@ -90,7 +91,7 @@ let is_liuif_sat formula =
     OrdSet.list_to_ordSet (
       Utils.map_filter 
         ( fun (x, y) -> if x <> y then Some (AstUtil.order_eq (Eq (x,y))) else None)
-        (OrdSet.cartesian_product shared shared)))
+        (Utils.cartesian_product shared shared)))
   in
   let graph = new SatUIF.dag (AstUtil.get_expr (And uif)) in
     ignore (graph#is_satisfiable (And uif));(*add the constraints*)
@@ -116,12 +117,6 @@ let is_liuif_sat formula =
             let full_li = And (eq_deduced @ li) in
               if SatLI.is_li_sat full_li then
                 begin
-                  (*
-                  let to_test_full = graph#relevant_equalites in
-                  let to_test = List.filter (AstUtil.only_vars shared) to_test_full in
-                    Message.print Message.Debug ("Eq to test ALL from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print to_test_full)));
-                    Message.print Message.Debug ("Eq to test from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print to_test)));
-                  *)
                   possible_deduction := List.filter (graph#is_relevant_equality) !possible_deduction;
                   
                   (*test with one representant for each CC pair*)
@@ -157,10 +152,6 @@ let is_liuif_sat formula =
                         end
                       | [] -> ()
                     in
-                    (*
-                    let effective = List.filter (SatLI.is_eq_implied full_li) to_test in
-                      List.iter (fun x -> new_eq := AstUtil.PredSet.add x !new_eq) effective;
-                    *)
                       test_implied_eq to_test;
                       let new_cardinal = AstUtil.PredSet.cardinal !new_eq in
                       if new_cardinal - old_cardinal <= 0
@@ -208,12 +199,11 @@ let put_theory_split_var def eq =
   in
     process eq
 
-(** Nelson Oppen for LI + UIF
- *  Assume the given formula is And [...] (job of sat solver)
- * @return (theory, eq)
- *      theory is LI | UIF | SATISFIABLE : LI or UIF indicate with part detected the unsatifiability
- *      eq is applied congruence or LA deduction
- * TODO when to deduce, when to test for SAT ??
+(** Nelson Oppen for LI + UIF.
+ * Assumes the given formula is And [...] (job of sat solver).
+ * @return (theory, eq) where
+ *      theory is LI | UIF | SATISFIABLE : LI or UIF indicate with part detected the unsatifiability.
+ *      eq is applied congruence or LA deduction.
  *)
 let is_liuif_sat_with_eq formula =
   let li_eq = ref AstUtil.PredSet.empty in
@@ -230,7 +220,7 @@ let is_liuif_sat_with_eq formula =
     OrdSet.list_to_ordSet (
       Utils.map_filter 
         ( fun (x, y) -> if x <> y then Some (AstUtil.order_eq (Eq (x,y))) else None)
-        (OrdSet.cartesian_product shared shared)))
+        (Utils.cartesian_product shared shared)))
   in
   let graph = new SatUIF.dag (AstUtil.get_expr (And uif)) in
   let uif_ded = graph#add_pred_with_applied (And uif) in(*add the constraints and get congruence*)
@@ -337,7 +327,7 @@ let is_liuif_sat_with_eq formula =
 
 
 
-
+(** unsat core for LA + EUF. *)
 let unsat_core_NO formula =
   let rec split_th accLI accUIF lst = match lst with
     | (LI, eq)::xs -> split_th (eq::accLI) accUIF xs
@@ -428,6 +418,9 @@ let unsat_core_NO formula =
   in
     full_core
 
+(** unsat core for LA + EUF.
+ * Uses NO only if needed.
+ *)
 let unsat_core formula =
   match theory_of formula with
   | EUF ->
@@ -468,12 +461,15 @@ let precise_unsat_core formula =
         unsat_core_for_convex_theory is_liuif_sat core
     end
 
+(**
+ * @return the unsat core, theory that finds the contradiction, list of deduced equalities.
+ *)
 let unsat_core_with_info formula =
   match theory_of formula with
   | EUF ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
-      let core = SatUIF.unsat_core formula in(*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
+      let core = SatUIF.unsat_core formula in
         match is_liuif_sat_with_eq core with
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (core, t, eq)
@@ -495,6 +491,7 @@ let unsat_core_with_info formula =
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
 
+(** Like precise_unsat_core but more precise, and more expensive. *)
 let precise_unsat_core_with_info formula =
   match theory_of formula with
   | EUF ->
@@ -524,8 +521,10 @@ let precise_unsat_core_with_info formula =
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
 
-(** assume the formula to be unsat
- *  assume a conjunction in NNF
+(** Special fct with catch of boolean contradiction.
+ *  This method is used when bypassing the satsolver (conjunction only).
+ *  Assumes the formula to be unsat.
+ *  Assumes a conjunction in NNF.
  *)
 let unsat_LIUIF conj =
   (*not covered => bool contradiction*)

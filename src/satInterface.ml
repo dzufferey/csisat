@@ -15,13 +15,18 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-(*abstract satsovler interface to allow different solvers*)
+(** Abstract satsovler interface to allow different solvers*)
 
-
-class virtual sat_solver with_proof =
+(**
+ * @param with_proof should the satsolver keep the proof in memory
+ *)
+class virtual sat_solver (with_proof: bool) =
   object
+    (** initialize the solver with given formula (in CNF) *)
     method virtual init: Ast.predicate -> unit
+    (** add a clause (incremental use) *)
     method virtual add_clause: Ast.predicate -> unit
+    (** is the system satisfiable ? *)
     method virtual solve: bool
     method virtual get_solution : Ast.predicate list
     method virtual get_proof: DpllProof.res_proof

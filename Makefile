@@ -19,6 +19,7 @@ COMPILE_FLAG = -inline 10
 
 OBJ = obj
 SRC = src
+DOC = doc
 
 FILES = \
 	$(OBJ)/message.cmx \
@@ -65,6 +66,21 @@ $(OBJ)/%.cmx: $(SRC)/%.ml
 	mv $(patsubst %.ml, %.cmi, $<) $(patsubst %.cmx, %.cmi, $@)
 	mv $(patsubst %.ml, %.o, $<) $(patsubst %.cmx, %.o, $@)
 
+.PHONY: doc
+
+doc: odoc
+
+odoc:
+	$(shell if test -e $(DOC)/index.html ; then rm -rf $(DOC)/* ; fi)
+	@mkdir -p $(DOC)
+	ocamldoc \
+		-v \
+		-d $(DOC) \
+		-I $(OBJ) $(INLCUDES) \
+		-html \
+		-stars \
+		-hide Set.Make,Char \
+		$(patsubst $(OBJ)/%, $(SRC)/%, $(patsubst %.cmx, %.ml, $(FILES)))
 
 glpk:
 	cd glpk_ml_wrapper; make

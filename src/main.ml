@@ -35,14 +35,14 @@ let interpolant_test it a b =
   let b_vars = AstUtil.get_var b in
   let common_vars = OrdSet.intersection a_vars b_vars in
   let it_vars = AstUtil.get_var it in
-  let diff_var = OrdSet.substract it_vars common_vars in
+  let diff_var = OrdSet.subtract it_vars common_vars in
     if diff_var <> [] then
       Message.print Message.Error (lazy ("FAILURE NOT COMMON VARS: "^(Utils.string_list_cat ", " (List.map AstUtil.print_expr diff_var))));
     let a_sym = AstUtil.get_fct_sym a in
     let b_sym = AstUtil.get_fct_sym b in
     let it_sym = AstUtil.get_fct_sym it in
     let common_sym = OrdSet.intersection a_sym b_sym in
-    let diff_sym = OrdSet.substract it_sym common_sym in
+    let diff_sym = OrdSet.subtract it_sym common_sym in
       if diff_sym <> [] then
         Message.print Message.Error (lazy ("FAILURE NOT COMMON FCT SYMBOLS: "^(Utils.string_list_cat ", " diff_sym)))
 

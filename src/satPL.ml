@@ -15,10 +15,11 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Bool+T *)
+
 open Ast
 open PicoInterface
 open DpllCore
-(**module of satisifability for propositionnal logic*)
 
 let solver = ref "csi_dpll"
 
@@ -32,9 +33,8 @@ let get_solver prf = match !solver with
   | "csi_dpll" -> new csi_dpll prf
   | _ -> failwith "SatPL: unknown SAT solver"
 
-(**return a formula on CNF
- * and a hashtable atoms to the corresponding subterm
- * TODO (Not Lt) vs Leq
+(** Returns a formula in CNF,
+ * and a hashtable atoms <-> subterm.
  *)
 let equisatisfiable pred =
   let dico = Hashtbl.create 23 in
@@ -260,8 +260,9 @@ let is_sat formula =
           test_and_refine ()
         end
 
-(** assume the formula to be unsat
- *  assume NNF
+(** Assumes the formula to be unsat.
+ *  Assumes NNF.
+ * @deprecated
  *)
 let unsat_cores_LIUIF formula =
   let solver = get_solver false in

@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Part of the DPLL: Clause *)
+
 open Ast
 open AstUtil
 
@@ -45,7 +47,7 @@ class clause =
 
     (** has litteral ?*)
     method has el = PredSet.mem el propositions
-    (** has ¬litteral ?*)
+    (** has (Not litteral) ?*)
     method has_not el = PredSet.mem (contra el) propositions
 
     method props = (*proposition in clause not literal*)

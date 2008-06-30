@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Satisfiability for LA. (LI stands for LInear arithmetic)*)
+
 open Ast
 open AstUtil
 open LIUtils
@@ -86,8 +88,9 @@ let is_li_sat pred =
             false
           end
 
-(** assume that formula is SAT
- *  assume the vars in eq are inside the formula
+(** Assumes that formula is SAT.
+ *  Assumes the vars in eq are inside the formula.
+ *
  * TODO incremental version (i.e. add the constraints (solve), add, solve, change, solve)
  *)
 let is_eq_implied pred eq =
@@ -184,9 +187,10 @@ let is_eq_implied pred eq =
       then false
       else true
 
-(** find an expresion (= source_expr) on the common terms
- * assume the given system is sat
- * strict < are removed (unsat -> sat)
+(** Finds an expression (= source_expr) on the common terms.
+ *
+ * Assumes the given system is sat.
+ * Strict < are removed (unsat -> sat).
  *)
 let find_common_expr pred source_expr common_var common_sym =
   Message.print Message.Debug (lazy("find_common_expr for "^(print_expr source_expr)));
@@ -272,8 +276,11 @@ let find_common_expr pred source_expr common_var common_sym =
             end
       end
       
-(* return the unsat core for a formula
- * raise SAT if the formula is not unsat.
+(** Returns the unsat core for a formula.
+ *
+ * WARNING: expensive ...
+ * TODO faster over-approximation.
+ * @raise SAT if the formula is not unsat.
  *)
 let unsat_core formula =
   let lst = match formula with

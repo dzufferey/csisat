@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
+(** Matrix (array of array) processing. *)
+
 let matrix_times_vector matrix vector =
   let row = Array.length matrix in
   let col = Array.length matrix.(0) in

@@ -15,9 +15,10 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-(* this file is mostly based on Yorsh et al.
+(** The part responsible for putting theory specific and partial interpolants together.
+ * This file is mostly based on Yorsh et al.
  * "A Combination Method for Generating Interpolants" (CADE05)
- * and Rybalchenko et al. "Constraint Solving for Interpolation"
+ * and Rybalchenko et al. "Constraint Solving for Interpolation".
  *)
 open Ast
 
@@ -61,9 +62,9 @@ let splitN_unsat_cores_set proposition_lst mixed =
     List.iter process mixed;
     Array.to_list parts
 
-(** LA and EUF are equalities interpolating theories
- *  so ti is possible the mkae terms local if an equality is not AB-pure
- * @param theory that deduced the equality
+(** LA and EUF are equalities interpolating theories.
+ *  Thus it is possible the mkae terms local if an equality is not AB-pure.
+ * @param th theory that deduced the equality
  * @param side is a function that maps an expr to its side: A/B/Mixed
  * @param common_var variables common to A and B
  * @param common_sym fct symbols common to A and B
@@ -117,10 +118,10 @@ let make_deduc_local th side common_var common_sym a_eq a_li b_eq b_li eq =
     | _ -> failwith "Interpolate, make_deduc_local: expected EQ"
 
 (** buids a partial interpolant from an unsat formula with Nelson Oppen style deduced equalities
- * @param a
- * @param a_terms is the set of terms present in A
- * @param b
- * @param b_terms is the set of terms present in B
+ * @param a the A formmula
+ * @param a_prop is the set of terms present in A
+ * @param b the B formmula
+ * @param b_prop is the set of terms present in B
  * @param core is the unsat formula
  * @param theory is the theory that find the contradiction
  * @param eq_deduced is a list is deduced equalities (from first to last) with the theory that leads to the deduction
@@ -139,7 +140,7 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
   Message.print Message.Debug (lazy("B part: "^(AstUtil.print (And b_part))));
   let oa_part = OrdSet.list_to_ordSet a_part in
   let ob_part = OrdSet.list_to_ordSet b_part in
-  let (a_part, b_part) = (OrdSet.substract oa_part ob_part, ob_part) in (*follows the projection def of CADE05-interpolants*)
+  let (a_part, b_part) = (OrdSet.subtract oa_part ob_part, ob_part) in (*follows the projection def of CADE05-interpolants*)
 
   let a_vars = AstUtil.get_var (And a_part) in
   let b_vars = AstUtil.get_var (And b_part) in
@@ -488,8 +489,8 @@ type eot_t = ACl (*A clause*)
            | NotCl (*Not a clause*)
 
 (** build the interpolant by recurssing in the proof
- * @param a
- * @param b
+ * @param a the A formula
+ * @param b the B formula
  * @param proof a resolution proof, see dpllProof.ml
  * @param cores_with_info list of unsat cores + theory + eq deductions
  *)

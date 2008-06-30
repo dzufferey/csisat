@@ -20,9 +20,17 @@
  * a <= b  <-> b ~< a
  *)
 
-type theory = EUF | LA | EUF_LA
+(** The AST (very simple).
+ * It is inspired from the FOCI AST.
+ * This makes the tool substitution easier.
+ *)
 
-(*variable or uninterpreted fct*)
+type theory =
+  | EUF (** equality with uninterpreted function symbols (also referred as UIF)*)
+  | LA  (** linear arithmetic (also referred as LI)*)
+  | EUF_LA
+
+(** variable or uninterpreted fct*)
 type symbol = string
 
 type expression =
@@ -41,7 +49,7 @@ type predicate =
   | Eq of expression * expression
   | Lt of expression * expression
   | Leq of expression * expression
-  | Atom of int (*lit for the satsolver*)
+  | Atom of int (** lit for the satsolver (internal only)*)
 
 (*is it a propositional AST ?*)
 let rec is_sat_ast p = match p with
@@ -73,11 +81,12 @@ let is_expr_LI_only expr = match expr with
 let is_pred_LI pred = match pred with
   | True | False | And _ | Or _ | Atom _ | Not (Eq _) -> false
   | Not _ | Eq _ | Lt _ | Leq _ -> true (*assume the pred to be in normal form*)
-(** is the root symbol in LI only (deep)*)
+(** is one symbol in LI only (deep)*)
 let rec has_LI_only_term expr = match expr with
   | Variable _ -> false
   | Constant _ |Sum _ | Coeff _ -> true
   | Application (_,lst) -> List.exists has_LI_only_term lst
+(** is one symbol in LI only (deep)*)
 let rec has_LI_only pred = match pred with
   | True | False | Atom _ -> false
   | Lt _ | Leq _  -> true
@@ -93,16 +102,17 @@ let is_expr_UIF expr = match expr with
 let is_expr_UIF_only expr = match expr with
   | Application _ -> true
   | Constant _ | Variable _ | Sum _ | Coeff _ -> false
+(** is the root symbol in UIF only*)
 let is_pred_UIF pred = match pred with
   | Not (Eq _) | Eq _  -> true
   | True | False | And _ | Or _ | Atom _ | Lt _ | Leq _ | Not _-> false
-(** is the root symbol in UIF only (deep)*)
+(** is one symbol in UIF only (deep)*)
 let rec has_UIF_only_term expr = match expr with
   | Constant _ | Variable _ -> false
   | Application _ -> true
   | Sum lst -> List.exists has_UIF_only_term lst
   | Coeff (_,e) -> has_UIF_only_term e
-(** TODO *)
+(** is one symbol in UIF only (deep)*)
 let rec has_UIF_only pred = match pred with
   | Not (Eq _)  -> true
   | True | False | Atom _ -> false
@@ -117,6 +127,6 @@ let theory_of formula =
    | (true,false) -> LA
    | (false,false) -> EUF
 
-(** exception common the many part*)
+(* exceptions common the many part*)
 exception SAT
 exception SAT_FORMULA of predicate
