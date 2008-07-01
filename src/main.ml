@@ -18,15 +18,8 @@
 open Ast
 
 let read_input () =
-  let buffer = Buffer.create 10000 in
-    try
-      while true do
-        let line = read_line () in
-          Buffer.add_string buffer line
-      done;
-      [True]
-    with _ -> (*EOF*)
-      FociParser.parse_foci (Buffer.contents buffer)
+  let lexbuf = Lexing.from_channel stdin in
+    FociParse.main FociLex.token lexbuf
 
 let interpolant_test it a b =
   if (SatPL.is_sat (AstUtil.simplify (And[ a ; Not it]))) then Message.print Message.Error (lazy "FAILURE: A |= I");

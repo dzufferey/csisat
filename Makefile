@@ -13,6 +13,8 @@ LIBS = -ccopt '-static' -cclib '-L $(PWD)/glpk_ml_wrapper/ -L $(PWD)/pico_ml_wra
 endif
 
 OCAML_OPT_C = $(shell if which ocamlopt.opt 2> /dev/null > /dev/null ; then echo ocamlopt.opt; else echo ocamlopt; fi)
+OCAML_OPT_LEX = $(shell if which ocamllex.opt 2> /dev/null > /dev/null ; then echo ocamllex.opt; else echo ocamllex; fi)
+OCAML_OPT_YACC = $(shell if which ocamlyacc.opt 2> /dev/null > /dev/null ; then echo ocamlyacc.opt; else echo ocamlyacc; fi)
 
 COMPILE_FLAG = -inline 10
 #COMPILE_FLAG = -p
@@ -36,6 +38,8 @@ FILES = \
 	$(OBJ)/LIUtils.cmx \
 	$(OBJ)/fociPrinter.cmx \
 	$(OBJ)/fociParser.cmx \
+	$(OBJ)/fociLex.cmx \
+	$(OBJ)/fociParse.cmx \
 	$(OBJ)/clpLI.cmx \
 	$(OBJ)/dag.cmx \
 	$(OBJ)/satUIF.cmx \
@@ -56,6 +60,29 @@ all: glpk pico picosat $(FILES)
 
 VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
 DATE = $(shell date)
+
+$(OBJ)/%.ml: $(SRC)/io/%.mll
+	@mkdir -p $(OBJ)
+	$(OCAML_OPT_LEX) -o $@ $< 
+
+$(OBJ)/%.ml: $(SRC)/io/%.mly
+	@mkdir -p $(OBJ)
+	$(OCAML_OPT_YACC) $< 
+	mv $(patsubst %.mly, %.ml, $<) $@
+	mv $(patsubst %.mly, %.mli, $<) $(patsubst %.ml, %.mli, $@)
+
+$(OBJ)/fociParse.mli: $(OBJ)/fociParse.ml
+
+$(OBJ)/fociParse.cmi: $(OBJ)/fociParse.mli
+	@mkdir -p $(OBJ)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
+
+$(OBJ)/fociLex.cmx: $(OBJ)/fociParse.cmi $(OBJ)/fociLex.ml
+	@mkdir -p $(OBJ)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/fociLex.ml
+
+$(OBJ)/%.cmx: $(OBJ)/%.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
