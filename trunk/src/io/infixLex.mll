@@ -31,8 +31,6 @@ rule token = parse
   | '-'             { MINUS }
   | ';'             { SEMICOLON }
   | ','             { COMMA }
-  | '['             { LBRACK }
-  | ']'             { RBRACK }
   | '('             { LPAREN }
   | ')'             { RPAREN }
   | "true"          { TRUE }
