@@ -71,6 +71,7 @@ formula:
   | LEQ term term                   { Ast.Leq ($2, $3) }
   | AND LBRACK formula_lst RBRACK   { Ast.And $3 }
   | OR  LBRACK formula_lst RBRACK   { Ast.Or $3 }
+  | IMPLIES formula formula         { Ast.Or [Ast.Not $2; $3]}
   | NOT formula                     { Ast.Not $2}
   | TRUE                            { Ast.True }
   | FALSE                           { Ast.False }
