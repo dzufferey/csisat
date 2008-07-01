@@ -32,8 +32,8 @@ let rec print_pred p =
   match p with
   | False -> "false"
   | True -> "true"
-  | And lst -> "And [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
-  | Or lst -> "Or [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
+  | And lst -> "and [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
+  | Or lst -> "or [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
   | Not p -> "not " ^ print_pred p
   | Eq (e1,e2) -> "("^(print_expr e1) ^ " = " ^ (print_expr e2)^")"
   | Lt (e1,e2) -> "("^(print_expr e1) ^ " < " ^ (print_expr e2)^")"
@@ -42,6 +42,15 @@ let rec print_pred p =
 
 let print p = print_pred p
  
+let rec print_infix pred_lst =
+  let buffer = Buffer.create 0 in
+    List.iter
+      (fun x ->
+        Buffer.add_string buffer ((print_pred x) ^ "; " )
+      ) pred_lst;
+    (*remove the trailling "; "*)
+    Buffer.sub buffer 0 ((Buffer.length buffer) -2)
+
 (** convert to NNF.
  * @param negate true means that an odd number of Not were found
  * @param pred the predicate to convert

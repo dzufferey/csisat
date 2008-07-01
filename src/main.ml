@@ -17,9 +17,22 @@
 
 open Ast
 
+let print_fct = ref FociPrinter.print_foci
+
 let read_input () =
   let lexbuf = Lexing.from_channel stdin in
-    FociParse.main FociLex.token lexbuf
+    match !(Config.syntax) with
+    | Config.SyntaxFoci ->
+      begin
+        print_fct := FociPrinter.print_foci;
+        FociParse.main FociLex.token lexbuf
+      end
+    | Config.SyntaxInfix ->
+      begin
+        print_fct := AstUtil.print_infix;
+        InfixParse.main InfixLex.token lexbuf
+      end
+
 
 let interpolant_test it a b =
   if (SatPL.is_sat (AstUtil.simplify (And[ a ; Not it]))) then Message.print Message.Error (lazy "FAILURE: A |= I");
@@ -58,15 +71,14 @@ let interpolate_in () =
   let lst = read_input () in
   let it a b = 
     try
-      (*let it = Interpolate.interpolate a b in *)
       let it =
-        if !(Config.round) then LIUtils.round_coeff (Interpolate.interpolate_with_proof a b)
+        if !(Config.round) then AstUtil.simplify (LIUtils.round_coeff (Interpolate.interpolate_with_proof a b))
         else Interpolate.interpolate_with_proof a b
       in
-        Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
+        Message.print Message.Normal (lazy(!print_fct [it]));
         if !(Config.check) then interpolant_test it a b
     with SAT_FORMULA f ->
-        Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
+        Message.print Message.Error (lazy("Satisfiable: "^(!print_fct [f])))
   in
     if (List.length lst) = 2 then
       begin
@@ -92,15 +104,18 @@ let interpolate_in () =
           begin
             try
               let its = (*Interpolate.interpolate_with_one_proof lst in*)
-                if !(Config.round) then List.map LIUtils.round_coeff (Interpolate.interpolate_with_one_proof lst)
+                if !(Config.round) then
+                  List.map
+                    (fun x -> AstUtil.simplify ( LIUtils.round_coeff x))
+                    (Interpolate.interpolate_with_one_proof lst)
                 else Interpolate.interpolate_with_one_proof lst 
               in
                 List.iter (fun it ->
-                  Message.print Message.Normal (lazy(FociPrinter.print_foci [it]));
+                  Message.print Message.Normal (lazy(!print_fct [it]));
                 ) its;
                 if !(Config.check) then interpolant_test_lst its lst
             with SAT_FORMULA f ->
-              Message.print Message.Error (lazy("Satisfiable: "^(FociPrinter.print_foci [f])))
+              Message.print Message.Error (lazy("Satisfiable: "^(!print_fct [f])))
           end
       end
 

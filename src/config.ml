@@ -17,12 +17,22 @@
 
 (** Parsing of argument + configuration variables *)
 
+(** Syntax for I/O*)
+type syntax_t = SyntaxFoci | SyntaxInfix
+
 (**check the interpolant*)
 let check = ref false
 (** check the satisfiability, do not compute interpolant*)
 let sat_only = ref false
 (** round coefficient of the interpolant to get integers (!!limited precision)*)
 let round = ref false
+(** Syntax: foci or infix *)
+let syntax = ref SyntaxFoci
+
+let set_syntax str = match str with
+  | "foci" -> syntax := SyntaxFoci
+  | "infix" -> syntax := SyntaxInfix
+  | _ -> failwith ("Unknown syntax: "^str)
 
 let options = 
   [
@@ -36,6 +46,8 @@ let options =
       "Choose the LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
     ("-SATsolver", Arg.String SatPL.set_solver,
       "Choose the SAT solver to use.\n Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.");
+    ("-syntax", Arg.String set_syntax,
+      "Choose the syntax to use.\n Options: foci, infix (default: foci).");
     ("-round", Arg.Unit (fun () -> round := true),
       "Try to round the coefficient to integer values. WARNING: still experimental")
   ]

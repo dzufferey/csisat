@@ -36,6 +36,8 @@ FILES = \
 	$(OBJ)/dpllCore.cmx \
 	$(OBJ)/matrix.cmx \
 	$(OBJ)/LIUtils.cmx \
+	$(OBJ)/infixLex.cmx \
+	$(OBJ)/infixParse.cmx \
 	$(OBJ)/fociPrinter.cmx \
 	$(OBJ)/fociParser.cmx \
 	$(OBJ)/fociLex.cmx \
@@ -61,6 +63,28 @@ all: glpk pico picosat $(FILES)
 VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
 DATE = $(shell date)
 
+### Part for parsers and lexers ####
+
+#FOCI-like syntax
+$(OBJ)/fociParse.mli: $(OBJ)/fociParse.ml
+
+$(OBJ)/fociParse.cmi: $(OBJ)/fociParse.mli
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
+
+$(OBJ)/fociLex.cmx: $(OBJ)/fociParse.cmi $(OBJ)/fociLex.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/fociLex.ml
+
+#INFIX syntax
+$(OBJ)/infixParse.mli: $(OBJ)/infixParse.ml
+
+$(OBJ)/infixParse.cmi: $(OBJ)/infixParse.mli
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
+
+$(OBJ)/infixLex.cmx: $(OBJ)/infixParse.cmi $(OBJ)/infixLex.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/infixLex.ml
+
+####################################
+
 $(OBJ)/%.ml: $(SRC)/io/%.mll
 	@mkdir -p $(OBJ)
 	$(OCAML_OPT_LEX) -o $@ $< 
@@ -71,15 +95,6 @@ $(OBJ)/%.ml: $(SRC)/io/%.mly
 	mv $(patsubst %.mly, %.ml, $<) $@
 	mv $(patsubst %.mly, %.mli, $<) $(patsubst %.ml, %.mli, $@)
 
-$(OBJ)/fociParse.mli: $(OBJ)/fociParse.ml
-
-$(OBJ)/fociParse.cmi: $(OBJ)/fociParse.mli
-	@mkdir -p $(OBJ)
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
-
-$(OBJ)/fociLex.cmx: $(OBJ)/fociParse.cmi $(OBJ)/fociLex.ml
-	@mkdir -p $(OBJ)
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/fociLex.ml
 
 $(OBJ)/%.cmx: $(OBJ)/%.ml
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
