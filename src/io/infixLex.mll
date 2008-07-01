@@ -18,17 +18,17 @@ rule token = parse
   | '<'             { LT }
   | ">="            { GEQ }
   | '>'             { GT }
-  | "implies"       { IMPLIES }
-  | "iff"           { IFF }
+  | "->"            { IMPLIES }
+  | "<->"           { IFF }
   | "not"           { NOT }
+  | '&'             { AND }
+  | '|'             { OR }
   | '+'             { PLUS }
   | '*'             { TIMES }
   | '/'             { SLASH }
   | real            { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }
   | num             { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | '-'             { MINUS }
-  | "and"           { AND }
-  | "or"            { OR }
   | ';'             { SEMICOLON }
   | ','             { COMMA }
   | '['             { LBRACK }

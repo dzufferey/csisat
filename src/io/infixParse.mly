@@ -11,6 +11,9 @@
 %token EQ LEQ LT GEQ GT
 %token TRUE FALSE
 %token EOF
+%left IMPLIES IFF
+%left AND OR
+%nonassoc NOT
 %left PLUS MINUS
 %left TIMES
 %nonassoc UMINUS
@@ -61,9 +64,11 @@ term:
 
 formula:
     LPAREN formula RPAREN           { $2 }
-  | AND LBRACK formula_lst RBRACK   { Ast.And $3 }
-  | OR  LBRACK formula_lst RBRACK   { Ast.Or $3 }
-  | NOT formula                     { Ast.Not $2}
+  | formula IMPLIES formula         { Ast.Or [Ast.Not $1; $3] }
+  | formula IFF formula             { Ast.Or [Ast.And [$1; $3]; Ast.And [Ast.Not $1; Ast.Not $3]] }
+  | formula AND formula             { Ast.And [$1; $3] }
+  | formula OR  formula             { Ast.Or  [$1; $3] }
+  | NOT formula                     { Ast.Not $2 }
   | term EQ term                    { Ast.Eq ($1, $3) }
   | term LEQ term                   { Ast.Leq ($1, $3) }
   | term LT term                    { Ast.Lt ($1, $3) }
@@ -72,10 +77,4 @@ formula:
   | TRUE                            { Ast.True }
   | FALSE                           { Ast.False }
 /*| IDENT                           { Ast.Atom (*TODO convert to index*)}*/
-;
-
-formula_lst:
-    formula COMMA formula_lst       { $1::$3 }
-  | formula                         { [$1] }
-  | /*empty*/                       { [] }
 ;

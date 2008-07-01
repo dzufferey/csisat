@@ -50,8 +50,10 @@ query   ::  formula ; formula ; ... ; formula
 formula :: term '=' term
          | term '<=' term
          | term '<' term
-         | 'and' '[' formula ... formula ']'
-         | 'or' '[' formula ... formula ']'
+         | formula -> formula
+         | formula <-> formula
+         | formula & formula
+         | formula | formula
          | 'not' formula
 
 term    :: variable
@@ -59,6 +61,9 @@ term    :: variable
          | term '-' term
          | number '*' term
          | '-' term
-         | function_symbol '(' term ... term ')'
+         | function_symbol '(' term , ... , term ')'
+
+(precedence levels are [->,<->], [&,|], [not]. They are parsed as
+left-associative.)
 
 Authors: Dirk Beyer, Damien Zufferey, and Rupak Majumdar
