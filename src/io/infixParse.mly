@@ -1,7 +1,6 @@
 %token <int> NUM
 %token <float> FLOAT
 %token <string> IDENT
-%token LBRACK RBRACK
 %token LPAREN RPAREN
 %token SEMICOLON COMMA
 %token PLUS MINUS TIMES
