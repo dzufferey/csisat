@@ -9,6 +9,7 @@ CSIsat writes "Satisfiable: <formula>" on stderr.
 Otherwise it writes an interpolant to stdout.
 
 Options:
+--------
 -debug   Print debug information.
 -check   Check the computed interpolant.
 -sat     Check for satisfiability only (no interpolation).
@@ -17,12 +18,17 @@ Options:
          Options: simplex, simplex_wo_presolve, interior (default: simplex).
 -SATsolver Choose the SAT solver to use.
          Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.
--help  Display this list of options.
+-help    Display this list of options.
+-syntax  Choose the syntax to use.
+         Options: foci, infix (default: foci).
+-round Try to round the coefficient to integer values. WARNING: has a limited precision.
+
 
 Input language:
+---------------
 The language is similar to Foci.
 
-query   ::  formula ; formula
+query   ::  formula ; formula ; ... ; formula
 
 formula :: '=' term term
          | '<=' term term
@@ -36,6 +42,23 @@ term    :: variable
          | function_symbol '[' term ... term ']'
 
 'number' is an integer, floating point, or a ratio (number '/' number).
-Warning: For the moment, "_1" is recognized as integer 1.
+
+There is also an infix syntax:
+
+query   ::  formula ; formula ; ... ; formula
+
+formula :: term '=' term
+         | term '<=' term
+         | term '<' term
+         | 'and' '[' formula ... formula ']'
+         | 'or' '[' formula ... formula ']'
+         | 'not' formula
+
+term    :: variable
+         | term '+' term
+         | term '-' term
+         | number '*' term
+         | '-' term
+         | function_symbol '(' term ... term ')'
 
 Authors: Dirk Beyer, Damien Zufferey, and Rupak Majumdar
