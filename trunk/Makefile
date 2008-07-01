@@ -39,7 +39,6 @@ FILES = \
 	$(OBJ)/infixLex.cmx \
 	$(OBJ)/infixParse.cmx \
 	$(OBJ)/fociPrinter.cmx \
-	$(OBJ)/fociParser.cmx \
 	$(OBJ)/fociLex.cmx \
 	$(OBJ)/fociParse.cmx \
 	$(OBJ)/clpLI.cmx \
