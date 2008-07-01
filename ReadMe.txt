@@ -50,10 +50,12 @@ query   ::  formula ; formula ; ... ; formula
 formula :: term '=' term
          | term '<=' term
          | term '<' term
-         | formula -> formula
-         | formula <-> formula
-         | formula & formula
-         | formula | formula
+         | term '>=' term
+         | term '>' term
+         | formula '->' formula
+         | formula '<->' formula
+         | formula '&' formula
+         | formula '|' formula
          | 'not' formula
 
 term    :: variable
