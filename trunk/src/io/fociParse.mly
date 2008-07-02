@@ -25,6 +25,7 @@
 %token EOF
 %token SHARP
 %token AT
+
 %start main             /* the entry point */
 %type <Ast.predicate list> main
 %%
@@ -68,8 +69,11 @@ term:
 formula:
     LPAREN formula RPAREN           { $2 }
   | EQ term term                    { Ast.Eq ($2, $3) }
+  | term EQ term                    { Ast.Eq ($1, $3) }
   | LEQ term term                   { Ast.Leq ($2, $3) }
+  | term LEQ term                   { Ast.Leq ($1, $3) }
   | LT term term                    { Ast.Lt ($2, $3) }
+  | term LT term                    { Ast.Lt ($1, $3) }
   | AND LBRACK formula_lst RBRACK   { Ast.And $3 }
   | OR  LBRACK formula_lst RBRACK   { Ast.Or $3 }
   | IMPLIES formula formula         { Ast.Or [Ast.Not $2; $3]}
