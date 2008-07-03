@@ -19,11 +19,12 @@
  * As PicoSat is stateful it is not possible to have more than one solver at the time. 
  *)
 
-open Ast
-open AstUtil
-open SatInterface
-open DpllClause
-open DpllProof
+open   CsisatAst
+open   CsisatAstUtil
+open   CsisatSatInterface
+open   CsisatDpllClause
+open   CsisatDpllProof
+module Message = CsisatMessage
 
 let initialized = ref false;
 
@@ -61,13 +62,13 @@ class picosat with_proof =
     method private get_atom index =
       let at = Hashtbl.find index_to_atom (abs index) in
         if index < 0 then
-          AstUtil.normalize_only (Not at)
+          normalize_only (Not at)
         else
           at
 
     method init formulae = match formulae with
       | And lst -> List.iter (fun x -> self#add_clause x) lst
-      | err -> failwith ("PicoInterface, init: expecting CNF, given: "^AstUtil.print err)
+      | err -> failwith ("PicoInterface, init: expecting CNF, given: "^ print err)
     
     method add_clause formula = match formula with
       | Or lst ->
@@ -75,7 +76,7 @@ class picosat with_proof =
           List.iter (fun x -> Camlpico.add (self#get_index x)) lst;
           Camlpico.add 0
         end
-      | err -> failwith ("PicoInterface, add_clause: expecting disjunction, given: "^AstUtil.print err)
+      | err -> failwith ("PicoInterface, add_clause: expecting disjunction, given: "^ print err)
 
     method solve = 
       let res = Camlpico.sat (-1) in
@@ -164,19 +165,19 @@ class picosat with_proof =
                     let clr = get_result right in
                     let left_lit = cll#get_propositions in
                     let right_lit = clr#get_propositions in
-                    let neg_right_lit = AstUtil.PredSet.fold
-                      (fun x acc -> AstUtil.PredSet.add (AstUtil.contra x) acc)
-                      right_lit AstUtil.PredSet.empty
+                    let neg_right_lit = PredSet.fold
+                      (fun x acc -> PredSet.add (contra x) acc)
+                      right_lit PredSet.empty
                     in
-                    let pivot_set = AstUtil.PredSet.inter left_lit neg_right_lit in
-                      assert((AstUtil.PredSet.cardinal pivot_set) = 1);
+                    let pivot_set = PredSet.inter left_lit neg_right_lit in
+                      assert((PredSet.cardinal pivot_set) = 1);
                       (*TODO the order of the parents is arbitrary*)
-                    let pivot = AstUtil.proposition_of_lit (AstUtil.PredSet.choose pivot_set) in
+                    let pivot = proposition_of_lit (PredSet.choose pivot_set) in
                       let new_lits =
-                        AstUtil.PredSet.fold (fun x acc -> x::acc)
-                          (AstUtil.PredSet.remove (AstUtil.contra pivot)
-                            (AstUtil.PredSet.remove pivot
-                              (AstUtil.PredSet.union left_lit right_lit))) []
+                        PredSet.fold (fun x acc -> x::acc)
+                          (PredSet.remove (contra pivot)
+                            (PredSet.remove pivot
+                              (PredSet.union left_lit right_lit))) []
                       in
                       let new_cl = new clause (Or new_lits) false in
                         RPNode(pivot, left, right, new_cl)

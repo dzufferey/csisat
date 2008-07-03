@@ -17,6 +17,9 @@
 
 (** Abstract satsovler interface to allow different solvers*)
 
+module Ast       = CsisatAst
+module DpllProof = CsisatDpllProof
+
 (**
  * @param with_proof should the satsolver keep the proof in memory
  *)
