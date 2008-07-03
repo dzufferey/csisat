@@ -17,3 +17,8 @@ The Makefile assumes the following:
     In the case of dynamic linking, the Makefile does not depend on the
     version of GLPK.
 To compile a statically linked version, run 'make STATIC=1'.
+
+Code documentation:
+make doc
+
+This commands uses ocamldoc to generate an html documentation of the code.
