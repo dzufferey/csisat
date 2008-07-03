@@ -17,10 +17,13 @@
 
 (** Part of the DPLL: Core (decision policy,...) *)
 
-open Ast
-open AstUtil
-open DpllClause
-open DpllProof
+open   CsisatAst
+open   CsisatAstUtil
+open   CsisatSatInterface
+open   CsisatDpllClause
+open   CsisatDpllProof
+module Message = CsisatMessage
+module OrdSet  = CsisatOrdSet
 
 (*a simple dpll SAT solver*)
 (*TODO improve:
@@ -513,8 +516,6 @@ class system =
   end
 
 (*** Wrapper ***)
-open SatInterface
-
 class csi_dpll with_proof =
   object
     inherit sat_solver with_proof
@@ -524,7 +525,7 @@ class csi_dpll with_proof =
     
     method add_clause formula = sys#add_clause formula
     
-    val mutable last_solution: Ast.predicate list option = None
+    val mutable last_solution: predicate list option = None
     method solve = match sys#solve with
       | Some sol -> last_solution <- Some sol; true
       | None -> last_solution <- None; false
