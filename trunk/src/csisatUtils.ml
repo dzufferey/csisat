@@ -31,6 +31,13 @@ let string_list_cat sep lst =
     process lst;
     Buffer.contents buffer
 
+(** Print a float and removes trailing '.'.
+ *)
+let my_string_of_float flt =
+  let (f,i) = modf flt in
+    if f = 0.0 then string_of_int (int_of_float i)
+    else string_of_float flt
+
 (** Returns the minimum x of query_fct(x) for x in lst.
  * Assume that lst has at least one element.
  *)

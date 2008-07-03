@@ -24,11 +24,11 @@ module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
 
 let rec print_expr expr = match expr with
-  | Constant cst -> string_of_float cst
+  | Constant cst -> Utils.my_string_of_float cst
   | Variable v -> v
   | Application (sym, lst) -> sym ^ "(" ^ (Utils.string_list_cat ", " (List.map print_expr lst)) ^")"
   | Sum lst ->  "(" ^ (Utils.string_list_cat " + " (List.map print_expr lst)) ^")"
-  | Coeff (co, expr) -> (string_of_float co) ^ "*" ^ (print_expr expr)
+  | Coeff (co, expr) -> (Utils.my_string_of_float co) ^ "*" ^ (print_expr expr)
 
 let rec print_pred p =
   match p with

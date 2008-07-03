@@ -14,14 +14,15 @@
  *  limitations under the License.
  *)
 
-open CsisatAst
+open   CsisatAst
+module Utils   = CsisatUtils
 
 (*****************************************************************************)
 (*************************        PRINTER         ****************************)
 (*****************************************************************************)
 
 let rec print_foci_expression exp = match exp with
-    Constant cst -> (string_of_float cst) ^ " "
+    Constant cst -> (Utils.my_string_of_float cst) ^ " "
   | Variable var -> var ^ " "
   | Application (f, args) ->
     begin
@@ -35,7 +36,7 @@ let rec print_foci_expression exp = match exp with
     end
   | Coeff (cst, expr) ->
     begin
-      "* " ^ (string_of_float cst) ^ " " ^ (print_foci_expression expr)
+      "* " ^ (Utils.my_string_of_float cst) ^ " " ^ (print_foci_expression expr)
     end
 
 let rec print_foci_predicate pred = match pred with
