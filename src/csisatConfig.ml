@@ -36,15 +36,15 @@ let set_syntax str = match str with
 
 let options = 
   [
-    ("-debug", Arg.Unit Message.enable_debug,
+    ("-debug", Arg.Unit CsisatMessage.enable_debug,
       "Print debug information.");
     ("-check", Arg.Unit (fun () -> check := true),
       "Check the computed interpolant.");
     ("-sat", Arg.Unit (fun () -> sat_only := true),
       "Check for satisfiability only (no interplolation).\n Writes only \"satisfiable\" or \"unsatisfiable\" to stdout.");
-    ("-LAsolver", Arg.String LIUtils.set_solver,
+    ("-LAsolver", Arg.String CsisatLIUtils.set_solver,
       "Choose the LA solver to use.\n Options: simplex, simplex_wo_presolve, interior (default: simplex).");
-    ("-SATsolver", Arg.String SatPL.set_solver,
+    ("-SATsolver", Arg.String CsisatSatPL.set_solver,
       "Choose the SAT solver to use.\n Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.");
     ("-syntax", Arg.String set_syntax,
       "Choose the syntax to use.\n Options: foci, infix (default: foci).");
