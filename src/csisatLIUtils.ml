@@ -144,7 +144,7 @@ let rec to_normal_li_constraints pred = match pred with
  *           the arbitrary precision solver (coming ...)
  *           would solve this problem.
  *)
-let rounding_bound = 10
+let rounding_bound = 1000
 let rounding_precision = 1.e-5
 let round_coeff li_cstr =
   (* return a denom that seems to works well*)

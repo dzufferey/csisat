@@ -947,3 +947,21 @@ let remove_equisat_atoms formula =
     | False -> False
   in
     normalize_only (process formula)
+
+(** Simple trick to replace x > y by x>= y+1.
+ * Helps in many integer problems,
+ * but is not complete !!
+ *)
+let rec integer_heuristic p =
+  let p' = 
+    match p with 
+    | True | False -> p
+    | And plist -> And (List.map integer_heuristic plist)
+    | Or plist-> Or (List.map integer_heuristic plist)
+    | Not np -> 
+      let p' = push_negation false p in
+        if p = p' then p else integer_heuristic p'
+    | Lt (e1, e2) -> Leq(Sum [Constant 1.0; e1], e2)
+    | Eq _ | Leq _ | Atom _ -> p 
+  in
+    p'
