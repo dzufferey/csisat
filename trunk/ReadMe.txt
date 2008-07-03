@@ -20,7 +20,7 @@ Options:
          Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.
 -help    Display this list of options.
 -syntax  Choose the syntax to use.
-         Options: foci, infix (default: foci).
+         Options: foci, infix (default: try foci first then infix if it fails).
 -round Try to round the coefficient to integer values. WARNING: has a limited precision.
 
 
