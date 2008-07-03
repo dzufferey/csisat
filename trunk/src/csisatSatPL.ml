@@ -17,9 +17,15 @@
 
 (** Bool+T *)
 
-open Ast
-open PicoInterface
-open DpllCore
+open   CsisatAst
+open   CsisatPicoInterface
+open   CsisatDpllCore
+module AstUtil     = CsisatAstUtil
+module PredSet     = AstUtil.PredSet
+module Utils       = CsisatUtils
+module NelsonOppen = CsisatNelsonOppen
+module DpllClause  = CsisatDpllClause
+module DpllProof   = CsisatDpllProof
 
 let solver = ref "csi_dpll"
 
@@ -412,7 +418,7 @@ let make_proof_with_solver formula cores =
  *)
 let make_proof_without_solver formula core =
   let to_resolv = match core with
-    | And lst -> List.fold_left (fun acc x -> AstUtil.PredSet.add x acc) AstUtil.PredSet.empty lst
+    | And lst -> List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty lst
     | _ -> failwith "SatPL, make_proof_without_solver: core is not a conj"
   in
   let lst = match formula with 
@@ -420,18 +426,18 @@ let make_proof_without_solver formula core =
     | _ -> failwith "SatPL, make_proof_without_solver: formula is not a conj"
   in
   let clause_of_set set =
-    let lst = AstUtil.PredSet.fold (fun x acc -> (AstUtil.contra x ):: acc) set [] in
+    let lst = PredSet.fold (fun x acc -> (AstUtil.contra x ):: acc) set [] in
       new DpllClause.clause (Or lst) false
   in
   let rec build_proof proof to_resolv lst = match lst with
     | x::xs ->
       begin
-        if AstUtil.PredSet.mem x to_resolv then
+        if PredSet.mem x to_resolv then
           begin
             let clause = new DpllClause.clause (Or [x]) false in
-            let to_resolv = AstUtil.PredSet.remove x to_resolv in
+            let to_resolv = PredSet.remove x to_resolv in
             let prf = DpllProof.RPNode (AstUtil.proposition_of_lit x, proof, DpllProof.RPLeaf clause, clause_of_set to_resolv) in
-              if AstUtil.PredSet.is_empty to_resolv then
+              if PredSet.is_empty to_resolv then
                 prf
               else
                 build_proof prf to_resolv xs
@@ -443,7 +449,7 @@ let make_proof_without_solver formula core =
       end
     | [] ->
       begin
-        assert(AstUtil.PredSet.is_empty to_resolv);
+        assert(PredSet.is_empty to_resolv);
         proof
       end
   in
