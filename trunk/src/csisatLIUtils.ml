@@ -17,8 +17,11 @@
 
 (** Methods related to LInear arithmetic. *)
 
-open Ast
-open AstUtil
+open   CsisatAst
+open   CsisatAstUtil
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module OrdSet  = CsisatOrdSet
 
 exception LP_SOLVER_FAILURE
 

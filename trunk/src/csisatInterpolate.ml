@@ -20,7 +20,19 @@
  * "A Combination Method for Generating Interpolants" (CADE05)
  * and Rybalchenko et al. "Constraint Solving for Interpolation".
  *)
-open Ast
+open   CsisatAst
+module AstUtil     = CsisatAstUtil
+module PredSet     = AstUtil.PredSet
+module Message     = CsisatMessage
+module Utils       = CsisatUtils
+module OrdSet      = CsisatOrdSet
+module SatLI       = CsisatSatLI
+module SatPL       = CsisatSatPL
+module ClpLI       = CsisatClpLI
+module SatUIF      = CsisatSatUIF
+module Dag         = CsisatDag
+module NelsonOppen = CsisatNelsonOppen
+module DpllProof   = CsisatDpllProof
 
 type side_t = A | B | Mixed
 
@@ -52,7 +64,7 @@ let splitN_unsat_cores_set proposition_lst mixed =
       (*new lit introduced by blocking clause, put it in the leftmost or rightmostpart*)
       Array.iteri
         (fun i term ->
-          if not !assigned && AstUtil.PredSet.mem (AstUtil.proposition_of_lit x) term then 
+          if not !assigned && PredSet.mem (AstUtil.proposition_of_lit x) term then 
             begin
               parts.(i) <- x::(parts.(i));
               assigned := true
@@ -539,7 +551,7 @@ let recurse_in_proof a b proof cores_with_info =
         begin
           let left_it = recurse left in
           let right_it = recurse right in
-          let it = match (AstUtil.PredSet.mem pivot a_prop, AstUtil.PredSet.mem pivot b_prop) with
+          let it = match (PredSet.mem pivot a_prop, PredSet.mem pivot b_prop) with
             | (true, true) ->
               if (DpllProof.get_result left)#has pivot then
                 begin
@@ -749,15 +761,15 @@ let recurse_in_proof_lst lst proof cores_with_info =
   let ab_lst_prop =
     let a_side =
       let (lst,_) = List.fold_left
-        (fun (res,acc) x -> let new_set = AstUtil.PredSet.union x acc in (new_set::res, new_set) )
-        ([], AstUtil.PredSet.empty) lst_prop
+        (fun (res,acc) x -> let new_set = PredSet.union x acc in (new_set::res, new_set) )
+        ([], PredSet.empty) lst_prop
       in
         List.rev (List.tl lst)
     in
     let b_side =
       let (lst,_) = List.fold_right
-        (fun x (res,acc) -> let new_set = AstUtil.PredSet.union x acc in (new_set::res, new_set) )
-        lst_prop ([], AstUtil.PredSet.empty)
+        (fun x (res,acc) -> let new_set = PredSet.union x acc in (new_set::res, new_set) )
+        lst_prop ([], PredSet.empty)
       in
         List.tl lst
     in
@@ -776,7 +788,7 @@ let recurse_in_proof_lst lst proof cores_with_info =
             | (left_it::ls, right_it::rs, (a_prop,b_prop)::ps) ->
               begin
                 let it =
-                  match (AstUtil.PredSet.mem pivot a_prop, AstUtil.PredSet.mem pivot b_prop) with
+                  match (PredSet.mem pivot a_prop, PredSet.mem pivot b_prop) with
                   | (true, true) ->
                       if (DpllProof.get_result left)#has pivot then
                         begin
