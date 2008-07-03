@@ -17,9 +17,12 @@
 
 (** Satisfiability for LA. (LI stands for LInear arithmetic)*)
 
-open Ast
-open AstUtil
-open LIUtils
+open   CsisatAst
+open   CsisatAstUtil
+open   CsisatLIUtils
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module Matrix  = CsisatMatrix
 
 let is_li_sat pred =
   Message.print Message.Debug (lazy("testing LI sat of "^(print pred)));
@@ -292,9 +295,9 @@ let unsat_core formula =
   let unsat_core = ref [] in
   let rec divide_and_try fixed lst =
     Message.print Message.Debug (lazy "divide_and_try called: ");
-    Message.print Message.Debug (lazy ("    with           "^(Utils.string_list_cat ", " (List.map AstUtil.print lst))));
-    Message.print Message.Debug (lazy ("    fixed is       "^(Utils.string_list_cat ", " (List.map AstUtil.print fixed))));
-    Message.print Message.Debug (lazy ("    unsat_core is  "^(Utils.string_list_cat ", " (List.map AstUtil.print !unsat_core))));
+    Message.print Message.Debug (lazy ("    with           "^(Utils.string_list_cat ", " (List.map print lst))));
+    Message.print Message.Debug (lazy ("    fixed is       "^(Utils.string_list_cat ", " (List.map print fixed))));
+    Message.print Message.Debug (lazy ("    unsat_core is  "^(Utils.string_list_cat ", " (List.map print !unsat_core))));
     (* assume query_fct (And (lst @ fixed @ !unsat_core)) is unsat *)
     let n = List.length lst in
       if n = 1 then
@@ -328,6 +331,6 @@ let unsat_core formula =
      else
        begin
          divide_and_try [] lst;
-         Message.print Message.Debug (lazy("UNSAT core is: "^(AstUtil.print (And !unsat_core))));
+         Message.print Message.Debug (lazy("UNSAT core is: "^(print (And !unsat_core))));
          And !unsat_core
        end

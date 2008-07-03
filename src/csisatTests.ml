@@ -15,7 +15,19 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-open Ast
+open   CsisatAst
+module AstUtil     = CsisatAstUtil
+module Message     = CsisatMessage
+module Utils       = CsisatUtils
+module SatLI       = CsisatSatLI
+module SatPL       = CsisatSatPL
+module SatUIF      = CsisatSatUIF
+module LIUtils     = CsisatLIUtils
+module NelsonOppen = CsisatNelsonOppen
+module Interpolate = CsisatInterpolate
+module FociParse   = CsisatFociParse
+module FociPrinter = CsisatFociPrinter
+module FociLex     = CsisatFociLex
 
 let parse str =
   let lexbuf = Lexing.from_string str in

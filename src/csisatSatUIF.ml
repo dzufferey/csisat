@@ -15,7 +15,14 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-open Ast
+open   CsisatAst
+module AstUtil = CsisatAstUtil
+module PredSet = AstUtil.PredSet
+module ExprSet = AstUtil.ExprSet
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module OrdSet  = CsisatOrdSet
+module Dag     = CsisatDag
 
 (** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
 
@@ -145,14 +152,14 @@ class dag = fun expr ->
     method get_expr n = Hashtbl.find node_to_expr n
     method get_nodes = Hashtbl.copy nodes
 
-    val mutable given_eq = AstUtil.PredSet.empty
-    method add_eq eq = given_eq <- AstUtil.PredSet.add eq given_eq
-    method was_given_eq eq = AstUtil.PredSet.mem eq given_eq
-    method get_given_eq = AstUtil.PredSet.fold (fun x acc -> x::acc) given_eq []
+    val mutable given_eq = PredSet.empty
+    method add_eq eq = given_eq <- PredSet.add eq given_eq
+    method was_given_eq eq = PredSet.mem eq given_eq
+    method get_given_eq = PredSet.fold (fun x acc -> x::acc) given_eq []
     
-    val mutable given_neq = AstUtil.PredSet.empty
-    method add_neq neq = given_neq <- AstUtil.PredSet.add neq given_neq
-    method get_given_neq = AstUtil.PredSet.fold (fun x acc -> x::acc) given_neq []
+    val mutable given_neq = PredSet.empty
+    method add_neq neq = given_neq <- PredSet.add neq given_neq
+    method get_given_neq = PredSet.fold (fun x acc -> x::acc) given_neq []
 
     method print =
       let buffer = Buffer.create 1000 in
@@ -247,12 +254,12 @@ class dag = fun expr ->
 
     (** Tests if the '!=' are respected and return the failing cstrs*)
     method test_for_contradition =
-      let failing = AstUtil.PredSet.filter self#neq_contradiction given_neq in
-        AstUtil.PredSet.fold (fun x acc -> x::acc) failing []
+      let failing = PredSet.filter self#neq_contradiction given_neq in
+        PredSet.fold (fun x acc -> x::acc) failing []
 
     (** for incremental use *)
     method has_contradiction =
-      AstUtil.PredSet.exists self#neq_contradiction given_neq
+      PredSet.exists self#neq_contradiction given_neq
 
     (** Gets a list of list of equal expressions (connected components). *)
     method get_cc =
@@ -310,7 +317,7 @@ class dag = fun expr ->
      *  that the LI solver needs to check.
      *)
     method relevant_equalites =
-      let eqs = ref AstUtil.PredSet.empty in
+      let eqs = ref PredSet.empty in
       let cc = self#get_cc in
         let rec process lst = match lst with
           | _::[] | [] -> ()
@@ -334,7 +341,7 @@ class dag = fun expr ->
                           fun (x,y) ->
                             List.iter (fun e1 ->
                               List.iter (fun e2 ->
-                                  eqs := AstUtil.PredSet.add (AstUtil.order_eq (Eq (e1, e2))) !eqs
+                                  eqs := PredSet.add (AstUtil.order_eq (Eq (e1, e2))) !eqs
                                 ) y
                               ) x
                           ) uniq_cc_pairs
@@ -343,7 +350,7 @@ class dag = fun expr ->
               process xs
         in
           process cc;
-          AstUtil.PredSet.fold (fun x acc -> x::acc) !eqs []
+          PredSet.fold (fun x acc -> x::acc) !eqs []
 
     (** tells if the given equalities may change the graph *)
     method is_relevant_equality eq = match eq with
@@ -363,7 +370,7 @@ class dag = fun expr ->
     method project vars =
       let template: (node * node) list ref = ref [] in
         (*makes the templates*)
-        AstUtil.PredSet.iter (
+        PredSet.iter (
           fun x -> match x with 
             | Not (Eq (e1, e2)) ->
               begin
@@ -394,7 +401,7 @@ class dag = fun expr ->
                 () (*new var ??*)
             ) vars;
           (*fill the other side of the template*)
-          let instanciated = ref AstUtil.PredSet.empty in
+          let instanciated = ref PredSet.empty in
             List.iter (
               fun v ->
                 try
@@ -402,12 +409,12 @@ class dag = fun expr ->
                     List.iter (
                       fun (e1,t2) ->
                         if n = t2 then
-                          instanciated:= AstUtil.PredSet.add (Not (AstUtil.order_eq (Eq (e1,v)))) !instanciated
+                          instanciated:= PredSet.add (Not (AstUtil.order_eq (Eq (e1,v)))) !instanciated
                       ) !half_instanciated
                 with Not_found ->
                   () (*new var ??*)
               ) vars;
-            instanciated := AstUtil.PredSet.remove True !instanciated; (*just in case*)
+            instanciated := PredSet.remove True !instanciated; (*just in case*)
             (*now the eq*)
             let rec process_eq todo = match todo with
               | x::xs ->
@@ -419,7 +426,7 @@ class dag = fun expr ->
                           try
                             let n2 = (self#get_node y)#find in
                               if n1 = n2 then
-                                instanciated := AstUtil.PredSet.add (AstUtil.order_eq (Eq(x,y))) !instanciated
+                                instanciated := PredSet.add (AstUtil.order_eq (Eq(x,y))) !instanciated
                           with Not_found -> ()
                       ) xs
                   with Not_found -> ()
@@ -428,7 +435,7 @@ class dag = fun expr ->
               | [] -> ()
             in
               process_eq vars;
-              AstUtil.PredSet.fold (fun x acc -> x::acc) !instanciated []
+              PredSet.fold (fun x acc -> x::acc) !instanciated []
 
     method copy =
       let expressions = Hashtbl.fold (fun e _ acc -> e::acc ) nodes [] in
@@ -465,8 +472,8 @@ class dag = fun expr ->
     method merge (graph: dag) =
       let expr = Hashtbl.fold (fun e _ acc -> e::acc ) nodes [] in
       let cp = graph#copy_and_extand expr in
-        AstUtil.PredSet.iter cp#add_constr given_eq;
-        AstUtil.PredSet.iter cp#add_neq given_neq;
+        PredSet.iter cp#add_constr given_eq;
+        PredSet.iter cp#add_neq given_neq;
         cp (*TODO avoid add_constr (does the job again...)*)
 
   end
