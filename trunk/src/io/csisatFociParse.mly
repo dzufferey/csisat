@@ -6,6 +6,7 @@
 %token LPAREN
 %token RPAREN
 %{
+  module Ast = CsisatAst
   let ref_table = Hashtbl.create 10
 %}
 
@@ -27,7 +28,7 @@
 %token AT
 
 %start main             /* the entry point */
-%type <Ast.predicate list> main
+%type <CsisatAst.predicate list> main
 %%
 
 main:

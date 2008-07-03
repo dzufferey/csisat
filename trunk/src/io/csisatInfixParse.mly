@@ -16,8 +16,11 @@
 %left PLUS MINUS
 %left TIMES
 %nonassoc UMINUS
+%{
+  module Ast = CsisatAst
+%}
 %start main             /* the entry point */
-%type <Ast.predicate list> main
+%type <CsisatAst.predicate list> main
 %%
 
 main:
