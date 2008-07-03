@@ -19,9 +19,12 @@
  * http://www.mpi-sws.mpg.de/~rybal/papers/vmcai07-constraints-for-interpolation.pdf
  *)
 
-open Ast
-open AstUtil
-open LIUtils
+open   CsisatAst
+open   CsisatAstUtil
+open   CsisatLIUtils
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module Matrix  = CsisatMatrix
 
 (** Kind of lambda *)
 type l_type = LT | LEQ | EQ
