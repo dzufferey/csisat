@@ -15,7 +15,21 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *)
 
-open Ast
+open   CsisatAst
+module Message     = CsisatMessage
+module Config      = CsisatConfig
+module AstUtil     = CsisatAstUtil
+module Utils       = CsisatUtils
+module OrdSet      = CsisatOrdSet
+module SatPL       = CsisatSatPL
+module LIUtils     = CsisatLIUtils
+module NelsonOppen = CsisatNelsonOppen
+module Interpolate = CsisatInterpolate
+module FociPrinter = CsisatFociPrinter
+module FociParse   = CsisatFociParse
+module FociLex     = CsisatFociLex
+module InfixLex    = CsisatInfixLex
+module InfixParse  = CsisatInfixParse
 
 let print_fct = ref FociPrinter.print_foci
 

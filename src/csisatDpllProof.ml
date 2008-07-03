@@ -17,9 +17,9 @@
 
 (** Part of the DPLL: (resolution) Proof *)
 
-open Ast
-open AstUtil
-open DpllClause
+open   CsisatAst
+open   CsisatAstUtil
+open   CsisatDpllClause
 
 (** Resolution proof*)
 type res_proof = RPNode of predicate * res_proof * res_proof * clause (** pivot, left, right, result*)
