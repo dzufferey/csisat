@@ -19,7 +19,10 @@
 (** General methods that operate on the AST.
  *)
 
-open Ast
+open   CsisatAst
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module OrdSet  = CsisatOrdSet
 
 let rec print_expr expr = match expr with
   | Constant cst -> string_of_float cst

@@ -42,33 +42,33 @@ OCAML_LD_FLAGS =
 
 
 FILES = \
-	$(OBJ)/message.cmx \
-	$(OBJ)/ordSet.cmx \
-	$(OBJ)/utils.cmx \
-	$(OBJ)/ast.cmx \
-	$(OBJ)/astUtil.cmx \
-	$(OBJ)/dpllClause.cmx \
-	$(OBJ)/dpllProof.cmx \
-	$(OBJ)/satInterface.cmx \
-	$(OBJ)/picoInterface.cmx \
-	$(OBJ)/dpllCore.cmx \
-	$(OBJ)/matrix.cmx \
-	$(OBJ)/LIUtils.cmx \
-	$(OBJ)/infixLex.cmx \
-	$(OBJ)/infixParse.cmx \
-	$(OBJ)/fociPrinter.cmx \
-	$(OBJ)/fociLex.cmx \
-	$(OBJ)/fociParse.cmx \
-	$(OBJ)/clpLI.cmx \
-	$(OBJ)/dag.cmx \
-	$(OBJ)/satUIF.cmx \
-	$(OBJ)/satLI.cmx \
-	$(OBJ)/nelsonOppen.cmx \
-	$(OBJ)/satPL.cmx \
-	$(OBJ)/interpolate.cmx \
-	$(OBJ)/config.cmx \
-	$(OBJ)/tests.cmx \
-	$(OBJ)/main.cmx
+	$(OBJ)/csisatMessage.cmx \
+	$(OBJ)/csisatOrdSet.cmx \
+	$(OBJ)/csisatUtils.cmx \
+	$(OBJ)/csisatAst.cmx \
+	$(OBJ)/csisatAstUtil.cmx \
+	$(OBJ)/csisatDpllClause.cmx \
+	$(OBJ)/csisatDpllProof.cmx \
+	$(OBJ)/csisatSatInterface.cmx \
+	$(OBJ)/csisatPicoInterface.cmx \
+	$(OBJ)/csisatDpllCore.cmx \
+	$(OBJ)/csisatMatrix.cmx \
+	$(OBJ)/csisatLIUtils.cmx \
+	$(OBJ)/csisatInfixLex.cmx \
+	$(OBJ)/csisatInfixParse.cmx \
+	$(OBJ)/csisatFociPrinter.cmx \
+	$(OBJ)/csisatFociLex.cmx \
+	$(OBJ)/csisatFociParse.cmx \
+	$(OBJ)/csisatClpLI.cmx \
+	$(OBJ)/csisatDag.cmx \
+	$(OBJ)/csisatSatUIF.cmx \
+	$(OBJ)/csisatSatLI.cmx \
+	$(OBJ)/csisatNelsonOppen.cmx \
+	$(OBJ)/csisatSatPL.cmx \
+	$(OBJ)/csisatInterpolate.cmx \
+	$(OBJ)/csisatConfig.cmx \
+	$(OBJ)/csisatTests.cmx \
+	$(OBJ)/csisatMain.cmx
 
 TARGET = bin/csisat
 OCAML_LIB = libcsisat
@@ -76,7 +76,7 @@ OCAML_LIB = libcsisat
 
 all: glpk pico picosat $(FILES) lib
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
-	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/config.ml)
+	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
 DATE = $(shell date)
@@ -84,26 +84,26 @@ DATE = $(shell date)
 ### Part for parsers and lexers ####
 
 #FOCI-like syntax
-$(OBJ)/fociParse.mli: $(OBJ)/fociParse.ml
+$(OBJ)/csisatFociParse.mli: $(OBJ)/csisatFociParse.ml
 
-$(OBJ)/fociParse.cmi: $(OBJ)/fociParse.mli
+$(OBJ)/csisatFociParse.cmi: $(OBJ)/csisatFociParse.mli
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
 
-$(OBJ)/fociLex.cmx: $(OBJ)/fociParse.cmi $(OBJ)/fociLex.ml
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/fociLex.ml
-	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/fociLex.ml
+$(OBJ)/csisatFociLex.cmx: $(OBJ)/csisatFociParse.cmi $(OBJ)/csisatFociLex.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatFociLex.ml
+	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatFociLex.ml
 
 #INFIX syntax
-$(OBJ)/infixParse.mli: $(OBJ)/infixParse.ml
+$(OBJ)/csisatInfixParse.mli: $(OBJ)/csisatInfixParse.ml
 
-$(OBJ)/infixParse.cmi: $(OBJ)/infixParse.mli
+$(OBJ)/csisatInfixParse.cmi: $(OBJ)/csisatInfixParse.mli
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
 
-$(OBJ)/infixLex.cmx: $(OBJ)/infixParse.cmi $(OBJ)/infixLex.ml
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/infixLex.ml
-	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/infixLex.ml
+$(OBJ)/csisatInfixLex.cmx: $(OBJ)/csisatInfixParse.cmi $(OBJ)/csisatInfixLex.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatInfixLex.ml
+	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatInfixLex.ml
 
 ####################################
 
@@ -124,7 +124,7 @@ $(OBJ)/%.cmx: $(OBJ)/%.ml
 
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
-	$(shell if test $< = $(SRC)/config.ml; \
+	$(shell if test $< = $(SRC)/csisatConfig.ml; \
 		then sed -i 's/Version: REV, DATE/Version: revision $(VERSION), $(DATE)/g' $<; fi)
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
