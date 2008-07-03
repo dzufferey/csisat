@@ -67,15 +67,15 @@ FILES = \
 	$(OBJ)/csisatSatPL.cmx \
 	$(OBJ)/csisatInterpolate.cmx \
 	$(OBJ)/csisatConfig.cmx \
-	$(OBJ)/csisatTests.cmx \
-	$(OBJ)/csisatMain.cmx
+	$(OBJ)/csisatTests.cmx
 
+MAIN =  $(OBJ)/csisatMain.cmx
 TARGET = bin/csisat
 OCAML_LIB = libcsisat
 
 
-all: glpk pico picosat $(FILES) lib
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES)
+all: glpk pico picosat $(FILES) $(MAIN) lib
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES) $(MAIN)
 	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
