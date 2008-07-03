@@ -74,7 +74,6 @@ let is_li_sat pred =
         Camlglpk.set_col_bnd_double lp nb_vars 0.0 10.0;(*put an upper bound to avoid unbounded problem*)
         Camlglpk.set_obj_coef lp nb_vars 1.0;
         Camlglpk.set_maximize lp;
-        (*TODO choose simplex w/o presolve / interior*)
         if !solver.solve lp then
           let ans = !solver.obj_val lp in
             Camlglpk.delete lp;
