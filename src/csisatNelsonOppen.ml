@@ -17,7 +17,15 @@
 
 (** Nelson-Oppen theory combination.*)
 
-open Ast
+open   CsisatAst
+module AstUtil = CsisatAstUtil
+module PredSet = AstUtil.PredSet
+module ExprSet = AstUtil.ExprSet
+module Message = CsisatMessage
+module Utils   = CsisatUtils
+module OrdSet  = CsisatOrdSet
+module SatLI   = CsisatSatLI
+module SatUIF  = CsisatSatUIF
 
 (** Returns the unsat core for a formula (expensive).
  * Assumes the theory is convex.
@@ -80,7 +88,7 @@ let unsat_core_for_convex_theory query_fct formula =
  *  Assumes the given formula is And [...] (job of sat solver).
  *)
 let is_liuif_sat formula =
-  let new_eq = ref AstUtil.PredSet.empty in
+  let new_eq = ref PredSet.empty in
   let (uif, li, shared, def) = AstUtil.split_formula_LI_UIF formula in
     Message.print Message.Debug (lazy("formula is "^(AstUtil.print formula)));
     Message.print Message.Debug (lazy("uif is "^(AstUtil.print (And uif))));
@@ -101,11 +109,11 @@ let is_liuif_sat formula =
       let from_uif = List.filter (AstUtil.only_vars shared) from_uif_all in
         Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print from_uif_all))));
         Message.print Message.Debug (lazy("new Eq from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print from_uif))));
-        List.iter (fun x -> new_eq := AstUtil.PredSet.add x !new_eq) from_uif
+        List.iter (fun x -> new_eq := PredSet.add x !new_eq) from_uif
     in
     
     let rec try_and_propagate old_cardinal =
-      let eq_deduced = AstUtil.PredSet.fold (fun x acc -> x::acc) !new_eq [] in
+      let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
         Message.print Message.Debug (lazy("eq_deduced: "^(Utils.string_list_cat ", " (List.map AstUtil.print eq_deduced))));
         List.iter graph#add_constr eq_deduced;
         if graph#has_contradiction then false
@@ -113,7 +121,7 @@ let is_liuif_sat formula =
           begin
             (*propagate from UIF*)
             get_and_add_from_uif ();
-            let eq_deduced = AstUtil.PredSet.fold (fun x acc -> x::acc) !new_eq [] in
+            let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
             let full_li = And (eq_deduced @ li) in
               if SatLI.is_li_sat full_li then
                 begin
@@ -145,15 +153,15 @@ let is_liuif_sat formula =
                     let rec test_implied_eq lst = match lst with
                       | x::xs ->
                         begin
-                          if not (AstUtil.PredSet.mem x !new_eq) && (SatLI.is_eq_implied full_li x) then (*TODO bug testing useless thing*)
-                            new_eq := AstUtil.PredSet.add x !new_eq
+                          if not (PredSet.mem x !new_eq) && (SatLI.is_eq_implied full_li x) then (*TODO bug testing useless thing*)
+                            new_eq := PredSet.add x !new_eq
                           else
                             test_implied_eq xs
                         end
                       | [] -> ()
                     in
                       test_implied_eq to_test;
-                      let new_cardinal = AstUtil.PredSet.cardinal !new_eq in
+                      let new_cardinal = PredSet.cardinal !new_eq in
                       if new_cardinal - old_cardinal <= 0
                         then true
                         else try_and_propagate new_cardinal
@@ -206,10 +214,10 @@ let put_theory_split_var def eq =
  *      eq is applied congruence or LA deduction.
  *)
 let is_liuif_sat_with_eq formula =
-  let li_eq = ref AstUtil.PredSet.empty in
-  let uif_eq = ref AstUtil.PredSet.empty in
+  let li_eq = ref PredSet.empty in
+  let uif_eq = ref PredSet.empty in
   let solver_eq = ref [] in (*~reversed proof*)
-  let new_eq = ref AstUtil.PredSet.empty in
+  let new_eq = ref PredSet.empty in
   let (uif, li, shared, def) = AstUtil.split_formula_LI_UIF formula in
     Message.print Message.Debug (lazy("formula is "^(AstUtil.print formula)));
     Message.print Message.Debug (lazy("uif is "^(AstUtil.print (And uif))));
@@ -227,9 +235,9 @@ let is_liuif_sat_with_eq formula =
     List.iter
       (fun x -> 
         let clean = remove_theory_split_var def x in
-          if not (AstUtil.PredSet.mem clean !uif_eq) then
+          if not (PredSet.mem clean !uif_eq) then
             begin
-              uif_eq := AstUtil.PredSet.add clean !uif_eq;
+              uif_eq := PredSet.add clean !uif_eq;
               solver_eq := (UIF, clean)::!solver_eq
             end
       ) uif_ded;
@@ -239,20 +247,20 @@ let is_liuif_sat_with_eq formula =
       let from_uif = List.filter (AstUtil.only_vars shared) from_uif_all in
         Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print from_uif_all))));
         Message.print Message.Debug (lazy("new Eq from UIF: "^(Utils.string_list_cat ", " (List.map AstUtil.print from_uif))));
-        List.iter (fun x -> new_eq := AstUtil.PredSet.add x !new_eq) from_uif
+        List.iter (fun x -> new_eq := PredSet.add x !new_eq) from_uif
     in
     
     let rec try_and_propagate old_cardinal =
-      let eq_deduced = AstUtil.PredSet.fold (fun x acc -> x::acc) !new_eq [] in
+      let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
         Message.print Message.Debug (lazy("eq_deduced: "^(Utils.string_list_cat ", " (List.map AstUtil.print eq_deduced))));
 
         let uif_ded =  List.flatten (List.map (graph#add_constr_with_applied) eq_deduced) in(*add the constraints and get congruence*)
           List.iter
             (fun x -> 
               let clean = remove_theory_split_var def x in
-                if not (AstUtil.PredSet.mem clean !uif_eq) then
+                if not (PredSet.mem clean !uif_eq) then
                   begin
-                    uif_eq := AstUtil.PredSet.add clean !uif_eq;
+                    uif_eq := PredSet.add clean !uif_eq;
                     solver_eq := (UIF, clean)::!solver_eq
                   end
             ) uif_ded;
@@ -266,7 +274,7 @@ let is_liuif_sat_with_eq formula =
           begin
             (*propagate from UIF*)
             get_and_add_from_uif ();
-            let eq_deduced = AstUtil.PredSet.fold (fun x acc -> x::acc) !new_eq [] in
+            let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
             let full_li = And (eq_deduced @ li) in
               if SatLI.is_li_sat full_li then
                 begin
@@ -298,13 +306,13 @@ let is_liuif_sat_with_eq formula =
                     let rec test_implied_eq lst = match lst with
                       | x::xs ->
                         begin
-                          if not (AstUtil.PredSet.mem x !new_eq) && (SatLI.is_eq_implied full_li x) then (*TODO bug testing useless thing*)
+                          if not (PredSet.mem x !new_eq) && (SatLI.is_eq_implied full_li x) then (*TODO bug testing useless thing*)
                             begin
-                              new_eq := AstUtil.PredSet.add x !new_eq;
+                              new_eq := PredSet.add x !new_eq;
                               let clean = remove_theory_split_var def x in
-                                if not (AstUtil.PredSet.mem clean !li_eq) then
+                                if not (PredSet.mem clean !li_eq) then
                                   begin
-                                    li_eq := AstUtil.PredSet.add clean !li_eq; (*add LI decuction*)
+                                    li_eq := PredSet.add clean !li_eq; (*add LI decuction*)
                                     solver_eq := (LI, clean)::!solver_eq
                                   end
                             end
@@ -314,7 +322,7 @@ let is_liuif_sat_with_eq formula =
                       | [] -> ()
                     in
                       test_implied_eq to_test;
-                      let new_cardinal = AstUtil.PredSet.cardinal !new_eq in
+                      let new_cardinal = PredSet.cardinal !new_eq in
                       if new_cardinal - old_cardinal <= 0
                         then (SATISFIABLE, []) (*TODO*)
                         else try_and_propagate new_cardinal
@@ -529,7 +537,7 @@ let precise_unsat_core_with_info formula =
 let unsat_LIUIF conj =
   (*not covered => bool contradiction*)
   (*detect and directly add to cores*)
-  let entailed = ref AstUtil.PredSet.empty in
+  let entailed = ref PredSet.empty in
   (*emulate SAT solver*)
   let rec process lst = match lst with
     | x::xs ->
@@ -541,13 +549,13 @@ let unsat_LIUIF conj =
           | Leq (e1,e2) -> Lt (e2, e1)
           | _ -> failwith "NelsonOppen: not normalized formula"
         in
-          if AstUtil.PredSet.mem contra !entailed then
+          if PredSet.mem contra !entailed then
             begin
               Some (And [x;contra], BOOL, [])
             end
           else
             begin
-              entailed := AstUtil.PredSet.add x !entailed;
+              entailed := PredSet.add x !entailed;
               process xs
             end
       end
