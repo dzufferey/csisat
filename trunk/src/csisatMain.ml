@@ -107,6 +107,10 @@ let interpolant_test_lst it_lst f_lst =
 
 let interpolate_in () =
   let lst = read_input () in
+  let lst =
+    if (!Config.integer_heuristics) then List.map AstUtil.integer_heuristic  lst
+    else lst
+  in
   let it a b = 
     try
       let it =
@@ -158,9 +162,14 @@ let interpolate_in () =
       end
 
 let sat_only () =
-  let formula = AstUtil.simplify (And (read_input ())) in
+  let lst = read_input () in
+  let lst =
+    if (!Config.integer_heuristics) then List.map AstUtil.integer_heuristic  lst
+    else lst
+  in
+  let formula = AstUtil.simplify (And lst) in
   let ans =
-    (*catch the trivial cases because NelsonOppen expect none trivial formula*)
+    (*catch the trivial cases because NelsonOppen expect no trivial formula*)
     if formula = True then true
     else if formula = False then false
     else if AstUtil.is_conj_only formula then

@@ -26,6 +26,8 @@ let check = ref false
 let sat_only = ref false
 (** round coefficient of the interpolant to get integers (!!limited precision)*)
 let round = ref false
+(** x < y  ~>  x+1 <= y *)
+let integer_heuristics = ref false
 (** Syntax: foci or infix *)
 let syntax = ref SyntaxUnk
 
@@ -49,7 +51,9 @@ let options =
     ("-syntax", Arg.String set_syntax,
       "Choose the syntax to use.\n    Options: foci, infix (default: try foci first then infix if it fail).");
     ("-round", Arg.Unit (fun () -> round := true),
-      "Try to round the coefficient to integer values. WARNING: still experimental")
+      "Try to round the coefficient to integer values. WARNING: still experimental");
+    ("-int", Arg.Unit (fun () -> integer_heuristics := true),
+      "Apply incomplete heuristics to solve over integers")
   ]
 
 let usage = (
