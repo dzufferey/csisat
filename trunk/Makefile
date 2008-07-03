@@ -7,7 +7,7 @@ DOC = doc
 LIB = lib
 
 INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
-LIB_GLPK_DIR = /usr/local/lib
+LIB_GLPK_DIR = /usr/lib
 
 ifndef STATIC
 GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
