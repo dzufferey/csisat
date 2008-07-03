@@ -34,17 +34,41 @@ module InfixParse  = CsisatInfixParse
 let print_fct = ref FociPrinter.print_foci
 
 let read_input () =
-  let lexbuf = Lexing.from_channel stdin in
     match !(Config.syntax) with
+    | Config.SyntaxUnk ->
+      begin
+        let buffer = Buffer.create 10000 in
+          try
+            while true do
+              let line = read_line () in
+                Buffer.add_string buffer line
+            done;
+            failwith "read_input: no EOF ??"
+          with _ -> (*EOF*)
+            begin
+              try
+                let lexbuf = Lexing.from_string (Buffer.contents buffer) in
+                  print_fct := FociPrinter.print_foci;
+                  FociParse.main FociLex.token lexbuf
+              with Parsing.Parse_error ->
+                begin
+                  let lexbuf = Lexing.from_string (Buffer.contents buffer) in
+                    print_fct := AstUtil.print_infix;
+                    InfixParse.main InfixLex.token lexbuf
+                end
+            end
+      end
     | Config.SyntaxFoci ->
       begin
-        print_fct := FociPrinter.print_foci;
-        FociParse.main FociLex.token lexbuf
+        let lexbuf = Lexing.from_channel stdin in
+          print_fct := FociPrinter.print_foci;
+          FociParse.main FociLex.token lexbuf
       end
     | Config.SyntaxInfix ->
       begin
-        print_fct := AstUtil.print_infix;
-        InfixParse.main InfixLex.token lexbuf
+        let lexbuf = Lexing.from_channel stdin in
+          print_fct := AstUtil.print_infix;
+          InfixParse.main InfixLex.token lexbuf
       end
 
 
