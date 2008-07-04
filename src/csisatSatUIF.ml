@@ -14,7 +14,10 @@
  *  limitations under the License.
  *)
 
+(** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
+
 open   CsisatAst
+(**/**)
 module AstUtil = CsisatAstUtil
 module PredSet = AstUtil.PredSet
 module ExprSet = AstUtil.ExprSet
@@ -22,8 +25,7 @@ module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
 module Dag     = CsisatDag
-
-(** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
+(**/**)
 
 (*TODO UIF interpolation*)
 (*make those classes extend Dag*)

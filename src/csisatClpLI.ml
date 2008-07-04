@@ -21,9 +21,11 @@
 open   CsisatAst
 open   CsisatAstUtil
 open   CsisatLIUtils
+(**/**)
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
+(**/**)
 
 (** Kind of lambda *)
 type l_type = LT | LEQ | EQ

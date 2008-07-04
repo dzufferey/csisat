@@ -23,7 +23,9 @@ open   CsisatAstUtil
 open   CsisatSatInterface
 open   CsisatDpllClause
 open   CsisatDpllProof
+(**/**)
 module Message = CsisatMessage
+(**/**)
 
 let initialized = ref false;
 

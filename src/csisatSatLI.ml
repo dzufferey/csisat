@@ -19,9 +19,11 @@
 open   CsisatAst
 open   CsisatAstUtil
 open   CsisatLIUtils
+(**/**)
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
+(**/**)
 
 let is_li_sat pred =
   Message.print Message.Debug (lazy("testing LI sat of "^(print pred)));

@@ -17,6 +17,7 @@
 (** Nelson-Oppen theory combination.*)
 
 open   CsisatAst
+(**/**)
 module AstUtil = CsisatAstUtil
 module PredSet = AstUtil.PredSet
 module ExprSet = AstUtil.ExprSet
@@ -25,6 +26,7 @@ module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
 module SatLI   = CsisatSatLI
 module SatUIF  = CsisatSatUIF
+(**/**)
 
 (** Returns the unsat core for a formula (expensive).
  * Assumes the theory is convex.

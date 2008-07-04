@@ -20,6 +20,7 @@
  * and Rybalchenko et al. "Constraint Solving for Interpolation".
  *)
 open   CsisatAst
+(**/**)
 module AstUtil     = CsisatAstUtil
 module PredSet     = AstUtil.PredSet
 module Message     = CsisatMessage
@@ -32,6 +33,7 @@ module SatUIF      = CsisatSatUIF
 module Dag         = CsisatDag
 module NelsonOppen = CsisatNelsonOppen
 module DpllProof   = CsisatDpllProof
+(**/**)
 
 type side_t = A | B | Mixed
 

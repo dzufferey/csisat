@@ -18,7 +18,9 @@
 
 open   CsisatAst
 open   CsisatAstUtil
+(**/**)
 module Utils   = CsisatUtils
+(**/**)
 
 (** Clause: (disjunction of literals) for the sat solver.
  *  Literals are stored in sets (log lookup/insert/del).
