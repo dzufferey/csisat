@@ -8,7 +8,7 @@ SRC = csisatServer.c
 TARGET= ../bin/csisatServer
 
 all:
-	@echo compiling smtlibServer
+	@echo compiling csisatServer
 	gcc $(CFLAGS) $(SRC) $(LIBS) -o $(TARGET)
 
 clean:
