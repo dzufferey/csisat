@@ -65,7 +65,7 @@ TARGET = bin/csisat
 OCAML_LIB = libcsisat
 
 
-all: glpk pico picosat $(FILES) $(MAIN) lib
+all: glpk pico picosat server $(FILES) $(MAIN) lib
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES) $(MAIN)
 	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
@@ -136,7 +136,7 @@ $(LIB)/$(OCAML_LIB).cmxa $(LIB)/$(OCAML_LIB).a: $(OCAML_LIB_OBJ:%=%.cmx)
 	@mkdir -p $(LIB)
 	$(OCAML_OPT_LD) $(OCAML_LD_FLAGS) -a -o $@ $(FILES)
 
-.PHONY: doc
+.PHONY: doc server
 
 doc: odoc
 
@@ -169,8 +169,12 @@ picosat:
 	@mkdir -p $(LIB)
 	cp picosat-632/libpicosat.a $(LIB)/
 
+server:
+	cd server; make
+
 clean:
 	$(RM) $(TARGET) $(OBJ)/* $(LIB)/*
 	cd glpk_ml_wrapper; make clean
 	cd pico_ml_wrapper; make clean
 	cd picosat-632; make clean
+	cd server; make clean
