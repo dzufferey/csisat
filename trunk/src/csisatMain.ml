@@ -15,6 +15,7 @@
  *)
 
 open   CsisatAst
+(**/**)
 module Message     = CsisatMessage
 module Config      = CsisatConfig
 module AstUtil     = CsisatAstUtil
@@ -29,6 +30,7 @@ module FociParse   = CsisatFociParse
 module FociLex     = CsisatFociLex
 module InfixLex    = CsisatInfixLex
 module InfixParse  = CsisatInfixParse
+(**/**)
 
 let print_fct = ref FociPrinter.print_foci
 

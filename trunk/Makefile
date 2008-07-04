@@ -149,6 +149,8 @@ $(LIB)/$(OCAML_LIB).cmxa $(LIB)/$(OCAML_LIB).a: $(OCAML_LIB_OBJ:%=%.cmx)
 
 doc: odoc
 
+HIDE = Set.Make,Char
+
 odoc:
 	$(shell if test -e $(DOC)/index.html ; then rm -rf $(DOC)/* ; fi)
 	@mkdir -p $(DOC)
@@ -158,7 +160,7 @@ odoc:
 		-I $(OBJ) $(INLCUDES) \
 		-html \
 		-stars \
-		-hide Set.Make,Char \
+		-hide $(HIDE) \
 		$(patsubst $(OBJ)/%, $(SRC)/%, $(patsubst %.cmx, %.ml, $(FILES)))
 
 glpk:

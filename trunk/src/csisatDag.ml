@@ -14,15 +14,17 @@
  *  limitations under the License.
  *)
 
+(** Directed acyclic graph to reason about = and =\=*)
+
 open   CsisatAst
+(**/**)
 module AstUtil = CsisatAstUtil
 module PredSet = AstUtil.PredSet
 module ExprSet = AstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
-
-(** Directed acyclic graph to reason about = and =\=*)
+(**/**)
 
 (** A node in the graph: uninterpreted fct or variable.
  * A variable is an uninterpreted fct of arity 0.

@@ -21,8 +21,10 @@ open   CsisatAstUtil
 open   CsisatSatInterface
 open   CsisatDpllClause
 open   CsisatDpllProof
+(**/**)
 module Message = CsisatMessage
 module OrdSet  = CsisatOrdSet
+(**/**)
 
 (*a simple dpll SAT solver*)
 (*TODO improve:

@@ -14,7 +14,10 @@
  *  limitations under the License.
  *)
 
+(** *)
+
 open   CsisatAst
+(**/**)
 module AstUtil     = CsisatAstUtil
 module Message     = CsisatMessage
 module Utils       = CsisatUtils
@@ -27,6 +30,7 @@ module Interpolate = CsisatInterpolate
 module FociParse   = CsisatFociParse
 module FociPrinter = CsisatFociPrinter
 module FociLex     = CsisatFociLex
+(**/**)
 
 let parse str =
   let lexbuf = Lexing.from_string str in

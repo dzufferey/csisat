@@ -18,9 +18,11 @@
 
 open   CsisatAst
 open   CsisatAstUtil
+(**/**)
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
+(**/**)
 
 exception LP_SOLVER_FAILURE
 

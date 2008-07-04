@@ -19,9 +19,11 @@
  *)
 
 open   CsisatAst
+(**/**)
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
+(**/**)
 
 let rec print_expr expr = match expr with
   | Constant cst -> Utils.my_string_of_float cst
@@ -949,7 +951,9 @@ let remove_equisat_atoms formula =
 
 (** Simple trick to replace x > y by x>= y+1.
  * Helps in many integer problems,
- * but is not complete !!
+ * but is not sound, neither complete.
+ * When having only integers value as constant,
+ * this is only incomplete.
  *)
 let rec integer_heuristic p =
   let p' = 

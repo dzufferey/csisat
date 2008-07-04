@@ -50,9 +50,9 @@ let options =
     ("-syntax", Arg.String set_syntax,
       "Choose the syntax to use.\n    Options: foci, infix (default: try foci first then infix if it fail).");
     ("-round", Arg.Unit (fun () -> round := true),
-      "Try to round the coefficient to integer values. WARNING: still experimental");
+      "Try to round the coefficient to integer values. WARNING: still experimental.");
     ("-int", Arg.Unit (fun () -> integer_heuristics := true),
-      "Apply incomplete heuristics to solve over integers")
+      "Apply heuristics to solve over integers. This is not sound, neither complete in general.")
   ]
 
 let usage = (

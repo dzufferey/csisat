@@ -15,7 +15,9 @@
  *)
 
 (** Matrix (array of array) processing. *)
+(**/**)
 module Ast = CsisatAst
+(**/**)
 
 let matrix_times_vector matrix vector =
   let row = Array.length matrix in
