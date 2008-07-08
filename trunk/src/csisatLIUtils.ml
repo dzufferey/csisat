@@ -26,12 +26,11 @@ module OrdSet  = CsisatOrdSet
 
 exception LP_SOLVER_FAILURE
 
-let solver_error = 1.e-10
-
 (** Solver abstraction.
  * Only about solving, the problem specification uses GLPK as usual.
  *)
 type li_solver = {
+    solver_error: float;
     solve       : Camlglpk.t -> bool; 
     obj_val     : Camlglpk.t -> float;
     row_primal  : Camlglpk.t -> int -> float;
@@ -45,6 +44,7 @@ type li_solver = {
 }
 
 let simplex_wo_presolve: li_solver = {
+    solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x true);
     obj_val     = Camlglpk.get_obj_val;
     row_primal  = Camlglpk.get_row_primal;
@@ -58,6 +58,7 @@ let simplex_wo_presolve: li_solver = {
 }
 
 let simplex: li_solver = {
+    solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x false);
     obj_val     = Camlglpk.get_obj_val;
     row_primal  = Camlglpk.get_row_primal;
@@ -70,7 +71,22 @@ let simplex: li_solver = {
     cols_dual   = Camlglpk.get_cols_dual
 }
 
+let simplex_exact: li_solver = {
+    solver_error= 0.0;
+    solve       = Camlglpk.simplex_exact;
+    obj_val     = Camlglpk.get_obj_val;
+    row_primal  = Camlglpk.get_row_primal;
+    rows_primal = Camlglpk.get_rows_primal;
+    row_dual    = Camlglpk.get_row_dual;
+    rows_dual   = Camlglpk.get_rows_dual;
+    col_primal  = Camlglpk.get_col_primal;
+    cols_primal = Camlglpk.get_cols_primal;
+    col_dual    = Camlglpk.get_col_dual;
+    cols_dual   = Camlglpk.get_cols_dual
+}
+
 let interior: li_solver = {
+    solver_error= 1.e-10;
     solve       = Camlglpk.interior;
     obj_val     = Camlglpk.ipt_obj_val;
     row_primal  = Camlglpk.ipt_row_primal;
@@ -89,6 +105,7 @@ let set_solver str = match str with
   | "simplex" -> solver := simplex
   | "simplex_wo_presolve" -> solver := simplex_wo_presolve
   | "interior" -> solver := interior
+  | "exact" -> solver := simplex_exact
   | s -> failwith (s^" is not a known LI solver")
 
 (** Not a=b  -> Or( a < b, b < a) *)
