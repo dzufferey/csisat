@@ -69,8 +69,8 @@ all: glpk pico picosat server $(FILES) $(MAIN) lib
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES) $(MAIN)
 	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
-VERSION = $(shell svn info | grep -i "revision" | cut -f 2 -d ' ')
-DATE = $(shell date)
+VERSION = $(shell svnversion)
+DATE = $(shell date -u +%Y-%m-%dT%H:%M:%S)
 
 ### Part for parsers and lexers ####
 
@@ -116,7 +116,7 @@ $(OBJ)/%.cmx: $(OBJ)/%.ml
 $(OBJ)/%.cmx: $(SRC)/%.ml
 	@mkdir -p $(OBJ)
 	$(shell if test $< = $(SRC)/csisatConfig.ml; \
-		then sed -i 's/Version: REV, DATE/Version: revision $(VERSION), $(DATE)/g' $<; fi)
+		then sed -i 's/Rev REV, Build DATE/Rev $(VERSION), Build $(DATE)/g' $<; fi)
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
 	mv $(patsubst %.ml, %.cmx, $<) $@
