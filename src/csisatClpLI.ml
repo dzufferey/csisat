@@ -81,12 +81,12 @@ let extract_answer lp lambdas =
         let last_lambda_index = List.length lambdas in
         let result = Array.make last_lambda_index 0.0 in
           !solver.cols_primal lp last_lambda_index result;
-          (*the solver precision is 10e-7 => filter all term that are less than solver_error*)
-          Array.iteri (fun i x -> if (abs_float x) < solver_error then result.(i) <- 0.0) result;
+          (*the solver precision is 10e-7 => filter all term that are less than !solver.solver_error*)
+          Array.iteri (fun i x -> if (abs_float x) < !solver.solver_error then result.(i) <- 0.0) result;
           Message.print Message.Debug (lazy("lambdas are: "^(Utils.string_list_cat ", " (Array.to_list (Array.map string_of_float result)))));
           Message.print Message.Debug (lazy ("solver returned: "^(string_of_float value)));
           let count = (*count is the number of non-strict interpolant*)
-            if value < (1.0 -. solver_error) then
+            if value < (1.0 -. !solver.solver_error) then
               begin
                 Message.print Message.Debug (lazy "Non strict case");
                 last_lambda_index (*is bigger than the number of interpolant, but not important*)
