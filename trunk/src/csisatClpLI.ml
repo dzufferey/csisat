@@ -122,11 +122,13 @@ let compute_interpolant vars_size blocks results =
     | ((size_lt,size_leq,size_eq,mat,vect)::bs,(nonstrict,result)::rs) ->
       begin
         let i = Matrix.vector_times_matrix result mat in
+        let i = Array.map (fun x -> if (abs_float x) < !solver.solver_error then 0.0 else x) i in
           for k = 0 to vars_size -1 do
             i_acc.(k) <- i_acc.(k) +. i.(k)
           done;
           Message.print Message.Debug (lazy("I: "^(Utils.string_list_cat ", " (Array.to_list (Array.map string_of_float i_acc)))));
           let d = Matrix.row_vect_times_col_vect result vect in
+          let d = if (abs_float d) < !solver.solver_error then 0.0 else d in
             d_acc := d +. !d_acc;
             let strictness = if nonstrict then LEQ else LT in
               process bs rs ((Array.copy i_acc, strictness, !d_acc)::acc)
