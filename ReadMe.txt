@@ -15,7 +15,8 @@ Options:
 -sat     Check for satisfiability only (no interpolation).
          Writes only "satisfiable" or "unsatisfiable" to stdout.
 -LAsolver Choose the LA solver to use.
-         Options: simplex, simplex_wo_presolve, interior (default: simplex).
+         Options: simplex, simplex_wo_presolve, interior, exact (default: simplex).
+         WARNING: exact solver integration is still experimental.
 -SATsolver Choose the SAT solver to use.
          Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.
 -help    Display this list of options.
