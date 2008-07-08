@@ -43,7 +43,7 @@ type li_solver = {
     cols_dual   : Camlglpk.t -> int -> float array -> unit
 }
 
-let simplex_wo_presolve: li_solver = {
+let simplex: li_solver = {
     solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x true);
     obj_val     = Camlglpk.get_obj_val;
@@ -57,7 +57,7 @@ let simplex_wo_presolve: li_solver = {
     cols_dual   = Camlglpk.get_cols_dual
 }
 
-let simplex: li_solver = {
+let simplex_wo_presolve: li_solver = {
     solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x false);
     obj_val     = Camlglpk.get_obj_val;
@@ -72,7 +72,7 @@ let simplex: li_solver = {
 }
 
 let simplex_exact: li_solver = {
-    solver_error= 0.0;
+    solver_error= 1.0e-13;
     solve       = Camlglpk.simplex_exact;
     obj_val     = Camlglpk.get_obj_val;
     row_primal  = Camlglpk.get_row_primal;
@@ -99,7 +99,7 @@ let interior: li_solver = {
     cols_dual   = Camlglpk.ipt_cols_dual
 }
 
-let solver = ref simplex_wo_presolve
+let solver = ref simplex
 
 let set_solver str = match str with
   | "simplex" -> solver := simplex
