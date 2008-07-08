@@ -44,7 +44,7 @@ let options =
     ("-sat", Arg.Unit (fun () -> sat_only := true),
       "Check for satisfiability only (no interplolation).\n     Writes only \"satisfiable\" or \"unsatisfiable\" to stdout.");
     ("-LAsolver", Arg.String CsisatLIUtils.set_solver,
-      "Choose the LA solver to use.\n    Options: simplex, simplex_wo_presolve, interior, exact (default: simplex).");
+      "Choose the LA solver to use.\n    Options: simplex, simplex_wo_presolve, interior, exact (default: simplex).\n    WARNING: exact solver integration is still experimental.");
     ("-SATsolver", Arg.String CsisatSatPL.set_solver,
       "Choose the SAT solver to use.\n    Options: csi_dpll, pico (default: csi_dpll). The PicoSAT integration is experimental.");
     ("-syntax", Arg.String set_syntax,

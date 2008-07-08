@@ -72,7 +72,7 @@ let simplex_wo_presolve: li_solver = {
 }
 
 let simplex_exact: li_solver = {
-    solver_error= 1.0e-13;
+    solver_error= 1.0e-15;
     solve       = Camlglpk.simplex_exact;
     obj_val     = Camlglpk.get_obj_val;
     row_primal  = Camlglpk.get_row_primal;
