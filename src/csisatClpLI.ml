@@ -69,7 +69,7 @@ let split_eq_lt pred =
  *)
 let extract_answer lp lambdas =
   let rec count_non_strict results lambdas = match lambdas with
-    | (Lambda (index,block,LT))::xs -> if results.(index) > 0.0 then block else count_non_strict results xs
+    | (Lambda (index,block,LT))::xs -> if results.(index) > !solver.solver_error then block else count_non_strict results xs
     | (Lambda (_,_,_))::xs -> count_non_strict results xs
     | x::xs -> failwith "extract_answer: expect only lambda's"
     | [] -> failwith "extract_answer: reached the end before a non-0 \\^lt"
