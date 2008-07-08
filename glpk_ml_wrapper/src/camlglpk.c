@@ -1,18 +1,17 @@
-/*  CSIsat: interpolation procedure for LA + EUF
+/*  CSIsat: Interpolating decision procedure for LA + EUF
  *  Copyright (C) 2008  The CSIsat team
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 #include <caml/mlvalues.h>
@@ -256,6 +255,37 @@ value lp_simplex(value lp, value presolve)
     CAMLreturn (val);
 }
 
+value lp_simplex_exact(value lp)
+{
+    CAMLparam1(lp);
+    to_dev_null();
+    lpx_simplex((LPX*)lp);
+    int status = lpx_exact((LPX*)lp);
+    to_std_out();
+    value val = Val_false;
+    if(status == LPX_E_OK){
+        val = Val_true;
+    }else if (status == LPX_E_FAULT){
+        //fprintf(stderr, "solving failed \n");
+    }else if (status == LPX_E_OBJLL){
+        //fprintf(stderr, "unbounded (lower)\n");
+    }else if (status == LPX_E_OBJUL){
+        //fprintf(stderr, "unbounded (upper)\n");
+    }else if (status == LPX_E_ITLIM){
+        //fprintf(stderr, "iteration limit reached\n");
+    }else if (status == LPX_E_TMLIM){
+        //fprintf(stderr, "time limit reached\n");
+    }else if (status == LPX_E_SING){
+        fprintf(stderr, "singular or ill-conditionned matrix\n");
+    }else if (status == LPX_E_NOPFS){
+        //fprintf(stderr, "no primal solution\n");
+    }else if (status == LPX_E_NODFS){
+        //fprintf(stderr, "no dual solution\n");
+    }else{
+        fprintf(stderr, "unknown status: %d\n", status);
+    }
+    CAMLreturn (val);
+}
 value lp_get_stat(value lp)
 {
     CAMLparam1(lp);

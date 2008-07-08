@@ -1,18 +1,17 @@
-(*  CSIsat: interpolation procedure for LA + EUF
+(*  CSIsat: Interpolating decision procedure for LA + EUF
  *  Copyright (C) 2008  The CSIsat team
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *)
 
 type t
@@ -48,6 +47,7 @@ external set_mat_row: t -> int -> int -> float array -> unit = "lp_set_mat_row"
 external set_mat_col: t -> int -> int -> float array -> unit = "lp_set_mat_col"
 
 external simplex: t -> bool -> bool = "lp_simplex" (*second param: with/out presolve*)
+external simplex_exact: t -> bool = "lp_simplex_exact"
 external get_stat: t -> int = "lp_get_stat"
 external get_obj_val: t -> float = "lp_get_obj_val"
 external get_row_stat: t -> int -> int = "lp_get_row_stat"
