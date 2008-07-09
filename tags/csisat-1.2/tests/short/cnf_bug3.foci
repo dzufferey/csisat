@@ -1,0 +1,19 @@
+& [
+    | [ 
+        & [ <= + [ 1. csisat1 ] 3. <= csisat2 csisat1 <= 0. csisat1 = csisat1 csisat2 <= 0. csisat2 <= + [ 1. csisat2 ] 3. ]
+        & [ <= csisat2 csisat1 <= 0. csisat1 ~ = csisat1 csisat2 <= 0. csisat2 <= + [ 1. csisat2 ] 3. ]
+        & [ <= + [ 1. csisat1 ] 3. <= + [ 1. csisat1 ] csisat2 <= 0. csisat1 ~ = csisat1 csisat2 <= 0. csisat2 <= + [ 1. csisat2 ] 3. ]
+        & [ <= + [ 1. csisat1 ] 3. <= + [ 1. csisat1 ] csisat2 <= + [ 1. csisat1 ] 0. ~ = csisat1 csisat2 <= 0. csisat2 <= + [ 1. csisat2 ] 3. ]
+        & [ <= + [ 1. csisat1 ] 3. <= csisat2 csisat1 <= + [ 1. csisat1 ] 0. = csisat1 csisat2 <= + [ 1. csisat2 ] 0. <= + [ 1. csisat2 ] 3. ]
+        & [ <= csisat2 csisat1 <= 0. csisat1 ~ = csisat1 csisat2 <= + [ 1. csisat2 ] 0. <= + [ 1. csisat2 ] 3. ]
+        & [ <= + [ 1. csisat1 ] 3. <= + [ 1. csisat1 ] 0. ~ = csisat1 csisat2 <= + [ 1. csisat2 ] 0. <= + [ 1. csisat2 ] 3. ]
+        & [ <= 3. csisat1 <= csisat2 csisat1 <= 0. csisat1 = csisat1 csisat2 <= 0. csisat2 <= 3. csisat2 ]
+        & [ <= 3. csisat1 <= csisat2 csisat1 <= 0. csisat1 ~ = csisat1 csisat2 <= 0. csisat2 <= 3. csisat2 ]
+        & [ <= + [ 1. csisat1 ] csisat2 <= 0. csisat1 ~ = csisat1 csisat2 <= 0. csisat2 <= 3. csisat2 ]
+        & [ <= + [ 1. csisat1 ] 3. <= + [ 1. csisat1 ] csisat2 <= + [ 1. csisat1 ] 0. ~ = csisat1 csisat2 <= 0. csisat2 <= 3. csisat2 ]
+    ]
+] ;
+<= 3. csisat3 ;
+= csisat3 + [ csisat4 1. ] ;
+= csisat4 0.
+
