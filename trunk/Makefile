@@ -10,7 +10,6 @@ INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
 LIB_GLPK_DIR = /usr/lib
 
 ifndef STATIC
-GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
 LIBS = -cclib '-L $(PWD)/$(LIB) \
 	-lglpk -lpicosat -lcamlpico -lcamlglpk'
 else
@@ -67,7 +66,7 @@ OCAML_LIB = libcsisat
 
 all: glpk pico picosat server $(FILES) $(MAIN) lib
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES) $(MAIN)
-	$(shell sed -i 's/Version:.*\\n\\n/Version: REV, DATE\.\\n\\n/g' $(SRC)/csisatConfig.ml)
+	$(shell sed -i 's/Version .*\\n\\n/Version 1.2 (Rev REV, Build DATE)\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svnversion)
 DATE = $(shell date -u +%Y-%m-%dT%H:%M:%S)
