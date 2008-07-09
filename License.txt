@@ -1,4 +1,4 @@
-(*  CSIsat is an interpolating decision procedure for LA + EUF.
+ *  CSIsat is an interpolating decision procedure for LA + EUF.
  *  This file is part of CSIsat. 
  *  Copyright (C) 2007-2008  The CSIsat team
  *
@@ -17,4 +17,4 @@
  *  For information about the CSIsat project,
  *  please visit the CSIsat web page at:
  *  http://www.cs.sfu.ca/~dbeyer/CSIsat/
- *)
+
