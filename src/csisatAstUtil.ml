@@ -42,12 +42,12 @@ let rec print_pred p =
   match p with
   | False -> "false"
   | True -> "true"
-  | And lst -> "and [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
-  | Or lst -> "or [ " ^ (Utils.string_list_cat ", " (List.map print_pred lst)) ^"]"
+  | And lst -> "(" ^ (Utils.string_list_cat " & " (List.map print_pred lst)) ^")"
+  | Or lst -> "(" ^ (Utils.string_list_cat " | " (List.map print_pred lst)) ^")"
   | Not p -> "not " ^ print_pred p
-  | Eq (e1,e2) -> "("^(print_expr e1) ^ " = " ^ (print_expr e2)^")"
-  | Lt (e1,e2) -> "("^(print_expr e1) ^ " < " ^ (print_expr e2)^")"
-  | Leq (e1,e2) -> "("^(print_expr e1) ^ " <= " ^ (print_expr e2)^")"
+  | Eq (e1,e2) -> (print_expr e1) ^ " = " ^ (print_expr e2)
+  | Lt (e1,e2) -> (print_expr e1) ^ " < " ^ (print_expr e2)
+  | Leq (e1,e2) -> (print_expr e1) ^ " <= " ^ (print_expr e2)
   | Atom i -> "atom"^(string_of_int i)
 
 let print p = print_pred p
