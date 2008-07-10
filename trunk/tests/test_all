@@ -1,5 +1,7 @@
 #!/bin/sh
 
+./test_alone_csisat LRA_conj
+
 for f in collated/*.foci; do
     echo $f
     ./test_collated_csisat < $f
