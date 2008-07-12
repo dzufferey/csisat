@@ -30,31 +30,9 @@
 #include <fcntl.h>
 #include <unistd.h>   
 
-int std_out;
-int std_err;
-void to_dev_null()
+void no_output()
 {
-    int fnull = open("/dev/null", O_WRONLY);
-    if (fnull == -1){
-        perror("opening '/dev/null'");
-        exit(-1);
-    }
-    fflush(stdout);
-    dup2(STDOUT_FILENO, std_out);
-    dup2(fnull, STDOUT_FILENO);//redirect stdout to /dev/null
-    //fflush(stderr);
-    //dup2(STDERR_FILENO, std_err);
-    //dup2(fnull, STDERR_FILENO);//redirect stdout to /dev/null
-    if(close(fnull) != 0){
-        perror("closing '/dev/null'");
-    }
-}
-void to_std_out()
-{
-    fflush(stdout);
-    dup2(std_out, STDOUT_FILENO);
-    //fflush(stderr);
-    //dup2(std_err, STDERR_FILENO);
+    glp_term_out(GLP_OFF);
 }
 
 value lp_create(value unit)
@@ -234,9 +212,8 @@ value lp_simplex(value lp, value presolve)
     }else{
         lpx_set_int_parm((LPX*)lp, LPX_K_PRESOL, 0);
     }
-    to_dev_null();
+    no_output();
     int status = lpx_simplex((LPX*)lp);
-    to_std_out();
     value val = Val_false;
     if(status == LPX_E_OK){
         val = Val_true;
@@ -265,10 +242,9 @@ value lp_simplex(value lp, value presolve)
 value lp_simplex_exact(value lp)
 {
     CAMLparam1(lp);
-    to_dev_null();
+    no_output();
     lpx_simplex((LPX*)lp);
     int status = lpx_exact((LPX*)lp);
-    to_std_out();
     value val = Val_false;
     if(status == LPX_E_OK){
         val = Val_true;
@@ -398,9 +374,8 @@ value lp_get_cols_dual(value lp, value length, value array)
 value lp_interior(value lp)
 {
     CAMLparam1(lp);
-    to_dev_null();
+    no_output();
     int status = lpx_interior((LPX*)lp);
-    to_std_out();
     value val = Val_false;
     if(status == LPX_E_OK){
         val = Val_true;
