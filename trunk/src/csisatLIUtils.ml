@@ -40,6 +40,8 @@ type li_solver = {
     solver_error: float;
     solve       : Camlglpk.t -> bool; 
     obj_val     : Camlglpk.t -> float;
+    row_stat    : Camlglpk.t -> int -> int;
+    col_stat    : Camlglpk.t -> int -> int;
     row_primal  : Camlglpk.t -> int -> float;
     rows_primal : Camlglpk.t -> int -> float array -> unit;
     row_dual    : Camlglpk.t -> int -> float;
@@ -54,6 +56,8 @@ let simplex: li_solver = {
     solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x true);
     obj_val     = Camlglpk.get_obj_val;
+    row_stat    = Camlglpk.get_row_stat;
+    col_stat    = Camlglpk.get_col_stat;
     row_primal  = Camlglpk.get_row_primal;
     rows_primal = Camlglpk.get_rows_primal;
     row_dual    = Camlglpk.get_row_dual;
@@ -68,6 +72,8 @@ let simplex_wo_presolve: li_solver = {
     solver_error= 1.e-10;
     solve       = (fun x -> Camlglpk.simplex x false);
     obj_val     = Camlglpk.get_obj_val;
+    row_stat    = Camlglpk.get_row_stat;
+    col_stat    = Camlglpk.get_col_stat;
     row_primal  = Camlglpk.get_row_primal;
     rows_primal = Camlglpk.get_rows_primal;
     row_dual    = Camlglpk.get_row_dual;
@@ -82,6 +88,8 @@ let simplex_exact: li_solver = {
     solver_error= 1.0e-15;
     solve       = Camlglpk.simplex_exact;
     obj_val     = Camlglpk.get_obj_val;
+    row_stat    = Camlglpk.get_row_stat;
+    col_stat    = Camlglpk.get_col_stat;
     row_primal  = Camlglpk.get_row_primal;
     rows_primal = Camlglpk.get_rows_primal;
     row_dual    = Camlglpk.get_row_dual;
@@ -96,6 +104,8 @@ let interior: li_solver = {
     solver_error= 1.e-10;
     solve       = Camlglpk.interior;
     obj_val     = Camlglpk.ipt_obj_val;
+    row_stat    = (fun _ _ -> failwith "row_stat not implemented for interior point solver");
+    col_stat    = (fun _ _ -> failwith "col_stat not implemented for interior point solver");
     row_primal  = Camlglpk.ipt_row_primal;
     rows_primal = Camlglpk.ipt_rows_primal;
     row_dual    = Camlglpk.ipt_row_dual;
