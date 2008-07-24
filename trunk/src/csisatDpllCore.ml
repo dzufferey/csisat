@@ -458,7 +458,14 @@ class system =
       | Some (lit,cl) ->
         begin
           Message.print Message.Debug (lazy("DPLL, found unit propagation: "^(print lit)));
-          self#affect (lit) (Implied (RPLeaf cl))
+          (*self#affect (lit) (Implied (RPLeaf cl))*)
+          let proof = 
+            if cl#is_learned then
+              self#get_partial_proof cl
+            else
+              RPLeaf cl
+          in
+            self#affect (lit) (Implied proof)
         end
       | None ->
         begin

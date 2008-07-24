@@ -581,12 +581,13 @@ let recurse_in_proof a b proof cores_with_info =
         end
     | DpllProof.RPLeaf clause ->
       begin
+        Message.print Message.Debug (lazy("proof leaf: "^(clause#to_string)));
         match lookup_cl clause with
         | ACl -> False
         | BCl -> True
         | NCl _ -> failwith "Interpolate, recurse_in_proof: NCl when not using path interpolation !!!"
         | ThCl (c,t,i) -> partial_interpolant a a_prop b b_prop (c,t,i)
-        | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof in not a clause !!!"
+        | NotCl -> failwith "Interpolate, recurse_in_proof: leaf of proof is not a clause !!!"
       end
   in
     recurse proof
@@ -619,14 +620,14 @@ let interpolate_with_proof a b =
     | (True,_) ->
       begin
         if not (SatPL.is_sat b) then True
-        else raise (SAT_FORMULA b)
+        else raise (SAT_FORMULA (AstUtil.remove_equisat_atoms b))
       end
     | (_,False) -> True
     | (False,_) -> False
     | (_,True) ->
       begin
         if not (SatPL.is_sat a) then False
-        else raise (SAT_FORMULA a)
+        else raise (SAT_FORMULA (AstUtil.remove_equisat_atoms a))
       end
     | _->
       begin
