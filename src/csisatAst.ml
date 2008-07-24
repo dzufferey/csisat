@@ -46,6 +46,11 @@ type expression =
   | Sum of expression list
   | Coeff of float * expression
 
+(** External atoms are given in the input, Internal ones are for equisatisfiable transformation *)
+type atom_type =
+  | External of string
+  | Internal of int
+
 type predicate =
   | True
   | False
@@ -55,7 +60,7 @@ type predicate =
   | Eq of expression * expression
   | Lt of expression * expression
   | Leq of expression * expression
-  | Atom of int (** lit for the satsolver (internal only)*)
+  | Atom of atom_type
 
 (*is it a propositional AST ?*)
 let rec is_sat_ast p = match p with

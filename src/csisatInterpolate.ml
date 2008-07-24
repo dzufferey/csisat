@@ -641,9 +641,6 @@ let interpolate_with_proof a b =
                 let a_prop = AstUtil.get_proposition_set a in
                 let b_prop = AstUtil.get_proposition_set b in
                   partial_interpolant a a_prop b b_prop core_with_info
-                (*
-                build_interpolant a b [core_with_info]
-                *)
             end
           else
             begin
@@ -869,3 +866,37 @@ let interpolate_with_proof_lst lst =
         end
     end
 *)
+
+
+let interpolate_propositional_only a b =
+  let (_,_,a) = lazy_cnf (AstUtil.simplify a) in
+  let (_,_,b) = lazy_cnf (AstUtil.simplify b) in
+  let a = AstUtil.normalize_only (AstUtil.remove_lit_clash a) in
+  let b = AstUtil.normalize_only (AstUtil.remove_lit_clash b) in
+  let a_cnf = AstUtil.cnf a in
+  let b_cnf = AstUtil.cnf b in
+    match (a,b) with
+    | (True,_) ->
+      begin
+        if not (SatPL.is_pl_sat b) then True
+        else raise (SAT_FORMULA b)
+      end
+    | (_,False) -> True
+    | (False,_) -> False
+    | (_,True) ->
+      begin
+        if not (SatPL.is_pl_sat a) then False
+        else raise (SAT_FORMULA a)
+      end
+    | _->
+      begin
+        let it =
+          let ab = AstUtil.normalize_only (And [a_cnf; b_cnf]) in
+            Message.print Message.Debug (lazy "Interpolate: using sat solver and proof");
+            let proof = SatPL.make_proof_with_solver ab [] in
+              recurse_in_proof a_cnf b_cnf proof []
+        in
+          AstUtil.simplify it
+      end
+
+
