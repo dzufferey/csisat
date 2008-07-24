@@ -291,6 +291,28 @@ value lp_get_row_stat(value lp, value i)
     CAMLreturn (Val_int(status));
 }
 
+value lp_is_col_basic(value lp, value i)
+{
+    CAMLparam2(lp,i);
+    int status = glp_get_col_stat((LPX*)lp, Int_val(i) + 1);
+    value val = Val_false;
+    if(status == GLP_BS ) {
+      val = Val_true;
+    }
+    CAMLreturn (val);
+}
+
+value lp_is_row_basic(value lp, value i)
+{
+    CAMLparam2(lp,i);
+    int status = glp_get_row_stat((LPX*)lp, Int_val(i) + 1);
+    value val = Val_false;
+    if(status == GLP_BS ) {
+      val = Val_true;
+    }
+    CAMLreturn (val);
+}
+
 value lp_get_row_primal(value lp, value i)
 {
     CAMLparam2(lp,i);

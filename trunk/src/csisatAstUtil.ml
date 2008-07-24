@@ -978,7 +978,7 @@ let get_external_atoms formula =
 let remove_atoms formula =
   let rec process formula = match formula with
     | Atom _  -> True
-    | Not Atom _  -> True
+    | Not (Atom _)  -> True
     | And lst -> And (List.map process lst)
     | Or lst -> Or (List.map process lst)
     | Not _ as np -> np
