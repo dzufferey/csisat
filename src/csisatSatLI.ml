@@ -30,6 +30,7 @@ open   CsisatLIUtils
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
+module ClpLI   = CsisatClpLI
 (**/**)
 
 let is_li_sat pred =
@@ -340,83 +341,12 @@ let unsat_core_no_basis formula =
      Message.print Message.Debug (lazy("UNSAT core is: "^(print (And !unsat_core))));
      And !unsat_core
       
-(** Returns an over-approximation of the unsat core for a formula using a solver with basis (i.e. simplex).
+(** Returns an over-approximation of the unsat core for a formula.
+ *  This method is based on Farkas' Lemma, and Motzkin's transposition Theorem.
  *  Assume the formula is unsat.
  *)
-let unsat_core_with_basis formula =
-  let pred_lst = match formula with
-    | And lst -> List.filter (fun x -> match x with | Not _ | Lt _ -> false | _ -> true) lst
-    | True -> raise (SAT_FORMULA formula)
-    | Or _ -> failwith "unsat_core_with_basis: only for the conjunctiv fragment"
-    | Atom _ -> failwith "unsat_core_with_basis: atom only for sat solver, PL is not convex."
-    | el -> [el]
-  in
-  
-  let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars pred_lst)) in
-  let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
-  let nb_vars = List.length vars in
-    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
-    assert(nb_vars > 0);
-    (* TODO ...
-      -the dual variable associated with a constraints has to be non-basic to be in the unsat core
-      -assert basic + non-basic = var + constraints
-    *)
-    let (matrixA,vectorB) = conj_to_matrix pred_lst vars in
-    (*assume lp problem has enough col and row*)
-    let rec fill_glpk_problem lp index lst = match lst with
-      | (Eq _)::xs ->
-        begin
-          Camlglpk.set_mat_row lp index nb_vars matrixA.(index);
-          Camlglpk.set_row_bnd_fixed lp index vectorB.(index);
-          fill_glpk_problem lp (index +1) xs
-        end
-      | (Leq _)::xs ->
-        begin
-          Camlglpk.set_mat_row lp index nb_vars matrixA.(index);
-          Camlglpk.set_row_bnd_upper lp index vectorB.(index);
-          fill_glpk_problem lp (index +1) xs
-        end
-      | (Lt _)::xs ->
-        begin
-          Camlglpk.set_mat_row lp index (nb_vars + 1) (Array.append matrixA.(index) (Array.make 1 1.0));
-          Camlglpk.set_row_bnd_upper lp index vectorB.(index);
-          fill_glpk_problem lp (index +1) xs
-        end
-      | [] -> ()
-      | e::xs -> failwith ("SatLI, fill_glpk_problem: found "^(print e))
-    in
-        
-    let lp = Camlglpk.create () in
-      Camlglpk.add_col lp (nb_vars + 1);
-      Camlglpk.add_row lp (List.length pred_lst);
-      fill_glpk_problem lp 0 pred_lst;
-      for i = 0 to nb_vars -1 do
-        Camlglpk.set_col_bnd_free lp i;
-      done;
-      Camlglpk.set_col_bnd_double lp nb_vars 0.0 10.0;(*put an upper bound to avoid unbounded problem*)
-      Camlglpk.set_obj_coef lp nb_vars 1.0;
-      Camlglpk.set_maximize lp;
-      let sat = !solver.solve lp && (!solver.obj_val lp) > !solver.solver_error
-      in
-        if sat then
-          begin
-            Camlglpk.delete lp;
-            raise (SAT_FORMULA formula)
-          end
-        else
-          begin
-            let (_,lst) =
-              List.fold_left
-                (fun (i,acc) l -> (i+1, if not (!solver.is_row_basic lp i) then l::acc else acc) )
-                (0,[])
-                pred_lst
-            in
-            let core = And lst in
-              assert(not (is_li_sat core));
-              Camlglpk.delete lp;
-              core
-          end
-
+(*let unsat_core formula =*)
+  (*TODO*)
 
 (** Returns the unsat core for a formula.
  *
@@ -425,16 +355,7 @@ let unsat_core_with_basis formula =
  * @raise SAT if the formula is not unsat.
  *)
 let unsat_core formula =
-     (*
-     if !solver.has_basis then
-       (*TODO*)
-       (*unsat_core_with_basis formula*)
-       unsat_core_no_basis formula
-     else
-     *)
-       begin
-         if is_li_sat formula then
-           raise (SAT_FORMULA formula)
-         else
-           unsat_core_no_basis formula
-       end
+  if is_li_sat formula then
+    raise (SAT_FORMULA formula)
+  else
+    unsat_core_no_basis formula

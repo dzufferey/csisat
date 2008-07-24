@@ -82,7 +82,7 @@ let extract_answer lp lambdas =
     | [] -> failwith "extract_answer: reached the end before a non-0 \\^lt"
   in
   let value = !solver.obj_val lp in
-    if value >= 2.0 then raise SAT
+    if value >= (2.0 -. !solver.solver_error) then raise SAT
     else
       begin
         let last_lambda_index = List.length lambdas in
@@ -144,6 +144,7 @@ let compute_interpolant vars_size blocks results =
     | _ -> failwith "compute_interpolant: match error/too much result"
   in
     process blocks results [] 
+
 
 (** compute a series of |lst| -1 (inductive) interpolant
  *)
@@ -331,3 +332,5 @@ let interpolate lst =
     match fdnf with
     | (Or a)::(Or b)::[] -> lazy_map_all_pairs interpolate_clp a b
     | _ -> failwith "interpolate: match error"
+
+
