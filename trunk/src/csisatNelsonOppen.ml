@@ -555,7 +555,9 @@ let unsat_LIUIF conj =
           | Eq _ as eq -> Not eq
           | Lt (e1,e2) -> Leq (e2,e1)
           | Leq (e1,e2) -> Lt (e2, e1)
-          | _ -> failwith "NelsonOppen: not normalized formula"
+          | Atom (External _) as a -> Not a
+          | Not (Atom (External _) as a) -> a
+          | e -> failwith ("NelsonOppen: not normalized formula, found: "^( AstUtil.print e))
         in
           if PredSet.mem contra !entailed then
             begin
@@ -569,9 +571,6 @@ let unsat_LIUIF conj =
       end
     | [] -> None
   in
-  (*TODO when adding the support for atoms in input,
-    this breaks the fact the SAT_FORMULA implies the conj of input*)
-  let conj = AstUtil.remove_equisat_atoms conj in
     match conj with
     | And lst ->
       begin
@@ -579,9 +578,12 @@ let unsat_LIUIF conj =
         | Some x -> x
         | None ->
           begin
-            match is_liuif_sat_with_eq conj with
-            | (SATISFIABLE, _) -> raise (SAT_FORMULA conj)
-            | (t, eq) -> (conj, t, eq)
+            let externals = AstUtil.get_external_atoms conj in
+            let conj = AstUtil.remove_atoms conj in
+              match is_liuif_sat_with_eq conj with
+              | (SATISFIABLE, _) -> 
+                raise (SAT_FORMULA (AstUtil.normalize_only (And [conj; And externals])))
+              | (t, eq) -> (conj, t, eq)
           end
       end
     | _ -> failwith "NelsonOppen: not a conjunction"

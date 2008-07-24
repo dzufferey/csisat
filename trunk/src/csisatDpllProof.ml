@@ -135,34 +135,3 @@ let tracecheck_of_proof prf =
   in
     print_prf prf;
     Buffer.contents buffer
-
-let print_solution lst =
-  (*TODO numerical order*)
-  let str_lst = (List.fold_left
-          (fun acc x -> match x with
-            | Atom i -> (" "^(string_of_int i))::acc
-            | Not(Atom i) -> (" "^(string_of_int (-i)))::acc
-            | _ -> failwith "not an atom")
-          [] lst)
-  in
-  let buffer = Buffer.create 1000 in
-    Buffer.add_string buffer "v";
-    let rec print_lit lst counter = match lst with
-      | x::xs ->
-        begin
-          let n = (String.length x) + counter in
-            Buffer.add_string buffer x;
-            if n > 78 then
-              begin
-                Buffer.add_string buffer "\nv";
-                print_lit xs 1
-              end
-            else
-              print_lit xs n
-        end
-      | [] -> Buffer.add_string buffer " 0";
-    in
-      print_lit str_lst 1;
-      Buffer.contents buffer
-
-

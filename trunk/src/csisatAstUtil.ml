@@ -48,7 +48,8 @@ let rec print_pred p =
   | Eq (e1,e2) -> (print_expr e1) ^ " = " ^ (print_expr e2)
   | Lt (e1,e2) -> (print_expr e1) ^ " < " ^ (print_expr e2)
   | Leq (e1,e2) -> (print_expr e1) ^ " <= " ^ (print_expr e2)
-  | Atom i -> "atom"^(string_of_int i)
+  | Atom (External str) -> str
+  | Atom (Internal i) -> "atom"^(string_of_int i)
 
 let print p = print_pred p
  
@@ -883,7 +884,7 @@ let equisatisfiable pred =
     with Not_found ->
       begin
         counter_equisat := 1 + !counter_equisat;
-        let atom = Atom !counter_equisat in
+        let atom = Atom (Internal !counter_equisat) in
           Hashtbl.replace dico atom p;
           Hashtbl.replace pred_to_atom p atom;
           atom
@@ -930,7 +931,8 @@ let unabstract_equisat dico formula =
     | Eq _ as eq -> eq
     | Lt _ as lt ->  lt
     | Leq(e1,e2) -> (Not (Lt(e2,e1)))
-    | Atom _ as a -> process (Hashtbl.find dico a)
+    | Atom (External _) as a -> a
+    | Atom (Internal _) as a -> process (Hashtbl.find dico a)
     | True -> True
     | False -> False
   in
@@ -942,8 +944,41 @@ let unabstract_equisat dico formula =
  *)
 let remove_equisat_atoms formula =
   let rec process formula = match formula with
+    | Atom (Internal _)  -> True
+    | Not (Atom (Internal _)) -> True
+    | Atom (External _) as a -> a
+    | And lst -> And (List.map process lst)
+    | Or lst -> Or (List.map process lst)
+    | Not _ as np -> np
+    | Eq _ as eq -> eq
+    | Lt _ as lt ->  lt
+    | Leq(e1,e2) -> (Not (Lt(e2,e1)))
+    | True -> True
+    | False -> False
+  in
+    normalize_only (process formula)
+
+(** Returns the 'external' atoms (with negation).
+ *  Assume NNF.
+ *)
+let get_external_atoms formula =
+  let rec process formula = match formula with
+    | Atom (External _) as a -> [a]
+    | Not (Atom (External _)) as na -> [na]
+    | And lst | Or lst -> OrdSet.list_to_ordSet (List.flatten (List.map process lst))
+    | Not _ | Eq _ | Lt _ | Leq _ | Atom (Internal _)-> []
+    | True  | False -> []
+  in
+    process formula
+
+(** Formula is an assignment returned by the satsolver,
+ * it removes the atoms, keeps only the theory literals.
+ * Assumes NNF.
+ *)
+let remove_atoms formula =
+  let rec process formula = match formula with
     | Atom _  -> True
-    | Not Atom _ -> True
+    | Not Atom _  -> True
     | And lst -> And (List.map process lst)
     | Or lst -> Or (List.map process lst)
     | Not _ as np -> np

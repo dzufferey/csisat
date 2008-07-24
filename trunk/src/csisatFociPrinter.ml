@@ -63,7 +63,8 @@ let rec print_foci_predicate pred = match pred with
   | Eq (exp1, exp2) -> "= " ^ (print_foci_expression exp1) ^ (print_foci_expression exp2)
   | Lt (exp1, exp2) -> "~<= " ^ (print_foci_expression exp2) ^ (print_foci_expression exp1)
   | Leq (exp1, exp2) -> "<= " ^ (print_foci_expression exp1) ^ (print_foci_expression exp2)
-  | Atom i -> "atom"^(string_of_int i)^" "
+  | Atom (External str) -> str^" "
+  | Atom (Internal i) -> "atom"^(string_of_int i)^" "
 
 let rec print_foci pred_lst =
   let buffer = Buffer.create 0 in

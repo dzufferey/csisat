@@ -47,68 +47,7 @@ let get_solver prf = match !solver with
   | "csi_dpll" -> new csi_dpll prf
   | _ -> failwith "SatPL: unknown SAT solver"
 
-(** Returns a formula in CNF,
- * and a hashtable atoms <-> subterm.
- *)
-let equisatisfiable pred =
-  let dico = Hashtbl.create 23 in
-  let pred_to_atom = Hashtbl.create 23 in
-  let counter = ref 0 in
-  let get_rep p =
-    try Hashtbl.find pred_to_atom p
-    with Not_found ->
-      begin
-        counter := 1 + !counter;
-        let atom = Atom !counter in
-          Hashtbl.replace dico atom p;
-          Hashtbl.replace pred_to_atom p atom;
-          atom
-      end
-  in
-  let rep pred = match pred with
-    | True -> True
-    | False -> False
-    | And _ as an -> get_rep an
-    | Or _ as o -> get_rep o
-    | Not _ as n -> get_rep n
-    | Eq _ as eq -> get_rep eq
-    | Lt _ as lt -> get_rep lt
-    | Leq (e1,e2) -> get_rep (Not (Lt (e2, e1)))
-    | Atom _ as a -> a
-  in
-  let enc pred = match pred with
-    | False | True | Eq _ | Lt _ | Atom _ -> True
-    | And lst as pp ->
-      begin
-        let p = rep pp in
-        let repr = List.map rep lst in
-        let one_false = List.map (fun x -> Or [Not p; x]) repr in
-        let neg =  List.map (fun x -> Not x) repr in
-          And ((Or (p::neg))::one_false)
-      end
-    | Or lst as pp ->
-      begin
-        let p = rep pp in
-        let repr = List.map rep lst in
-        let one_true = List.map (fun x -> Or [Not x; p]) repr in
-          And ((Or ((Not p)::repr))::one_true)
-      end
-    | Leq (e1,e2) as leq ->
-      begin
-        let outer = rep leq in
-        let inner = rep (Lt (e2 ,e1)) in
-          And [Or[Not outer; Not inner];Or[outer; inner]](*like Not*)
-      end
-    | Not p as pp ->
-      begin
-        let outer = rep pp in
-        let inner = rep p in
-          And [Or[Not outer; Not inner];Or[outer; inner]]
-      end
-  in
-    let subterm = AstUtil.get_subterm pred in
-      (dico, pred_to_atom, AstUtil.simplify (And ((rep pred)::(List.map enc subterm))))
-
+(*TODO*)
 (**
  * assume NNF
  *)
@@ -121,7 +60,7 @@ let to_atoms formula =
     with Not_found ->
       begin
         counter := 1 + !counter;
-        let atom = Atom !counter in
+        let atom = Atom (Internal !counter) in
           Hashtbl.replace dico atom p;
           Hashtbl.replace pred_to_atom p atom;
           atom
@@ -132,8 +71,9 @@ let to_atoms formula =
     | Or lst -> Or (List.map process lst)
     | Not p -> Not (process p)
     | Eq _ as eq -> get_rep eq
-    | Lt _ as lt ->  get_rep lt
+    | Lt _ as lt -> get_rep lt
     | Leq(e1,e2) -> process (Not (Lt(e2,e1)))
+    | Atom (External _) as a -> get_rep a
     | Atom _ as a -> a
     | _ -> failwith "TRUE or FALSE found"
   in
@@ -146,12 +86,13 @@ let rec abstract dico formula = match formula with
   | Or lst -> Or (List.map (abstract dico) lst)
   | Not p -> Not (abstract dico p)
   | Eq _ as eq -> Hashtbl.find dico eq
-  | Lt _ as lt ->  Hashtbl.find dico lt
+  | Lt _ as lt -> Hashtbl.find dico lt
   | Leq(e1,e2) -> abstract dico (Not (Lt(e2,e1)))
+  | Atom (External _) as a -> Hashtbl.find dico a
   | Atom _ as a -> a
   | _ -> failwith "TRUE or FALSE found"
 
-(*returns only the 'leaves'*)
+(** returns only the 'leaves'*)
 let unabstract_bool dico assign =
   let lst = Utils.map_filter (
     fun (atom, value) ->
@@ -166,46 +107,26 @@ let unabstract_bool dico assign =
         if value then Some lt
         else Some (Leq(e2,e1))
       | Leq _ -> failwith "LEQ found !!"
-      | Atom _ -> failwith "Atom found !!"
+      | Atom (Internal _) -> failwith "internal Atom found !!"
+      | Atom (External _) as a ->
+        if value then Some a
+        else Some (Not a)
       | _ -> failwith "TRUE or FALSE found"
     ) assign
   in
     And lst
 
-let unabstract_not dico clause =
-  let lst = Utils.map_filter (
-    fun pred ->
-      let (atom, value) = match pred with
-        | Atom _ as a -> (a, true)
-        | Not (Atom _ as a) -> (a, false)
-        | _ -> failwith "SatPL, unabstract_not: ..."
-      in
-        match Hashtbl.find dico atom with
-        | And _ -> None
-        | Or _ -> None
-        | Not _ -> None
-        | Eq _ as eq -> 
-          if value then Some eq
-          else Some (Not eq)
-        | Lt (e1,e2) as lt -> 
-          if value then Some lt
-          else Some (Leq(e2,e1))
-        | Leq _ -> failwith "LEQ found !!"
-        | Atom _ -> failwith "Atom found !!"
-        | _ -> failwith "TRUE or FALSE found"
-    ) clause
-  in
-    Or lst
-
+(** Conjunction to blocking clause *)
 let reverse formula = match formula with
   | And lst -> Or (List.map AstUtil.contra lst)
   | Or lst -> failwith ("satPL: reverse expect a conj, found"^(AstUtil.print (Or lst)))
   | e -> Or [AstUtil.contra e] (*abstract can return atoms*)
 
+(** Is the propositional formula satisfiable ? *)
 let is_pl_sat formula =
   let f =
     if AstUtil.is_cnf formula then formula
-    else match equisatisfiable formula with
+    else match AstUtil.equisatisfiable formula with
       | (_,_,f) -> f
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
@@ -222,47 +143,41 @@ let is_sat formula =
   | formula ->
     begin
       let solver = get_solver false in
-      let (atom_to_pred, pred_to_atom, f) =
+      (*let (atom_to_pred, pred_to_atom, f) =*)
+      let (_, _, f) =
         (*if is already in cnf ...*)
         if AstUtil.is_cnf formula then
           begin
             Message.print Message.Debug (lazy("already in CNF"));
-            to_atoms (AstUtil.cnf formula)
+            (Hashtbl.create 0, Hashtbl.create 0, AstUtil.cnf formula)
           end
         else 
           begin
             Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-            equisatisfiable formula
+            AstUtil.equisatisfiable formula
           end
       in
-      let f = AstUtil.cnf (AstUtil.simplify f) in
+      let f = AstUtil.cnf (AstUtil.simplify f) in (*TODO is needed ??*)
         Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
         solver#init f;
         let rec test_and_refine () =
           if solver#solve then
             begin
               Message.print Message.Debug (lazy "found potentially SAT assign");
-              let solution =
-                List.map
-                  (fun x ->
-                    let atom = List.hd (AstUtil.get_proposition x) in
-                      (atom, x=atom)
-                  )
-                  (solver#get_solution)
-              in
-              let assign = unabstract_bool atom_to_pred solution in
+              let solution = solver#get_solution in
+              let externals = AstUtil.get_external_atoms (And solution) in
+              let assign = AstUtil.remove_atoms (And solution) in
               try
                 (*TODO config can force a theory*)
                 let unsat_core = NelsonOppen.unsat_core assign in
-                (*let unsat_core = NelsonOppen.unsat_core_for_convex_theory assign in*)
                   Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
-                let clause = abstract pred_to_atom unsat_core in
+                let clause = unsat_core in
                 let contra = reverse clause in
-                  solver#add_clause contra; (*add_clause contra;*)
+                  solver#add_clause contra;
                   test_and_refine ()
               with SAT | SAT_FORMULA _ ->
                 begin 
-                  Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print assign)));
+                  Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print (And [assign; And externals]) )));
                   true
                 end
             end
@@ -291,7 +206,7 @@ let unsat_cores_LIUIF formula =
     else 
       begin
         Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-        equisatisfiable formula
+        AstUtil.equisatisfiable formula
       end
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in

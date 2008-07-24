@@ -95,7 +95,7 @@ class picosat with_proof =
 
     method get_solution = 
       let max_lit = counter in
-      let a = Array.make (max_lit + 1) (Atom 0, 0) in
+      let a = Array.make (max_lit + 1) (Atom (Internal 0), 0) in
         for i = 1 to max_lit do
           a.(i) <- (Hashtbl.find index_to_atom i, Camlpico.deref i)
         done;

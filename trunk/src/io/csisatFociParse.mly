@@ -78,7 +78,7 @@ formula:
   | NOT formula                     { Ast.Not $2}
   | TRUE                            { Ast.True }
   | FALSE                           { Ast.False }
-/*| IDENT                           { Ast.Atom (*TODO convert to index*)}*/
+  | IDENT                           { Ast.Atom (Ast.External $1)}
 ;
 
 formula_lst:
