@@ -216,6 +216,7 @@ let unsat_cores_LIUIF formula =
       if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
+          (*
           let solution =
             List.map
               (fun x ->
@@ -225,6 +226,10 @@ let unsat_cores_LIUIF formula =
               (solver#get_solution)
           in
           let assign = unabstract_bool atom_to_pred solution in
+          *)
+          let solution = solver#get_solution in
+          let externals = AstUtil.get_external_atoms (And solution) in
+          let assign = AstUtil.remove_atoms (And solution) in
           (*TODO config can force a theory*)
           try
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
@@ -234,7 +239,7 @@ let unsat_cores_LIUIF formula =
               let contra = reverse clause in
                 solver#add_clause contra;
                 test_and_refine ()
-          with SAT -> raise (SAT_FORMULA assign)
+          with SAT -> raise (SAT_FORMULA (And [assign; And externals]))
         end
       else
         begin
@@ -302,17 +307,17 @@ let unsat_cores_with_proof formula =
       if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
-          let assign =  solver#get_solution in
-          (*remove atoms that are in any theory*)
-          let f_assign = AstUtil.remove_equisat_atoms (And assign) in
+          let solution =  solver#get_solution in
+          let externals = AstUtil.get_external_atoms (And solution) in
+          let assign = AstUtil.remove_atoms (And solution) in
           try
-            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info f_assign in
+            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
               Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
               cores := core_with_info::!cores;
               let contra = reverse unsat_core in
                 solver#add_clause contra;
                 test_and_refine ()
-          with SAT -> raise (SAT_FORMULA (And assign))
+          with SAT -> raise (SAT_FORMULA (And [assign; And externals]))
         end
       else
         begin

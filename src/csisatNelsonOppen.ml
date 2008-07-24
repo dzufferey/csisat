@@ -442,14 +442,13 @@ let unsat_core formula =
   | EUF ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
-      SatUIF.unsat_core formula (*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
+      SatUIF.unsat_core formula 
     end
   | LA ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
       SatLI.unsat_core formula
     end
-  (*| EUF_LA -> unsat_core_for_convex_theory is_liuif_sat formula*)
   | EUF_LA ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
@@ -461,7 +460,7 @@ let precise_unsat_core formula =
   | EUF ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
-      let core = SatUIF.unsat_core formula in(*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
+      let core = SatUIF.unsat_core formula in
         unsat_core_for_convex_theory SatUIF.is_uif_sat core
     end
   | LA ->

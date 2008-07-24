@@ -67,6 +67,8 @@ external get_col_primal: t -> int -> float = "lp_get_col_primal"
 external get_cols_primal: t -> int -> float array -> unit  = "lp_get_cols_primal"
 external get_col_dual: t -> int -> float = "lp_get_col_dual"
 external get_cols_dual: t -> int -> float array -> unit = "lp_get_cols_dual"
+external is_col_basic: t -> int -> bool = "lp_is_col_basic"
+external is_row_basic: t -> int -> bool = "lp_is_row_basic"
 
 external interior: t -> bool = "lp_interior"
 external ipt_obj_val: t -> float = "lp_ipt_obj_val"
