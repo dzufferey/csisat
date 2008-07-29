@@ -869,7 +869,6 @@ let split_formula_LI_UIF pred =
         (lst, [], [], [])
     end
 
-
 let counter_equisat = ref 0
 (**return an equisatisfiable formula in CNF
  * and two hashtables for atoms <-> subterms.
@@ -919,7 +918,7 @@ let equisatisfiable pred =
           And ((Or ((Not p)::repr))::one_true)
       end
   in
-    let subterm = get_subterm pred in
+    let subterm = get_subterm_nnf pred in
       (dico, pred_to_atom, normalize_only (And ((rep pred)::(List.map enc subterm))))
 
 (** Replaces the atoms by the part they represent.*)

@@ -239,7 +239,7 @@ let unsat_cores_LIUIF formula =
               let contra = reverse clause in
                 solver#add_clause contra;
                 test_and_refine ()
-          with SAT -> raise (SAT_FORMULA (And [assign; And externals]))
+          with SAT | SAT_FORMULA _ -> raise (SAT_FORMULA (And [assign; And externals]))
         end
       else
         begin
@@ -317,7 +317,7 @@ let unsat_cores_with_proof formula =
               let contra = reverse unsat_core in
                 solver#add_clause contra;
                 test_and_refine ()
-          with SAT -> raise (SAT_FORMULA (And [assign; And externals]))
+          with SAT | SAT_FORMULA _ -> raise (SAT_FORMULA (And [assign; And externals]))
         end
       else
         begin
