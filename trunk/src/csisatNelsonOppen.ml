@@ -506,7 +506,7 @@ let unsat_core_with_info formula =
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
 
-(** Like precise_unsat_core but more precise, and more expensive. *)
+(** Like unsat_core_with_info but more precise, and more expensive. *)
 let precise_unsat_core_with_info formula =
   match theory_of formula with
   | EUF ->
