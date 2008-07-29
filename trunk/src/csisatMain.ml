@@ -49,7 +49,8 @@ let read_input () =
           try
             while true do
               let line = read_line () in
-                Buffer.add_string buffer line
+                Buffer.add_string buffer line;
+                Buffer.add_char buffer ' '
             done;
             failwith "read_input: no EOF ??"
           with _ -> (*EOF*)

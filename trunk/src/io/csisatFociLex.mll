@@ -5,10 +5,10 @@
 let word = ['a'-'z' 'A'-'Z' '_']+
 let digit = ['0'-'9']
 let num = '-'? digit+
-let white = [' ' '\t' '\n']
+let white = [' ' '\t' '\n' '\r']
 let real = '-'? digit+ '.' digit*
 let ident = word (word | digit)*
-let ident2 = ''' [^'\n' ''']+ '''
+let ident2 = '\'' [^'\n' '\'']+ '\''
 
 rule token = parse
   | "="             { EQ }
