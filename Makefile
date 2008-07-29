@@ -105,8 +105,8 @@ $(OBJ)/%.ml: $(SRC)/io/%.mll
 $(OBJ)/%.ml: $(SRC)/io/%.mly
 	@mkdir -p $(OBJ)
 	$(OCAML_OPT_YACC) $< 
-	mv $(patsubst %.mly, %.ml, $<) $@
-	mv $(patsubst %.mly, %.mli, $<) $(patsubst %.ml, %.mli, $@)
+	@mv $(patsubst %.mly, %.ml, $<) $@
+	@mv $(patsubst %.mly, %.mli, $<) $(patsubst %.ml, %.mli, $@)
 
 
 $(OBJ)/%.cmx: $(OBJ)/%.ml
@@ -119,10 +119,10 @@ $(OBJ)/%.cmx: $(SRC)/%.ml
 		then sed -i 's/Rev REV, Build DATE/Rev $(VERSION), Build $(DATE)/g' $<; fi)
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
-	mv $(patsubst %.ml, %.cmx, $<) $@
-	mv $(patsubst %.ml, %.cmi, $<) $(patsubst %.cmx, %.cmi, $@)
-	mv $(patsubst %.ml, %.cmo, $<) $(patsubst %.cmx, %.cmo, $@)
-	mv $(patsubst %.ml, %.o, $<) $(patsubst %.cmx, %.o, $@)
+	@mv $(patsubst %.ml, %.cmx, $<) $@
+	@mv $(patsubst %.ml, %.cmi, $<) $(patsubst %.cmx, %.cmi, $@)
+	@mv $(patsubst %.ml, %.cmo, $<) $(patsubst %.cmx, %.cmo, $@)
+	@mv $(patsubst %.ml, %.o, $<) $(patsubst %.cmx, %.o, $@)
 
 lib: $(LIB)/$(OCAML_LIB).cma $(LIB)/$(OCAML_LIB).cmxa 
 

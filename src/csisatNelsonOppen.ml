@@ -579,6 +579,9 @@ let unsat_LIUIF conj =
           begin
             let externals = AstUtil.get_external_atoms conj in
             let conj = AstUtil.remove_atoms conj in
+            if conj = True then (*when only atoms*)
+              raise (SAT_FORMULA (AstUtil.normalize_only (And externals)))
+            else
               match is_liuif_sat_with_eq conj with
               | (SATISFIABLE, _) -> 
                 raise (SAT_FORMULA (AstUtil.normalize_only (And [conj; And externals])))
