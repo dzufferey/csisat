@@ -4,7 +4,6 @@ PicoSAT integration:
 LA:
     -get implied equalites:
      faster incremental implementation ?? (seems not any faster)
-    -over-approx for the unsat core -> faster
     -use the arbitrary precision solver (when no more that experimental)
 
 EUF:
@@ -14,7 +13,6 @@ Nelson Oppen:
 
 DL:
 	-add difference logic
-
 
 Delayed theory combination:
     -needed ?? (not really )
