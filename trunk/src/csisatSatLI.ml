@@ -342,12 +342,26 @@ let unsat_core_no_basis formula =
      And !unsat_core
       
 (** Returns an over-approximation of the unsat core for a formula.
- *  This method is based on Farkas' Lemma, and Motzkin's transposition Theorem.
+ *  This method is based on Motzkin's transposition Theorem.
  *  Assume the formula is unsat.
  *)
-(*let unsat_core formula =*)
-  (*TODO*)
+let unsat_core formula =
+  match formula with
+  | And lst ->
+    begin
+      let core = And (ClpLI.unsat_core lst) in
+        assert (not (is_li_sat core));
+        core
+    end
+  | Eq _ | Leq _ | Lt _ as e ->
+    begin
+      match simplify e with
+      | False -> e
+      | _ -> raise SAT
+    end
+  | e -> failwith ("SatLI, unsat_core: expected And, found "^(print e))
 
+(*
 (** Returns the unsat core for a formula.
  *
  * WARNING: expensive ...
@@ -359,3 +373,4 @@ let unsat_core formula =
     raise (SAT_FORMULA formula)
   else
     unsat_core_no_basis formula
+*)

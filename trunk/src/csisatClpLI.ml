@@ -145,6 +145,68 @@ let compute_interpolant vars_size blocks results =
   in
     process blocks results [] 
 
+(** Fills the Main matrix with the different sub-matrixes.
+ *  Assume the GLPK problem is big enough.
+ *  Implicitely preform the problem transposition.
+ *)
+let rec fill_glpk_problem lp nb_vars block index acc lst = match lst with
+  | (size_lt,size_leq,size_eq,mat,_)::xs ->
+    begin
+      Message.print Message.Debug (lazy("\nMatrix of block "^(string_of_int block)^" :\n"^(Matrix.string_of_matrix mat)));
+      let new_acc = ref acc in
+      let new_index = ref index in
+        (*!! at this point the transposition of the matrix is implicit (by filling row->col)!!*)
+        Camlglpk.add_col lp (Array.length mat);
+        for i = 0 to  size_lt - 1 do
+          Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
+          Camlglpk.set_col_bnd_lower lp !new_index 0.0; (*lambda >= 0*)
+          new_acc := (Lambda (!new_index, block, LT))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt to  size_lt + size_leq - 1 do
+          Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
+          Camlglpk.set_col_bnd_lower lp !new_index 0.0; (*lambda >= 0*)
+          new_acc := (Lambda (!new_index, block, LEQ))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt + size_leq to  size_lt + size_leq + size_eq - 1 do
+          Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
+          Camlglpk.set_col_bnd_free lp !new_index;
+          new_acc := (Lambda (!new_index, block, EQ))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        fill_glpk_problem lp nb_vars (block + 1) !new_index !new_acc xs
+    end
+  | [] -> acc
+    
+
+(** Prepare the constraints ->  split eq/leq/lt and creates a matrix/vector. *)
+let prepare vars cnf =
+  let (lt,leq,eq) = split_eq_lt cnf in
+  let size_lt = List.length lt in
+  let size_leq = List.length leq in
+  let size_eq = List.length eq in
+  let (mat,vect) = conj_to_matrix (lt @ leq @ eq) vars in
+    (size_lt,size_leq,size_eq,mat,vect)
+
+(** Collects the a's for minimization constraints*)
+let rec get_all_as index target_array lst = match lst with
+  | (_,_,_,_,vect)::xs ->
+    begin
+      let size = Array.length vect in
+        Array.blit vect 0 target_array index size;
+        get_all_as (index + size) target_array xs
+    end
+  | [] -> ()
+
+(** For the 'strictness' constraint*)
+let rec get_lt_lambdas target_array lambdas = match lambdas with
+  | (Lambda (i,_,LT))::xs ->
+      target_array.(i) <- (-1.0);
+      get_lt_lambdas target_array xs
+  | _::xs -> get_lt_lambdas target_array xs
+  | [] -> ()
+    
 
 (** compute a series of |lst| -1 (inductive) interpolant
  *)
@@ -173,74 +235,14 @@ let interpolate_clp lst =
           check_simple [] f (List.tl simple)
     else
 
-      (* prepare the constraints*)
-      let prepare cnf =
-        let (lt,leq,eq) = split_eq_lt cnf in
-        let size_lt = List.length lt in
-        let size_leq = List.length leq in
-        let size_eq = List.length eq in
-        let (mat,vect) = conj_to_matrix (lt @ leq @ eq) vars in
-          (size_lt,size_leq,size_eq,mat,vect)
-      in
-      let rec fill_glpk_problem lp block index acc lst = match lst with
-        | (size_lt,size_leq,size_eq,mat,_)::xs ->
-          begin
-            Message.print Message.Debug (lazy("\nMatrix of block "^(string_of_int block)^" :\n"^(Matrix.string_of_matrix mat)));
-            let new_acc = ref acc in
-            let new_index = ref index in
-              (*!! at this point the transposition of the matrix is implicit (by filling row->col)!!*)
-              Camlglpk.add_col lp (Array.length mat);
-              for i = 0 to  size_lt - 1 do
-                Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
-                Camlglpk.set_col_bnd_lower lp !new_index 0.0; (*lambda >= 0*)
-                new_acc := (Lambda (!new_index, block, LT))::(!new_acc);
-                new_index := !new_index + 1
-              done;
-              for i = size_lt to  size_lt + size_leq - 1 do
-                Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
-                Camlglpk.set_col_bnd_lower lp !new_index 0.0; (*lambda >= 0*)
-                new_acc := (Lambda (!new_index, block, LEQ))::(!new_acc);
-                new_index := !new_index + 1
-              done;
-              for i = size_lt + size_leq to  size_lt + size_leq + size_eq - 1 do
-                Camlglpk.set_mat_col lp !new_index nb_vars mat.(i);
-                Camlglpk.set_col_bnd_free lp !new_index;
-                new_acc := (Lambda (!new_index, block, EQ))::(!new_acc);
-                new_index := !new_index + 1
-              done;
-              fill_glpk_problem lp (block + 1) !new_index !new_acc xs
-          end
-        | [] -> acc
-      in
-    
-      (*collect the a's for minimization constraints*)
-      let rec get_all_as index target_array lst = match lst with
-        | (_,_,_,_,vect)::xs ->
-          begin
-            let size = Array.length vect in
-              Array.blit vect 0 target_array index size;
-              get_all_as (index + size) target_array xs
-          end
-        | [] -> ()
-      in
-
-      (*for the 'strictness' constraint*)
-      let rec get_lt_lambdas target_array lambdas = match lambdas with
-        | (Lambda (i,_,LT))::xs ->
-            target_array.(i) <- (-1.0);
-            get_lt_lambdas target_array xs
-        | _::xs -> get_lt_lambdas target_array xs
-        | [] -> ()
-      in
-    
       (*BEGIN HERE*)
-      let prepared = List.map prepare lst in
+      let prepared = List.map (prepare vars) lst in
       let lp = Camlglpk.create () in
         Camlglpk.add_row lp nb_vars;
         for i = 0 to nb_vars -1 do (*Sum l*A = 0*)
           Camlglpk.set_row_bnd_fixed lp i 0.0
         done;
-        let lambda1 = fill_glpk_problem lp 0 0 [] prepared in
+        let lambda1 = fill_glpk_problem lp nb_vars 0 0 [] prepared in
         let last_lambda_index = index_of (List.hd lambda1) in
         let l_index = last_lambda_index + 1 in
         let t_index = last_lambda_index + 2 in
@@ -292,6 +294,76 @@ let interpolate_clp lst =
                 raise LP_SOLVER_FAILURE
               end
         
+
+(** Returns an over-approximation of the unsat core for a formula.
+ *  This method is based on Motzkin's transposition Theorem.
+ *  Assume the formula is unsat.
+ *)
+let unsat_core lst =
+  Message.print Message.Debug (lazy("unsat_core_clp called: " ^ (Utils.string_list_cat ", " (List.map print lst))));
+  let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
+  let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
+  let nb_vars = List.length vars in
+    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
+    assert (nb_vars > 0 );
+
+      (*Warning: the next line works with the assumption that each element of lst is atomic*)
+      let prepared = List.map (prepare vars) lst in
+      let lp = Camlglpk.create () in
+        Camlglpk.add_row lp nb_vars;
+        for i = 0 to nb_vars -1 do (*Sum l*A = 0*)
+          Camlglpk.set_row_bnd_fixed lp i 0.0
+        done;
+        let lambda1 = fill_glpk_problem lp nb_vars 0 0 [] prepared in
+        let last_lambda_index = index_of (List.hd lambda1) in
+        let l_index = last_lambda_index + 1 in
+        let t_index = last_lambda_index + 2 in
+        let lambda2 = (L l_index)::lambda1 in
+        let lambdas = (T t_index)::lambda2 in
+          print_lambdas lambdas;
+          Camlglpk.add_col lp 2;(* for L and T *)
+          Camlglpk.set_col_bnd_upper lp l_index 1.0; (*L <= 1*)
+          Camlglpk.set_col_bnd_lower lp t_index 0.0; (*T >= 0*)
+          Camlglpk.add_row lp 2;(* min cstr *)
+          let all_as = Array.make (last_lambda_index + 3) 0.0 in
+            get_all_as 0 all_as prepared;
+            all_as.(l_index) <- (-1.0);
+            all_as.(t_index) <- (-1.0);
+            Camlglpk.set_mat_row lp  nb_vars  (Array.length all_as) all_as;
+            Camlglpk.set_row_bnd_upper lp nb_vars (-2.0);
+            Array.fill all_as 0 (Array.length all_as) 0.0;
+            get_lt_lambdas all_as lambdas;
+            all_as.(l_index) <- 1.0;
+            Camlglpk.set_mat_row lp (nb_vars + 1) (Array.length all_as) all_as;
+            Camlglpk.set_row_bnd_upper lp (nb_vars + 1) (0.0);
+            (*objective function*)
+            Camlglpk.set_minimize lp;
+            Camlglpk.set_obj_coef lp t_index 1.0;
+            if !solver.solve lp then
+              begin
+                let value = !solver.obj_val lp in
+                  if value >= (2.0 -. !solver.solver_error) then raise SAT
+                  else
+                    begin
+                      (*check which constraints are basic*)
+                      let (_,core) =
+                        List.fold_left
+                          (fun (i,acc) el ->
+                            if !solver.is_col_basic lp i then (i+1, el::acc)
+                            else (i+1, acc)
+                          )
+                          (0,[]) lst
+                      in
+                        Camlglpk.delete lp;
+                        core
+                    end
+              end
+            else
+              begin 
+                Camlglpk.dump_problem lp;
+                Camlglpk.delete lp;
+                raise LP_SOLVER_FAILURE
+              end
 
 
 (** this is the DNF way*)
