@@ -5,5 +5,5 @@ counter=0
 while read -r f ; do
 	counter=$(($counter + 1))
 	echo $counter
-    echo "$f" | ../bin/csisat -check >> log_asdf
+    echo "$f" | ../bin/csisat -check > /dev/null
 done
