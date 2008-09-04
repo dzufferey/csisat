@@ -24,10 +24,8 @@
 (** Directed acyclic graph to reason about = and =\=*)
 
 open   CsisatAst
+open   CsisatAstUtil
 (**/**)
-module AstUtil = CsisatAstUtil
-module PredSet = AstUtil.PredSet
-module ExprSet = AstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
@@ -134,12 +132,12 @@ class dag = fun expr ->
     val mutable given_eq = PredSet.empty
     method add_eq eq = given_eq <- PredSet.add eq given_eq
     method was_given_eq eq = PredSet.mem eq given_eq
-    method get_given_eq = PredSet.fold (fun x acc -> x::acc) given_eq []
+    method get_given_eq = predSet_to_ordSet given_eq 
     
     (** set of disequalities*)
     val mutable given_neq = PredSet.empty
     method add_neq neq = given_neq <- PredSet.add neq given_neq
-    method get_given_neq = PredSet.fold (fun x acc -> x::acc) given_neq []
+    method get_given_neq = predSet_to_ordSet given_neq
     method remove_neq neq = given_neq <- PredSet.remove neq given_neq
 
     (** creates the node needed for the predicate (expression not given to the constructor)*)
@@ -190,7 +188,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | c -> failwith ("Dag: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
+        | c -> failwith ("Dag: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map print c)))
       in
       match conj with
         | And lst ->
@@ -207,7 +205,7 @@ class dag = fun expr ->
     (* test if the '!=' are respected and return the failing cstrs*)
     method test_for_contradition =
       let failing = PredSet.filter self#neq_contradiction given_neq in
-        PredSet.fold (fun x acc -> x::acc) failing []
+        predSet_to_ordSet failing
 
     (* for incremental use *)
     method has_contradiction =
@@ -256,7 +254,7 @@ class dag = fun expr ->
               (fun acc y ->
                 List.iter
                   (fun x ->
-                    let eq = AstUtil.order_eq (Eq(x,y)) in
+                    let eq = order_eq (Eq(x,y)) in
                       if not (self#was_given_eq eq)  then
                         begin
                           self#add_eq eq;
@@ -299,7 +297,7 @@ class dag = fun expr ->
                           fun (x,y) ->
                             List.iter (fun e1 ->
                               List.iter (fun e2 ->
-                                  eqs := PredSet.add (AstUtil.order_eq (Eq (e1, e2))) !eqs
+                                  eqs := PredSet.add (order_eq (Eq (e1, e2))) !eqs
                                 ) y
                               ) x
                           ) uniq_cc_pairs
@@ -308,7 +306,7 @@ class dag = fun expr ->
               process xs
         in
           process cc;
-          PredSet.fold (fun x acc -> x::acc) !eqs []
+          predSet_to_ordSet !eqs
 
     (** Tells if the given equalities may change the graph *)
     method is_relevant_equality eq = match eq with
@@ -318,7 +316,7 @@ class dag = fun expr ->
           let n2 = self#get_node e2 in
             n1 <> n2
         end
-      | err -> failwith ("Dag, is_relevant_equality: found "^(AstUtil.print err))
+      | err -> failwith ("Dag, is_relevant_equality: found "^(print err))
 
     (** Returns the 'projection' of the graph on a set of restricted variables.
      *  Assumes that the graph is in a satisfiable state.
@@ -339,7 +337,7 @@ class dag = fun expr ->
                 in
                   template := OrdSet.union !template [pair]
               end
-            | e -> failwith ("Dag: given_neq contains something strange: "^(AstUtil.print e))
+            | e -> failwith ("Dag: given_neq contains something strange: "^(print e))
           ) given_neq;
         (*fill one side of the template*)
         let half_instanciated: (expression * node) list ref  = ref [] in
@@ -366,7 +364,7 @@ class dag = fun expr ->
                     List.iter (
                       fun (e1,t2) ->
                         if n = t2 then
-                          instanciated:= PredSet.add (Not (AstUtil.order_eq (Eq (e1,v)))) !instanciated
+                          instanciated:= PredSet.add (Not (order_eq (Eq (e1,v)))) !instanciated
                       ) !half_instanciated
                 with Not_found ->
                   () (*new var ??*)
@@ -383,7 +381,7 @@ class dag = fun expr ->
                           try
                             let n2 = (self#get_node y)#find in
                               if n1 = n2 then
-                                instanciated := PredSet.add (AstUtil.order_eq (Eq(x,y))) !instanciated
+                                instanciated := PredSet.add (order_eq (Eq(x,y))) !instanciated
                           with Not_found -> ()
                       ) xs
                   with Not_found -> ()
@@ -392,7 +390,7 @@ class dag = fun expr ->
               | [] -> ()
             in
               process_eq vars;
-              PredSet.fold (fun x acc -> x::acc) !instanciated []
+              predSet_to_ordSet !instanciated
 
     method copy =
       let expressions = Hashtbl.fold (fun e _ acc -> e::acc ) nodes [] in
@@ -433,11 +431,11 @@ class dag = fun expr ->
 
     method print =
       let buffer = Buffer.create 100 in
-        Buffer.add_string buffer ("  CC are: "^(Utils.string_list_cat ", "(List.map (fun x -> "["^(Utils.string_list_cat ", " (List.map AstUtil.print_expr x))^"]") self#get_cc)));
+        Buffer.add_string buffer ("  CC are: "^(Utils.string_list_cat ", "(List.map (fun x -> "["^(Utils.string_list_cat ", " (List.map print_expr x))^"]") self#get_cc)));
         Buffer.add_string buffer "\n  Eq are: ";
-        List.iter (fun x -> Buffer.add_string buffer (AstUtil.print x);Buffer.add_string buffer ", ") (self#get_given_eq);
+        List.iter (fun x -> Buffer.add_string buffer (print x);Buffer.add_string buffer ", ") (self#get_given_eq);
         Buffer.add_string buffer "\n  Neq are: ";
-        List.iter (fun x -> Buffer.add_string buffer (AstUtil.print x);Buffer.add_string buffer ", ") (self#get_given_neq);
+        List.iter (fun x -> Buffer.add_string buffer (print x);Buffer.add_string buffer ", ") (self#get_given_neq);
         Buffer.contents buffer
       
   end
@@ -447,7 +445,7 @@ let rec split_eq_neq accEq accNeq lst = match lst with
   | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
   | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
   | [] ->  (accEq,accNeq)
-  | c -> failwith ("DAG: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
+  | c -> failwith ("DAG: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map print c)))
 
 
 (** breadth first search (shortest path from source to sink): consider equalities as edges *)
@@ -490,7 +488,7 @@ let path_to_eq path =
   let rec process lst = match lst with
     | x::y::xs ->
       begin
-        eqs := (AstUtil.order_eq (Eq(x,y)))::!eqs;
+        eqs := (order_eq (Eq(x,y)))::!eqs;
         process (y::xs)
       end
     | _::[] -> ()
@@ -555,8 +553,8 @@ let interpolate_from_graph graph_a graph_b =
 
 (*without preexisting graphs*)
 let interpolate_eq a b =
-  let a_expr = AstUtil.get_expr a in
-  let b_expr = AstUtil.get_expr b in
+  let a_expr = get_expr a in
+  let b_expr = get_expr b in
 
   let graph_a = new dag a_expr in
   let graph_b = new dag b_expr in
@@ -571,9 +569,9 @@ let find_common_expr_graph expr_a expr_b graph_a graph_b common_var common_sym =
     | _ -> false
   in
     try
-      List.find (fun x -> (not (is_cst x)) && (AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0)))) path
+      List.find (fun x -> (not (is_cst x)) && (only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0)))) path
     with Not_found ->
-      List.find (fun x -> AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) path
+      List.find (fun x -> only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) path
 
 let find_common_expr expr_a expr_b eqs common_var common_sym =
   let path = bfs eqs expr_a expr_b in
@@ -582,12 +580,12 @@ let find_common_expr expr_a expr_b eqs common_var common_sym =
     | _ -> false
   in
     try
-      List.find (fun x -> (not (is_cst x)) && (AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0)))) path
+      List.find (fun x -> (not (is_cst x)) && (only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0)))) path
     with Not_found ->
-      List.find (fun x -> AstUtil.only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) path
+      List.find (fun x -> only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) path
 
 let unsat_core formula =
-  let expr = AstUtil.get_expr formula in
+  let expr = get_expr formula in
   let graph = new dag expr in
     if (graph#is_satisfiable formula) then 
       raise (SAT_FORMULA formula)
@@ -622,14 +620,14 @@ let interpolate_eq_lst common_var common_sym lst =
      | _ -> failwith "Dag: find_proof"
   in
 
-  let exprs = List.map AstUtil.get_expr_set lst in
+  let exprs = List.map get_expr_set lst in
   let (cumulative_expr,graphs) =
     let (_,_,cumulative_expr,gr) = List.fold_left2
       (fun (exprs,formula_lst,accExpr,accGr) expr lst ->
         let exprs = ExprSet.union exprs expr in
-        let exprs_lst = ExprSet.fold (fun x acc -> x::acc) exprs [] in
+        let exprs_lst = exprSet_to_ordSet exprs in
         let graph = new dag exprs_lst in
-        let formula = AstUtil.normalize_only (And [lst;formula_lst]) in
+        let formula = normalize_only (And [lst;formula_lst]) in
         let _ = graph#is_satisfiable formula in
           (exprs, formula, exprs::accExpr,graph::accGr)
       )
@@ -665,15 +663,15 @@ let interpolate_eq_lst common_var common_sym lst =
                   let local_path = List.filter (fun eq -> graph#entailed eq) path in
                   let expr =
                     ExprSet.filter
-                      (fun x -> AstUtil.only_vars_and_symbols common_var.(i) common_sym.(i) (Eq(x,Constant 0.0)))
+                      (fun x -> only_vars_and_symbols common_var.(i) common_sym.(i) (Eq(x,Constant 0.0)))
                       cumulative_expr.(i) 
                   in
-                  let expr_lst = ExprSet.fold (fun x acc -> x::acc) expr [] in
+                  let expr_lst = exprSet_to_ordSet expr in
                   let common =
                     List.map
                       (fun eq -> match eq with
                         | Eq (e1,e2) ->
-                          AstUtil.order_eq
+                          order_eq
                             (Eq(graph#project_expr e1 expr_lst,
                                 graph#project_expr e2 expr_lst))
                         | _ -> failwith "Dag, interpolate_eq_lst (2)"

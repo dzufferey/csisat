@@ -213,7 +213,7 @@ let rec get_lt_lambdas target_array lambdas = match lambdas with
 let interpolate_clp lst =
   Message.print Message.Debug (lazy("interpolate_clp called: " ^ (Utils.string_list_cat ", " (List.map print lst))));
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
-  let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
+  let vars = exprSet_to_ordSet vars_set in
   let nb_vars = List.length vars in
     Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
     if nb_vars <= 0 then
@@ -302,7 +302,7 @@ let interpolate_clp lst =
 let unsat_core lst =
   Message.print Message.Debug (lazy("unsat_core_clp called: " ^ (Utils.string_list_cat ", " (List.map print lst))));
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
-  let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
+  let vars = exprSet_to_ordSet vars_set in
   let nb_vars = List.length vars in
     Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
     assert (nb_vars > 0 );

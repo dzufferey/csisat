@@ -28,7 +28,7 @@ open   CsisatPicoInterface
 open   CsisatDpllCore
 (**/**)
 module AstUtil     = CsisatAstUtil
-module PredSet     = AstUtil.PredSet
+module PredSet     = CsisatAstUtil.PredSet
 module Utils       = CsisatUtils
 module NelsonOppen = CsisatNelsonOppen
 module DpllClause  = CsisatDpllClause
@@ -134,6 +134,10 @@ let is_pl_sat formula =
     solver#init f;
     solver#solve
 
+let check_trivial_case f = match f with
+  | True -> raise SAT
+  | False -> failwith "SatPL, check_trivial_case: False"
+  | _ -> ()
 
 let is_sat formula =
   Message.print Message.Debug (lazy("is_sat for"^(AstUtil.print formula)));
@@ -169,6 +173,7 @@ let is_sat formula =
               let assign = AstUtil.remove_atoms (And solution) in
               try
                 (*TODO config can force a theory*)
+                check_trivial_case assign;
                 let unsat_core = NelsonOppen.unsat_core assign in
                   Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
                 let clause = unsat_core in
@@ -216,22 +221,12 @@ let unsat_cores_LIUIF formula =
       if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
-          (*
-          let solution =
-            List.map
-              (fun x ->
-                let atom = List.hd (AstUtil.get_proposition x) in
-                  (atom, x=atom)
-              )
-              (solver#get_solution)
-          in
-          let assign = unabstract_bool atom_to_pred solution in
-          *)
           let solution = solver#get_solution in
           let externals = AstUtil.get_external_atoms (And solution) in
           let assign = AstUtil.remove_atoms (And solution) in
           (*TODO config can force a theory*)
           try
+            check_trivial_case assign;
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
               Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
               cores := core_with_info::!cores;
@@ -265,7 +260,7 @@ let unsat_cores_LIUIF formula =
                     begin
                       (*not covered => bool contradiction*)
                       (*detect and directly add to cores*)
-                      let entailed = ref AstUtil.PredSet.empty in
+                      let entailed = ref PredSet.empty in
                       let rec process lst = match lst with
                         | x::xs ->
                           begin
@@ -276,13 +271,13 @@ let unsat_cores_LIUIF formula =
                               | Leq (e1,e2) -> Lt (e2, e1)
                               | _ -> failwith "SatPL: not normalized formula"
                             in
-                              if AstUtil.PredSet.mem contra !entailed then
+                              if PredSet.mem contra !entailed then
                                 begin
                                   cores := (And [x;contra],NelsonOppen.BOOL, [])::!cores
                                 end
                               else
                                 begin
-                                  entailed := AstUtil.PredSet.add x !entailed;
+                                  entailed := PredSet.add x !entailed;
                                   process xs
                                 end
                           end
@@ -311,6 +306,7 @@ let unsat_cores_with_proof formula =
           let externals = AstUtil.get_external_atoms (And solution) in
           let assign = AstUtil.remove_atoms (And solution) in
           try
+            check_trivial_case assign;
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
               Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
               cores := core_with_info::!cores;
@@ -353,18 +349,14 @@ let make_proof_without_solver formula core =
     | And lst -> lst
     | _ -> failwith "SatPL, make_proof_without_solver: formula is not a conj"
   in
-  let clause_of_set set =
-    let lst = PredSet.fold (fun x acc -> (AstUtil.contra x ):: acc) set [] in
-      new DpllClause.clause (Or lst) false
-  in
   let rec build_proof proof to_resolv lst = match lst with
     | x::xs ->
       begin
         if PredSet.mem x to_resolv then
           begin
-            let clause = new DpllClause.clause (Or [x]) false in
+            let clause = PredSet.singleton x in
             let to_resolv = PredSet.remove x to_resolv in
-            let prf = DpllProof.RPNode (AstUtil.proposition_of_lit x, proof, DpllProof.RPLeaf clause, clause_of_set to_resolv) in
+            let prf = DpllProof.RPNode (AstUtil.proposition_of_lit x, proof, DpllProof.RPLeaf clause, to_resolv) in
               if PredSet.is_empty to_resolv then
                 prf
               else
@@ -381,4 +373,4 @@ let make_proof_without_solver formula core =
         proof
       end
   in
-    build_proof (DpllProof.RPLeaf (clause_of_set to_resolv)) to_resolv lst
+    build_proof (DpllProof.RPLeaf to_resolv) to_resolv lst

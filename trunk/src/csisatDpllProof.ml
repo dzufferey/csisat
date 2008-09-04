@@ -23,13 +23,21 @@
 
 (** Part of the DPLL: (resolution) Proof *)
 
+
 open   CsisatAst
 open   CsisatAstUtil
 open   CsisatDpllClause
 
+type clause_t = PredSet.t
+
+let string_of_clause_t cl =
+  (CsisatUtils.string_list_cat ", "
+    (PredSet.fold (fun x acc -> (print x)::acc) cl []))
+  
+
 (** Resolution proof*)
-type res_proof = RPNode of predicate * res_proof * res_proof * clause (** pivot, left, right, result*)
-               | RPLeaf of clause (** A leaf is simply a clause.*)
+type res_proof = RPNode of predicate * res_proof * res_proof * clause_t (** pivot, left, right, result*)
+               | RPLeaf of clause_t (** A leaf is simply a clause.*)
 
 
 let get_result proof = match proof with
@@ -49,14 +57,14 @@ let string_of_proof prf =
       begin
         fill_offset offset;
         Buffer.add_string buffer "Leaf node: ";
-        Buffer.add_string buffer (cl#to_string);
+        Buffer.add_string buffer (string_of_clause_t cl);
         Buffer.add_char buffer '\n'
       end
     | RPNode (pivot,left,right,new_cl) ->
       begin
         fill_offset offset;
         Buffer.add_string buffer ("Inner node with pivot "^(print pivot)^": ");
-        Buffer.add_string buffer (new_cl#to_string);
+        Buffer.add_string buffer (string_of_clause_t new_cl);
         Buffer.add_char buffer '\n';
         print_prf left (offset + 4);
         print_prf right (offset + 4)
@@ -115,7 +123,8 @@ let tracecheck_of_proof prf =
           begin
             Buffer.add_string buffer (string_of_int (get_index cl));
             Buffer.add_char buffer ' ';
-            Buffer.add_string buffer (cl#to_string_dimacs get_index_atom);
+            let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) cl [] in
+            Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
             Buffer.add_string buffer " 0\n"
           end
         | RPNode (pivot,left,right,new_cl) ->
@@ -124,7 +133,8 @@ let tracecheck_of_proof prf =
             print_prf right;
             Buffer.add_string buffer (string_of_int (get_index new_cl));
             Buffer.add_char buffer ' ';
-            Buffer.add_string buffer (new_cl#to_string_dimacs get_index_atom);
+            let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) new_cl [] in
+            Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
             Buffer.add_char buffer ' ';
             Buffer.add_string buffer (string_of_int (get_index (get_result left)));
             Buffer.add_char buffer ' ';

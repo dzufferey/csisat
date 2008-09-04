@@ -26,8 +26,8 @@
 open   CsisatAst
 (**/**)
 module AstUtil = CsisatAstUtil
-module PredSet = AstUtil.PredSet
-module ExprSet = AstUtil.ExprSet
+module PredSet = CsisatAstUtil.PredSet
+module ExprSet = CsisatAstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet

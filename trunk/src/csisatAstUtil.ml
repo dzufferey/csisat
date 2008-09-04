@@ -499,6 +499,12 @@ module Pred =
     let compare = compare
   end
 module PredSet = Set.Make(Pred)
+
+let exprSet_to_ordSet set =
+  OrdSet.list_to_ordSet (ExprSet.fold (fun x acc -> x::acc) set [])
+
+let predSet_to_ordSet set =
+  OrdSet.list_to_ordSet (PredSet.fold (fun x acc -> x::acc) set [])
 (**************************************)
 
 (** Returns the expressions of a predicate as a set.
@@ -520,12 +526,13 @@ let get_expr_set pred =
 
 (** Returns the expressions of a predicate as a list
  * Fetches only top-level expressions.
+ * @return an OrdSet.
  *)
-let get_expr pred =
-    ExprSet.fold (fun x acc -> x::acc) (get_expr_set pred) []
+let get_expr pred = exprSet_to_ordSet (get_expr_set pred)
 
 (** Returns the expressions of a predicate as a set.
  * Also fetches subexpressions.
+ * @return an OrdSet.
  *)
 let get_expr_deep pred =
   let rec process_expr expr = match expr with
@@ -546,25 +553,8 @@ let get_expr_deep pred =
     | Leq (e1,e2) -> ExprSet.union (process_expr e1) (process_expr e2)
     | Atom _ -> ExprSet.empty
   in
-    ExprSet.fold (fun x acc -> x::acc) (process_pred pred) []
+    exprSet_to_ordSet (process_pred pred)
   
-
-(** Gets all the sub-predicates.
- * @return an OrdSet.
- *)
-let get_subterm pred =
-  let rec process pred = match pred with
-    | False -> []
-    | True -> []
-    | And lst as an -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [an] lst
-    | Or lst as o -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [o] lst
-    | Not p as n -> OrdSet.union [n] (process p)
-    | Eq _ as eq -> [eq]
-    | Lt _ as lt -> [lt]
-    | Leq _ as leq -> [leq]
-    | Atom _ as a -> [a]
-  in
-    process pred
 
 (** Gets all the sub-predicates.
  * @return a Set.
@@ -582,6 +572,11 @@ let get_subterm_set pred =
     | Atom _ as a -> PredSet.singleton a
   in
     process pred
+
+(** Gets all the sub-predicates.
+ * @return an OrdSet.
+ *)
+let get_subterm pred = predSet_to_ordSet (get_subterm_set pred)
 
 (** get the sub-predicates but does not go inside literals
  * Assumes NNF.

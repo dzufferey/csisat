@@ -146,7 +146,7 @@ class picosat with_proof =
             assert(!i = ((Array.length raw_zhain) -1));
             (*buils the clauses*)
             let atoms = List.map self#get_atom !lits in
-            let cl = new clause (Or atoms) false in
+            let cl = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty atoms in
               Hashtbl.add idx_to_clause idx cl;
               (idx, cl, !parents)
         ) seps
@@ -169,10 +169,8 @@ class picosat with_proof =
                   (fun left id ->
                     Message.print Message.Debug (lazy("searching "^(string_of_int id)));
                     let right = Hashtbl.find proof_cache id in
-                    let cll = get_result left in
-                    let clr = get_result right in
-                    let left_lit = cll#get_propositions in
-                    let right_lit = clr#get_propositions in
+                    let left_lit = get_result left in
+                    let right_lit = get_result right  in
                     let neg_right_lit = PredSet.fold
                       (fun x acc -> PredSet.add (contra x) acc)
                       right_lit PredSet.empty
@@ -182,13 +180,11 @@ class picosat with_proof =
                       (*TODO the order of the parents is arbitrary*)
                     let pivot = proposition_of_lit (PredSet.choose pivot_set) in
                       let new_lits =
-                        PredSet.fold (fun x acc -> x::acc)
-                          (PredSet.remove (contra pivot)
-                            (PredSet.remove pivot
-                              (PredSet.union left_lit right_lit))) []
+                        PredSet.remove (contra pivot)
+                         (PredSet.remove pivot
+                           (PredSet.union left_lit right_lit))
                       in
-                      let new_cl = new clause (Or new_lits) false in
-                        RPNode(pivot, left, right, new_cl)
+                        RPNode(pivot, left, right, new_lits)
                   )
                   (Hashtbl.find proof_cache (List.hd parents)) (List.tl parents)
                 in
