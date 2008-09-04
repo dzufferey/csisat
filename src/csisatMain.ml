@@ -37,6 +37,8 @@ module FociParse   = CsisatFociParse
 module FociLex     = CsisatFociLex
 module InfixLex    = CsisatInfixLex
 module InfixParse  = CsisatInfixParse
+module DimacsLex   = CsisatDimacsLex
+module DimacsParse = CsisatDimacsParse
 (**/**)
 
 let print_fct = ref FociPrinter.print_foci
@@ -66,6 +68,7 @@ let read_input () =
                     InfixParse.main InfixLex.token lexbuf
                 end
             end
+            (* Dimacs format is only for the satsolver test *)
       end
     | Config.SyntaxFoci ->
       begin
@@ -78,6 +81,17 @@ let read_input () =
         let lexbuf = Lexing.from_channel stdin in
           print_fct := AstUtil.print_infix;
           InfixParse.main InfixLex.token lexbuf
+      end
+    | Config.SyntaxDimacs ->
+      begin
+        if not !Config.sat_only then
+          failwith "DIMACS format is to test the satsolver, please use it with '-sat'.";
+        let lexbuf = Lexing.from_channel stdin in
+          print_fct := AstUtil.print_infix;
+          let (t,_,c, cnf) = DimacsParse.main DimacsLex.token lexbuf in
+            if t <> "cnf" then failwith "DIMACS: expected 'cnf'";
+            assert (c = List.length cnf);
+            [And (List.map (fun lst -> Or lst) cnf)]
       end
 
 

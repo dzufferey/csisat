@@ -24,7 +24,11 @@
 (** Parsing of argument + configuration variables *)
 
 (** Syntax for I/O*)
-type syntax_t = SyntaxFoci | SyntaxInfix | SyntaxUnk
+type syntax_t =
+  | SyntaxFoci
+  | SyntaxInfix
+  | SyntaxDimacs (* to use with '-sat' *)
+  | SyntaxUnk
 
 (**check the interpolant*)
 let check = ref false
@@ -40,6 +44,7 @@ let syntax = ref SyntaxUnk
 let set_syntax str = match str with
   | "foci" -> syntax := SyntaxFoci
   | "infix" -> syntax := SyntaxInfix
+  | "dimacs" -> syntax := SyntaxDimacs
   | _ -> failwith ("Unknown syntax: "^str)
 
 let options = 

@@ -50,6 +50,8 @@ FILES = \
 	$(OBJ)/csisatFociPrinter.cmx \
 	$(OBJ)/csisatFociLex.cmx \
 	$(OBJ)/csisatFociParse.cmx \
+	$(OBJ)/csisatDimacsLex.cmx \
+	$(OBJ)/csisatDimacsParse.cmx \
 	$(OBJ)/csisatClpLI.cmx \
 	$(OBJ)/csisatDag.cmx \
 	$(OBJ)/csisatSatUIF.cmx \
@@ -95,6 +97,17 @@ $(OBJ)/csisatInfixParse.cmi: $(OBJ)/csisatInfixParse.mli
 $(OBJ)/csisatInfixLex.cmx: $(OBJ)/csisatInfixParse.cmi $(OBJ)/csisatInfixLex.ml
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatInfixLex.ml
 	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatInfixLex.ml
+
+#DIMACS syntax
+$(OBJ)/csisatDimacsParse.mli: $(OBJ)/csisatDimacsParse.ml
+
+$(OBJ)/csisatDimacsParse.cmi: $(OBJ)/csisatDimacsParse.mli
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
+	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
+
+$(OBJ)/csisatDimacsLex.cmx: $(OBJ)/csisatDimacsParse.cmi $(OBJ)/csisatDimacsLex.ml
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatDimacsLex.ml
+	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $(OBJ)/csisatDimacsLex.ml
 
 ####################################
 

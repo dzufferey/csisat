@@ -24,6 +24,34 @@
 (** General methods that are independent from other parts.
  *)
 
+module Int =
+  struct
+    type t = int
+    let compare = compare
+  end
+module IntSet = Set.Make(Int)
+
+(** ugly method to search in an IntSet *)
+let find_in_IntSet query set =
+  let elt = ref None in
+  let res =  IntSet.exists
+    (fun x ->
+      if query x then
+        begin
+          elt := Some x;
+          true
+        end
+      else false
+    ) set
+  in
+    if res then
+      begin
+        match !elt with
+        | Some x -> x
+        | None -> failwith "Utils, find_in_IntSet: found, but not found ?!"
+      end
+    else raise Not_found
+
 (** Concatenates a list of string, adding a separator between 2 elements.
  * @param sep the separator
  * @param lst the list to concatenate
@@ -187,7 +215,8 @@ let factorise n =
 (** power of integers.
  *  Assume exponent to be >= 0
  *)
-let rec power base exponent =
+let power base exponent =
+  assert (exponent >= 0);
   let rec pow acc base exponent = 
     if exponent = 0 then acc
     else if (exponent mod 2) = 0 then pow acc (base * base) (exponent / 2)
