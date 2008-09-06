@@ -62,10 +62,10 @@ class int_system =
     val mutable resolution_proof = None
     
     val mutable clauses = Array.make 0 (new int_clause 1 [1] true )
-    val mutable assignment = Array.make 1 lUnk
+    val mutable assignment = Array.make 2 lUnk
     val choices = Stack.create ()
     val mutable unsat_clauses = IntSet.empty
-    val mutable prop_to_clauses = Array.make 0 (IntSet.empty, IntSet.empty)
+    val mutable prop_to_clauses = Array.make 2 (IntSet.empty, IntSet.empty)
     val mutable learning_level = 1
     val partial_proof = Hashtbl.create 1000
 
@@ -92,25 +92,30 @@ class int_system =
 
 
     method resize max_index =
-      let size = Array.length assignment in
+      let size = (Array.length assignment) -1 in
+        Message.print Message.Debug
+          (lazy("DPLL, resizing from "^(string_of_int size)^" to "^(string_of_int max_index)));
         if max_index <> size then
           begin
             if max_index < size then
               begin
-                for i = max_index + 1 to (Array.length assignment) -1 do
+                for i = max_index + 1 to size do
                   assert (assignment.(i) = lUnk);
                   assert (prop_to_clauses.(i) = (IntSet.empty, IntSet.empty))
                 done
               end;
+            Message.print Message.Debug (lazy("DPLL, resizing clauses"));
             Array.iter (fun x -> x#resize max_index) clauses;
 
+            Message.print Message.Debug (lazy("DPLL, resizing assignment"));
             let new_array = Array.make (max_index + 1) lUnk in
-              Array.blit assignment 1 new_array 1 max_index;
+              Array.blit assignment 1 new_array 1 (min max_index size);
               assignment <- new_array;
               
+              Message.print Message.Debug (lazy("DPLL, resizing prop_to_clauses"));
               let new_prop_to_clause =  Array.make (max_index + 1) (IntSet.empty, IntSet.empty) in
-                Array.blit prop_to_clauses 1 new_prop_to_clause 1 max_index;
-                prop_to_clauses <- prop_to_clauses
+                Array.blit prop_to_clauses 1 new_prop_to_clause 1 (min max_index size);
+                prop_to_clauses <- new_prop_to_clause
           end
     
     method private add_to_prop_to_clause index cl =
@@ -128,10 +133,13 @@ class int_system =
           ) neg
 
     method init (formula: int list list) =
+      Message.print Message.Debug (lazy("DPLL, init"));
       (* clauses *)
-      let size = Array.length assignment in
+      let size = (Array.length assignment -1) in
+      Message.print Message.Debug (lazy("DPLL, create clauses"));
       let clauses_lst = List.map (fun x -> new int_clause size x false) formula in
         clauses <- Array.of_list clauses_lst;
+      Message.print Message.Debug (lazy("DPLL, add_to_prop_to_clause"));
         Array.iteri (fun i c -> self#add_to_prop_to_clause i c) clauses;
         (* unsat_clauses *)
         let nb_clauses = Array.length clauses in
@@ -143,7 +151,8 @@ class int_system =
           (* clause learning *)
           let cl_size = List.map List.length formula in
           let average_size = (List.fold_left (+) 0 cl_size) / nb_clauses in
-            self#set_learning_level ((3 * average_size) / 2)
+            self#set_learning_level ((3 * average_size) / 2);
+      Message.print Message.Debug (lazy("DPLL, initialized"))
     
     method reset =
       possibly_sat <- true;
