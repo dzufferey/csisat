@@ -56,10 +56,11 @@ class int_clause =
 
     (** changes the size of the array that stores the literals *)
     method resize max_index =
-      if max_index > Array.length literals then
+      let size = (Array.length literals) -1 in
+      if max_index > size then
         begin
           let new_array = Array.make (max_index + 1) lUnk in
-            Array.blit literals 1 new_array 1 max_index;
+            Array.blit literals 1 new_array 1 size;
             literals <- new_array
         end
       else if max_index < Array.length literals then
