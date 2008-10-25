@@ -216,6 +216,15 @@ class dag = fun expr ->
               List.iter (self#add_neq) neq;
               List.fold_left (fun acc x -> acc @ (self#add_constr_with_applied x) ) [] eq (*TODO change "acc @ ..."*)
           end
+        | Eq _ as eq ->
+          begin
+            self#add_constr_with_applied eq
+          end
+        | Not (Eq _) as neq ->
+          begin
+            self#add_neq neq;
+            []
+          end
         | err -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
 
    method create_and_add_constr eq = match eq with(*TODO buggy because of congruence parent*)
