@@ -22,24 +22,7 @@
  *)
 
 (** Parsing of argument + configuration variables *)
-
-(** Syntax for I/O*)
-type syntax_t =
-  | SyntaxFoci
-  | SyntaxInfix
-  | SyntaxDimacs (* to use with '-sat' *)
-  | SyntaxUnk
-
-(**check the interpolant*)
-let check = ref false
-(** check the satisfiability, do not compute interpolant*)
-let sat_only = ref false
-(** round coefficient of the interpolant to get integers (!!limited precision)*)
-let round = ref false
-(** x < y  ~>  x+1 <= y *)
-let integer_heuristics = ref false
-(** Syntax: foci or infix *)
-let syntax = ref SyntaxUnk
+open CsisatGlobal
 
 let set_syntax str = match str with
   | "foci" -> syntax := SyntaxFoci
@@ -64,7 +47,9 @@ let options =
     ("-round", Arg.Unit (fun () -> round := true),
       "Try to round the coefficient to integer values. WARNING: still experimental.");
     ("-int", Arg.Unit (fun () -> integer_heuristics := true),
-      "Apply heuristics to solve over integers. This is not sound, neither complete in general.")
+      "Apply heuristics to solve over integers. This is not sound, neither complete in general.");
+    ("-noAssert", Arg.Unit (fun () -> assert_disable := true),
+      "Disable runtime checks.")
   ]
 
 let usage = (

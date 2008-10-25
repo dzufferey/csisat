@@ -27,6 +27,7 @@ open   CsisatAst
 open   CsisatPicoInterface
 open   CsisatDpllCore
 (**/**)
+module Global      = CsisatGlobal
 module AstUtil     = CsisatAstUtil
 module PredSet     = CsisatAstUtil.PredSet
 module Utils       = CsisatUtils
@@ -369,7 +370,7 @@ let make_proof_without_solver formula core =
       end
     | [] ->
       begin
-        assert(PredSet.is_empty to_resolv);
+        assert(!(Global.assert_disable) || PredSet.is_empty to_resolv);
         proof
       end
   in

@@ -28,23 +28,25 @@ OCAML_OPT_LEX = $(shell if which ocamllex.opt 2> /dev/null > /dev/null ; then ec
 OCAML_OPT_YACC = $(shell if which ocamlyacc.opt 2> /dev/null > /dev/null ; then echo ocamlyacc.opt; else echo ocamlyacc; fi)
 
 COMPILE_FLAG = -inline 10
+#COMPILE_FLAG = -inline 10 -unsafe -noassert
 #COMPILE_FLAG = -p
 OCAML_LD_FLAGS = 
 
 
 FILES = \
+	$(OBJ)/csisatGlobal.cmx \
 	$(OBJ)/csisatMessage.cmx \
 	$(OBJ)/csisatOrdSet.cmx \
 	$(OBJ)/csisatUtils.cmx \
 	$(OBJ)/csisatAst.cmx \
 	$(OBJ)/csisatAstUtil.cmx \
+	$(OBJ)/csisatLIUtils.cmx \
 	$(OBJ)/csisatDpllClause.cmx \
 	$(OBJ)/csisatDpllProof.cmx \
 	$(OBJ)/csisatSatInterface.cmx \
 	$(OBJ)/csisatPicoInterface.cmx \
 	$(OBJ)/csisatDpllCore.cmx \
 	$(OBJ)/csisatMatrix.cmx \
-	$(OBJ)/csisatLIUtils.cmx \
 	$(OBJ)/csisatInfixLex.cmx \
 	$(OBJ)/csisatInfixParse.cmx \
 	$(OBJ)/csisatFociPrinter.cmx \

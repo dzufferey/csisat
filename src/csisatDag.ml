@@ -29,6 +29,7 @@ open   CsisatAstUtil
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
+module Global  = CsisatGlobal
 (**/**)
 
 (** A node in the graph: uninterpreted fct or variable.
@@ -545,7 +546,7 @@ let interpolate_from_graph graph_a graph_b =
                   end
                 else
                   begin
-                    assert (List.mem brocken proj_b_neq);
+                    assert (!(Global.assert_disable) || List.mem brocken proj_b_neq);
                     And a_eq
                   end
             end

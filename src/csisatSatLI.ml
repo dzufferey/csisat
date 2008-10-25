@@ -27,6 +27,7 @@ open   CsisatAst
 open   CsisatAstUtil
 open   CsisatLIUtils
 (**/**)
+module Global  = CsisatGlobal
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
@@ -350,7 +351,7 @@ let unsat_core formula =
   | And lst ->
     begin
       let core = And (ClpLI.unsat_core lst) in
-        assert (not (is_li_sat core));
+        assert (!(Global.assert_disable) || not (is_li_sat core));
         core
     end
   | Eq _ | Leq _ | Lt _ as e ->

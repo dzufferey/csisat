@@ -29,6 +29,7 @@
 open   CsisatAst
 open   CsisatAstUtil
 (**/**)
+module Global      = CsisatGlobal
 module Message     = CsisatMessage
 module Utils       = CsisatUtils
 module OrdSet      = CsisatOrdSet
@@ -239,8 +240,8 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
               | B -> ( b_part_eq := eq::!b_part_eq; b_part_li := eq::!b_part_li )
               | Mixed ->
                 begin
-                  assert(s=_s);
-                  assert(th = NelsonOppen.LI);
+                  assert(!(Global.assert_disable) || s=_s);
+                  assert(!(Global.assert_disable) || th = NelsonOppen.LI);
                   match (eq,it) with
                   | (Eq(ea,eb),Lt(e1,e2)) ->
                     let eqa = order_eq (Eq(ea,e1)) in
@@ -290,12 +291,12 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
         let (a_its, b_its, mixed_its) = split_side lst in
           if th = NelsonOppen.UIF then
             begin
-              assert(mixed_its = []);
+              assert(!(Global.assert_disable) || mixed_its = []);
               And ((Or (it::a_its))::b_its)
             end
           else
             begin
-              assert(th=NelsonOppen.LI);
+              assert(!(Global.assert_disable) || th=NelsonOppen.LI);
               match (a_its, b_its, mixed_its) with
               | (lst,[],[]) -> Or (it::lst)
               | ([],lst,[]) -> And (it::lst)
@@ -372,9 +373,9 @@ let partial_interpolant_lst lst_prop (core, theory, eq_deduced) =
           i + 1
         ) 0 lst_vars lst_sym
     in
-      assert(!_min >= 0);
-      assert(!_max >= 0);
-      assert(!_max >= !_min);
+      assert(!(Global.assert_disable) || !_min >= 0);
+      assert(!(Global.assert_disable) || !_max >= 0);
+      assert(!(Global.assert_disable) || !_max >= !_min);
       (!_min,!_max)
   in
 
@@ -437,8 +438,8 @@ let partial_interpolant_lst lst_prop (core, theory, eq_deduced) =
               | B -> ( b_part_eq := eq::!b_part_eq; b_part_li := eq::!b_part_li )
               | Mixed ->
                 begin
-                  assert(s=_s);
-                  assert(th = NelsonOppen.LI);
+                  assert(!(Global.assert_disable) || s=_s);
+                  assert(!(Global.assert_disable) || th = NelsonOppen.LI);
                   match (eq,it) with
                   | (Eq(ea,eb),Lt(e1,e2)) ->
                     let eqa = order_eq (Eq(ea,e1)) in
@@ -473,12 +474,12 @@ let partial_interpolant_lst lst_prop (core, theory, eq_deduced) =
         let (a_its, b_its, mixed_its) = split_side lst in
           if th = NelsonOppen.UIF then
             begin
-              assert(mixed_its = []);
+              assert(!(Global.assert_disable) || mixed_its = []);
               And ((Or (it::a_its))::b_its)
             end
           else
             begin
-              assert(th=NelsonOppen.LI);
+              assert(!(Global.assert_disable) || th=NelsonOppen.LI);
               match (a_its, b_its, mixed_its) with
               | (lst,[],[]) -> Or (it::lst)
               | ([],lst,[]) -> And (it::lst)
@@ -566,13 +567,13 @@ let recurse_in_proof a b proof cores_with_info =
             | (true, true) ->
               if PredSet.mem pivot (DpllProof.get_result left) then
                 begin
-                  assert (PredSet.mem (contra pivot) (DpllProof.get_result right));
+                  assert (!(Global.assert_disable) || PredSet.mem (contra pivot) (DpllProof.get_result right));
                   And [Or [pivot ;left_it]; Or [Not pivot ;right_it]]
                 end
               else
                 begin
-                  assert (PredSet.mem (contra pivot) (DpllProof.get_result left));
-                  assert (PredSet.mem pivot (DpllProof.get_result right));
+                  assert (!(Global.assert_disable) || PredSet.mem (contra pivot) (DpllProof.get_result left));
+                  assert (!(Global.assert_disable) || PredSet.mem pivot (DpllProof.get_result right));
                   And [Or [Not pivot ;left_it]; Or [pivot ;right_it]]
                 end
             | (true, false) -> Or [left_it; right_it]
@@ -693,7 +694,7 @@ let interpolate_with_one_proof lst =
           [] norms
         in
         let scan = List.rev (List.tl scan) in
-          assert(List.exists (fun x -> x == False) scan);
+          assert(!(Global.assert_disable) || List.exists (fun x -> x == False) scan);
           scan
       end
     else if is_conj_only all then
@@ -801,13 +802,13 @@ let recurse_in_proof_lst lst proof cores_with_info =
                   | (true, true) ->
                       if (DpllProof.get_result left)#has pivot then
                         begin
-                          assert ((DpllProof.get_result right)#has_not pivot);
+                          assert (!(Global.assert_disable) || (DpllProof.get_result right)#has_not pivot);
                           And [Or [pivot ;left_it]; Or [Not pivot ;right_it]]
                         end
                       else
                         begin
-                          assert ((DpllProof.get_result left)#has_not pivot);
-                          assert ((DpllProof.get_result right)#has pivot);
+                          assert (!(Global.assert_disable) || (DpllProof.get_result left)#has_not pivot);
+                          assert (!(Global.assert_disable) || (DpllProof.get_result right)#has pivot);
                           And [Or [Not pivot ;left_it]; Or [pivot ;right_it]]
                         end
                   | (true, false) -> Or [left_it; right_it]

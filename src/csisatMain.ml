@@ -22,9 +22,9 @@
  *)
 
 open   CsisatAst
+open   CsisatGlobal
 (**/**)
 module Message     = CsisatMessage
-module Config      = CsisatConfig
 module AstUtil     = CsisatAstUtil
 module Utils       = CsisatUtils
 module OrdSet      = CsisatOrdSet
@@ -44,8 +44,8 @@ module DimacsParse = CsisatDimacsParse
 let print_fct = ref FociPrinter.print_foci
 
 let read_input () =
-    match !(Config.syntax) with
-    | Config.SyntaxUnk ->
+    match !syntax with
+    | SyntaxUnk ->
       begin
         let buffer = Buffer.create 10000 in
           try
@@ -70,27 +70,27 @@ let read_input () =
             end
             (* Dimacs format is only for the satsolver test *)
       end
-    | Config.SyntaxFoci ->
+    | SyntaxFoci ->
       begin
         let lexbuf = Lexing.from_channel stdin in
           print_fct := FociPrinter.print_foci;
           FociParse.main FociLex.token lexbuf
       end
-    | Config.SyntaxInfix ->
+    | SyntaxInfix ->
       begin
         let lexbuf = Lexing.from_channel stdin in
           print_fct := AstUtil.print_infix;
           InfixParse.main InfixLex.token lexbuf
       end
-    | Config.SyntaxDimacs ->
+    | SyntaxDimacs ->
       begin
-        if not !Config.sat_only then
+        if not !sat_only then
           failwith "DIMACS format is to test the satsolver, please use it with '-sat'.";
         let lexbuf = Lexing.from_channel stdin in
           print_fct := AstUtil.print_infix;
           let (t,_,c, cnf) = DimacsParse.main DimacsLex.token lexbuf in
             if t <> "cnf" then failwith "DIMACS: expected 'cnf'";
-            assert (c = List.length cnf);
+            assert (!assert_disable || c = List.length cnf);
             [And (List.map (fun lst -> Or lst) cnf)]
       end
 
@@ -131,17 +131,17 @@ let interpolant_test_lst it_lst f_lst =
 let interpolate_in () =
   let lst = read_input () in
   let lst =
-    if (!Config.integer_heuristics) then List.map AstUtil.integer_heuristic  lst
+    if !integer_heuristics then List.map AstUtil.integer_heuristic  lst
     else lst
   in
   let it a b = 
     try
       let it =
-        if !(Config.round) then AstUtil.simplify (LIUtils.round_coeff (Interpolate.interpolate_with_proof a b))
+        if !round then AstUtil.simplify (LIUtils.round_coeff (Interpolate.interpolate_with_proof a b))
         else Interpolate.interpolate_with_proof a b
       in
         Message.print Message.Normal (lazy(!print_fct [it]));
-        if !(Config.check) then interpolant_test it a b
+        if !check then interpolant_test it a b
     with SAT_FORMULA f ->
         Message.print Message.Error (lazy("Satisfiable: "^(!print_fct [f])))
   in
@@ -169,7 +169,7 @@ let interpolate_in () =
           begin
             try
               let its = (*Interpolate.interpolate_with_one_proof lst in*)
-                if !(Config.round) then
+                if !round then
                   List.map
                     (fun x -> AstUtil.simplify ( LIUtils.round_coeff x))
                     (Interpolate.interpolate_with_one_proof lst)
@@ -178,16 +178,16 @@ let interpolate_in () =
                 List.iter (fun it ->
                   Message.print Message.Normal (lazy(!print_fct [it]));
                 ) its;
-                if !(Config.check) then interpolant_test_lst its lst
+                if !check then interpolant_test_lst its lst
             with SAT_FORMULA f ->
               Message.print Message.Error (lazy("Satisfiable: "^(!print_fct [f])))
           end
       end
 
-let sat_only () =
+let sat_only_ () =
   let lst = read_input () in
   let lst =
-    if (!Config.integer_heuristics) then List.map AstUtil.integer_heuristic  lst
+    if !integer_heuristics then List.map AstUtil.integer_heuristic  lst
     else lst
   in
   let formula = AstUtil.simplify (And lst) in
@@ -213,7 +213,7 @@ let stat () =
 
 let main =
   Random.self_init ();
-  if !(Config.sat_only) then
-    sat_only ()
+  if !sat_only then
+    sat_only_ ()
   else
     interpolate_in ()
