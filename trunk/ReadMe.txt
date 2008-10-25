@@ -7,11 +7,12 @@ If the input formula is satisfiable,
 CSIsat writes "Satisfiable: <formula>" on stderr.
 'formula' implies the conjunction of the two input formula.
 Otherwise it writes an interpolant to stdout.
+The computed interpolant can be verified with option -check.
 
 Options:
 --------
 -debug   Print debug information.
--check   Check the computed interpolant.
+-check   Check the computed interpolant (consumes additional runtime).
 -sat     Check for satisfiability only (no interpolation).
          Writes only "satisfiable" or "unsatisfiable" to stdout.
 -LAsolver Choose the LA solver to use.
