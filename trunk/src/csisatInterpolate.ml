@@ -303,10 +303,14 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
               | (a,b,[]) ->
                 begin
                   (*Mixed queries*)
+                  (*TODO DZ: I'm not very comfortable with this part.
+                   * It should be re-engineered.
+                   *)
                   let relevant = List.filter(fun x -> match x with Lt(e1,e2) -> true | _ -> false) a in
+                    Message.print Message.Debug (lazy("relevant is: "^(print (And relevant))));
                     match relevant with
                     | Lt(e1,e2)::_ -> Or [(And [it;order_eq (Eq(e1,e2))]); Lt(e1,e2)]
-                    | [] -> it
+                    | [] -> And ((Or (it::a))::b)
                     | _ -> failwith "Interpolate, partial_interpolant: unreachable part!!"
                 end
               | (a,b,c) ->
