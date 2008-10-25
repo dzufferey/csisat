@@ -27,6 +27,9 @@
 open   CsisatAst
 open   CsisatAstUtil
 open   CsisatDpllClause
+(**/**)
+module Global  = CsisatGlobal
+(**/**)
 
 type clause_t = PredSet.t
 
@@ -79,7 +82,7 @@ let tracecheck_of_proof prf =
   let index_to_atom = Hashtbl.create 500 in
   let atom_to_index = Hashtbl.create 500 in
   let get_index_atom atom =
-    assert(is_atomic atom);
+    assert(!(Global.assert_disable) || is_atomic atom);
     let proposition = List.hd (get_proposition atom) in
     let index =
       if Hashtbl.mem atom_to_index proposition then

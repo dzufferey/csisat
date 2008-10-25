@@ -29,6 +29,7 @@ open   CsisatAst
 open   CsisatAstUtil
 open   CsisatLIUtils
 (**/**)
+module Global  = CsisatGlobal
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
@@ -305,7 +306,7 @@ let unsat_core lst =
   let vars = exprSet_to_ordSet vars_set in
   let nb_vars = List.length vars in
     Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
-    assert (nb_vars > 0 );
+    assert (!(Global.assert_disable) || nb_vars > 0 );
 
       (*Warning: the next line works with the assumption that each element of lst is atomic*)
       let prepared = List.map (prepare vars) lst in

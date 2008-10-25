@@ -25,6 +25,7 @@
 
 open   CsisatAst
 (**/**)
+module Global  = CsisatGlobal
 module AstUtil = CsisatAstUtil
 module PredSet = CsisatAstUtil.PredSet
 module ExprSet = CsisatAstUtil.ExprSet
@@ -606,7 +607,7 @@ let find_common_expr a b ea eb common_var common_sym =
         )
         argsa argsb
       in
-        assert(fa=fb);
+        assert(!(Global.assert_disable) || fa=fb);
         Application(fa, args) 
     end
   | _ -> failwith "SatUIF, find_common_expr: expected Ands and Applications"
