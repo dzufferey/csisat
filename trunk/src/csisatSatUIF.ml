@@ -607,7 +607,7 @@ let find_common_expr a b ea eb common_var common_sym =
         )
         argsa argsb
       in
-        assert(!(Global.assert_disable) || fa=fb);
+        assert(Global.is_off_assert() || fa=fb);
         Application(fa, args) 
     end
   | _ -> failwith "SatUIF, find_common_expr: expected Ands and Applications"

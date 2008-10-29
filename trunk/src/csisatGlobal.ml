@@ -42,4 +42,4 @@ let integer_heuristics = ref false
 let syntax = ref SyntaxUnk
 (** disable runtime asserts *)
 let assert_disable = ref false
-
+let is_off_assert () = !assert_disable

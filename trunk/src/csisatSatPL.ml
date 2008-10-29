@@ -370,7 +370,7 @@ let make_proof_without_solver formula core =
       end
     | [] ->
       begin
-        assert(!(Global.assert_disable) || PredSet.is_empty to_resolv);
+        assert(Global.is_off_assert() || PredSet.is_empty to_resolv);
         proof
       end
   in
