@@ -48,7 +48,7 @@ class int_clause =
   fun max_index int_lst (l:bool) ->
     let literal_array = Array.make (max_index + 1) lUnk in
     let _ = List.iter (fun x ->
-          assert(!(Global.assert_disable) ||  literal_array.(index_of_literal x) = lUnk );
+          assert(Global.is_off_assert() ||  literal_array.(index_of_literal x) = lUnk );
           if x < 0 then literal_array.(-x) <- lFalse
           else literal_array.(x) <- lTrue
         ) int_lst
@@ -69,7 +69,7 @@ class int_clause =
       else if max_index < Array.length literals then
         begin
           for i = max_index + 1 to Array.length literals -1 do
-            assert (!(Global.assert_disable) || literals.(i) = lUnk)
+            assert (Global.is_off_assert() || literals.(i) = lUnk)
           done;
           let new_array = Array.make (max_index + 1) lUnk in
             Array.blit literals 1 new_array 1 max_index;
@@ -138,14 +138,14 @@ class int_clause =
         if self#has pivot then (self,cl)
         else (cl,self)
       in
-        assert(!(Global.assert_disable) || pos#has pivot);
-        assert(!(Global.assert_disable) || neg#has_not pivot);
+        assert(Global.is_off_assert() || pos#has pivot);
+        assert(Global.is_off_assert() || neg#has_not pivot);
         let new_lit = ref [] in
         for i = 1 to Array.length literals do
           if i <> (index_of_literal pivot)then
             begin
-              assert (!(Global.assert_disable) || not (pos#has i && neg#has_not i));
-              assert (!(Global.assert_disable) || not (pos#has_not i && neg#has i));
+              assert (Global.is_off_assert() || not (pos#has i && neg#has_not i));
+              assert (Global.is_off_assert() || not (pos#has_not i && neg#has i));
               if pos#has i || neg#has i then
                 new_lit := i :: !new_lit
               else if pos#has_not i || neg#has_not i then

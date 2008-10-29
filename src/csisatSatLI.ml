@@ -351,7 +351,7 @@ let unsat_core formula =
   | And lst ->
     begin
       let core = And (ClpLI.unsat_core lst) in
-        assert (!(Global.assert_disable) || not (is_li_sat core));
+        assert (Global.is_off_assert() || not (is_li_sat core));
         core
     end
   | Eq _ | Leq _ | Lt _ as e ->

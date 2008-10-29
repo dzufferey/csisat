@@ -90,7 +90,7 @@ let read_input () =
           print_fct := AstUtil.print_infix;
           let (t,_,c, cnf) = DimacsParse.main DimacsLex.token lexbuf in
             if t <> "cnf" then failwith "DIMACS: expected 'cnf'";
-            assert (!assert_disable || c = List.length cnf);
+            assert (is_off_assert() || c = List.length cnf);
             [And (List.map (fun lst -> Or lst) cnf)]
       end
 

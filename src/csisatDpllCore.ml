@@ -101,8 +101,8 @@ class int_system =
             if max_index < size then
               begin
                 for i = max_index + 1 to size do
-                  assert (!(Global.assert_disable) || assignment.(i) = lUnk);
-                  assert (!(Global.assert_disable) || prop_to_clauses.(i) = (IntSet.empty, IntSet.empty))
+                  assert (Global.is_off_assert() || assignment.(i) = lUnk);
+                  assert (Global.is_off_assert() || prop_to_clauses.(i) = (IntSet.empty, IntSet.empty))
                 done
               end;
             Message.print Message.Debug (lazy("DPLL, resizing clauses"));
@@ -181,7 +181,7 @@ class int_system =
               let (pivot,reason,clauses) as entry = Stack.pop choices in
                 if pivot = sat_element then
                   begin
-                    assert (!(Global.assert_disable) || cl#has pivot);
+                    assert (Global.is_off_assert() || cl#has pivot);
                     Stack.push (pivot, reason, IntSet.add last_index clauses) choices
                   end
                 else
@@ -223,12 +223,12 @@ class int_system =
      *  The learned clause has to be in a not contradictory state.
      *)
     method private force_learning cl prf =
-        assert (!(Global.assert_disable) || self#new_clause cl);
+        assert (Global.is_off_assert() || self#new_clause cl);
         self#store_proof cl prf
 
     method affect p reason =
       Message.print Message.Debug (lazy("DPLL, affecting : "^(string_of_int p)));
-      assert (!(Global.assert_disable) || assignment.(index_of_literal p) = lUnk);
+      assert (Global.is_off_assert() || assignment.(index_of_literal p) = lUnk);
       assignment.(index_of_literal p) <- value_of_literal p;
       let (pos,neg) = prop_to_clauses.(index_of_literal p) in
       let (_true,_false) = if (value_of_literal p) = lTrue then (pos,neg) else (neg,pos)
@@ -242,7 +242,7 @@ class int_system =
     method forget =
       let (pivot,how,satisfied) = Stack.pop choices in
       Message.print Message.Debug (lazy("DPLL, forgetting: "^(string_of_int pivot)));
-      assert (!(Global.assert_disable) || assignment.(index_of_literal pivot) = (value_of_literal pivot));
+      assert (Global.is_off_assert() || assignment.(index_of_literal pivot) = (value_of_literal pivot));
       assignment.(index_of_literal pivot) <- lUnk;
       let (pos,neg) = prop_to_clauses.(index_of_literal pivot) in
         IntSet.iter (fun i -> clauses.(i)#forget pivot) pos;
@@ -378,7 +378,7 @@ class int_system =
               failwith "DpllCore, backjump: theory deduction not supported for the moment."
         with Stack.Empty ->
           begin (*now we have a proof of unsat*)
-            assert (!(Global.assert_disable) || (int_get_result prf)#size = 0);
+            assert (Global.is_off_assert() || (int_get_result prf)#size = 0);
             resolution_proof <- Some prf;
             possibly_sat <- false
           end
@@ -459,7 +459,7 @@ class int_csi_dpll =
     method init formulae = match formulae with
       | And lst ->
         begin
-          assert(!(Global.assert_disable) || counter = 0);(* i.e. first time it is initialized *)
+          assert(Global.is_off_assert() || counter = 0);(* i.e. first time it is initialized *)
           let converted = List.map (fun x -> self#convert_clause x) lst in
             sys#resize counter;
             sys#init converted
@@ -599,7 +599,7 @@ class system =
 
     method affect p reason =
       Message.print Message.Debug (lazy("DPLL, affecting : "^(print p)));
-      assert (!(Global.assert_disable) || not (PredSet.mem (contra p) affected));
+      assert (Global.is_off_assert() || not (PredSet.mem (contra p) affected));
       affected <- PredSet.add p affected;
       let (pos,neg) = Hashtbl.find prop_to_clauses (proposition_of_lit p) in
       let (_true,_false) = if (proposition_of_lit p) = p then (pos,neg) else (neg,pos)
@@ -613,7 +613,7 @@ class system =
     method forget =
       let (pivot,how,satisfied) = Stack.pop choices in
       Message.print Message.Debug (lazy("DPLL, forgetting: "^(print pivot)));
-      assert (!(Global.assert_disable) || PredSet.mem pivot affected);
+      assert (Global.is_off_assert() || PredSet.mem pivot affected);
       affected <- PredSet.remove pivot affected;
       let (pos,neg) = Hashtbl.find prop_to_clauses (proposition_of_lit pivot) in
       let (_true,_false) = if (proposition_of_lit pivot) = pivot then (pos,neg) else (neg,pos)
@@ -747,7 +747,7 @@ class system =
                 sat_element := PredSet.remove pivot !sat_element
             done;
             let (pivot,reason,clauses) = List.hd !copy in
-              assert (!(Global.assert_disable) || cl#has pivot);
+              assert (Global.is_off_assert() || cl#has pivot);
               Stack.push (pivot,reason, OrdSet.union [cl] clauses) choices;
               List.fold_left (fun () x -> Stack.push x choices) () (List.tl !copy);
               true
@@ -761,13 +761,13 @@ class system =
     method learned_clause disj =
       let cl = new clause disj true in
       let res = self#new_clause cl in
-        assert (!(Global.assert_disable) || res)
+        assert (Global.is_off_assert() || res)
     
     method learn_clause cl =
       ignore (self#new_clause cl)
       (*
       let res = self#new_clause cl in
-        assert (!(Global.assert_disable) || res)
+        assert (Global.is_off_assert() || res)
       *)
     
     val partial_proof = Hashtbl.create 1000
@@ -806,7 +806,7 @@ class system =
                             tmp
                           else
                             begin
-                              assert (!(Global.assert_disable) || PredSet.mem (contra tmp) (get_result prf));
+                              assert (Global.is_off_assert() || PredSet.mem (contra tmp) (get_result prf));
                               contra tmp
                             end
 
@@ -909,7 +909,7 @@ class system =
         with Stack.Empty ->
           begin (*now we have a proof of unsat*)
             Message.print Message.Debug (lazy(tracecheck_of_proof prf));
-            assert (!(Global.assert_disable) || (get_result prf) = PredSet.empty);
+            assert (Global.is_off_assert() || (get_result prf) = PredSet.empty);
             resolution_proof <- Some prf;
             possibly_sat <- false
           end

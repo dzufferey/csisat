@@ -546,7 +546,7 @@ let interpolate_from_graph graph_a graph_b =
                   end
                 else
                   begin
-                    assert (!(Global.assert_disable) || List.mem brocken proj_b_neq);
+                    assert (Global.is_off_assert() || List.mem brocken proj_b_neq);
                     And a_eq
                   end
             end

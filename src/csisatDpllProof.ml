@@ -82,7 +82,7 @@ let tracecheck_of_proof prf =
   let index_to_atom = Hashtbl.create 500 in
   let atom_to_index = Hashtbl.create 500 in
   let get_index_atom atom =
-    assert(!(Global.assert_disable) || is_atomic atom);
+    assert(Global.is_off_assert() || is_atomic atom);
     let proposition = List.hd (get_proposition atom) in
     let index =
       if Hashtbl.mem atom_to_index proposition then

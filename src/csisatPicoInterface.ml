@@ -52,7 +52,7 @@ class picosat with_proof =
     val index_to_atom = Hashtbl.create 500
     val atom_to_index = Hashtbl.create 500
     method private get_index atom =
-      assert(!(Global.assert_disable) || is_atomic atom);
+      assert(Global.is_off_assert() || is_atomic atom);
       let proposition = List.hd (get_proposition atom) in
       let index =
         if Hashtbl.mem atom_to_index proposition then
@@ -134,17 +134,17 @@ class picosat with_proof =
           let parents = ref [] in
           let i = ref 1 in
             while raw_zhain.(!i) <> 0 do
-              assert (!(Global.assert_disable) || !i < Array.length raw_zhain);
+              assert (Global.is_off_assert() || !i < Array.length raw_zhain);
               lits := (raw_zhain.(!i)) :: !lits;
               i := !i + 1
             done;
             i := !i + 1;
             while raw_zhain.(!i) <> 0 do
-              assert (!(Global.assert_disable) || !i < Array.length raw_zhain);
+              assert (Global.is_off_assert ()|| !i < Array.length raw_zhain);
               parents := (raw_zhain.(!i)) :: !parents;
               i := !i + 1
             done;
-            assert(!(Global.assert_disable) || !i = ((Array.length raw_zhain) -1));
+            assert(Global.is_off_assert() || !i = ((Array.length raw_zhain) -1));
             (*buils the clauses*)
             let atoms = List.map self#get_atom !lits in
             let cl = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty atoms in
@@ -165,7 +165,7 @@ class picosat with_proof =
               end
             else
               begin
-                assert (!(Global.assert_disable) || (List.length parents) > 1);
+                assert (Global.is_off_assert() || (List.length parents) > 1);
                 let prf = List.fold_left
                   (fun left id ->
                     Message.print Message.Debug (lazy("searching "^(string_of_int id)));
@@ -177,7 +177,7 @@ class picosat with_proof =
                       right_lit PredSet.empty
                     in
                     let pivot_set = PredSet.inter left_lit neg_right_lit in
-                      assert(!(Global.assert_disable) || (PredSet.cardinal pivot_set) = 1);
+                      assert(Global.is_off_assert() || (PredSet.cardinal pivot_set) = 1);
                       (*TODO the order of the parents is arbitrary*)
                     let pivot = proposition_of_lit (PredSet.choose pivot_set) in
                       let new_lits =
