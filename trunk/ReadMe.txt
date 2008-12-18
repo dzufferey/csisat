@@ -69,5 +69,3 @@ term    :: variable
 
 (precedence levels are [->,<->], [&,|], [not]. They are parsed as
 left-associative.)
-
-Authors: Dirk Beyer, Damien Zufferey, and Rupak Majumdar
