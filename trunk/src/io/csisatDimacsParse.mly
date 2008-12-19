@@ -1,4 +1,4 @@
-(*
+/*
  *  CSIsat is an interpolating decision procedure for LA + EUF.
  *  This file is part of CSIsat. 
  *
@@ -20,7 +20,7 @@
  *
  *  CSIsat web page:
  *    http://www.cs.sfu.ca/~dbeyer/CSIsat/
- *)
+ */
 %token <int> NUM
 %token <string> P
 %token ZERO
