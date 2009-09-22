@@ -148,8 +148,7 @@ let is_sat formula =
   | False -> false
   | formula ->
     begin
-      let solver = get_solver false in
-      (*let (atom_to_pred, pred_to_atom, f) =*)
+      let solver = get_solver true in (* TODO *)
       let (_, _, f) =
         (*if is already in cnf ...*)
         if AstUtil.is_cnf formula then
@@ -190,6 +189,7 @@ let is_sat formula =
             end
           else
             begin
+              solver#get_proof; (* TODO *)
               false
             end
         in

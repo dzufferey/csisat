@@ -84,7 +84,7 @@ let tracecheck_of_proof prf =
   let atom_to_index = Hashtbl.create 500 in
   let get_index_atom atom =
     assert(Global.is_off_assert() || is_atomic atom);
-    let proposition = List.hd (get_proposition atom) in
+    let proposition = proposition_of_lit atom in
     let index =
       if Hashtbl.mem atom_to_index proposition then
         begin
@@ -114,10 +114,7 @@ let tracecheck_of_proof prf =
       end
   in
   let printed = Hashtbl.create 1000 in
-  let is_printed x =
-    try Hashtbl.find printed x
-    with Not_found -> false
-  in
+  let is_printed x = Hashtbl.mem printed x in
   let rec print_prf prf =
     if not (is_printed (get_result prf)) then
       begin
@@ -129,7 +126,7 @@ let tracecheck_of_proof prf =
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) cl [] in
             Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
-            Buffer.add_string buffer " 0\n"
+            Buffer.add_string buffer " 0 0\n"
           end
         | RPNode (pivot,left,right,new_cl) ->
           begin
@@ -139,7 +136,7 @@ let tracecheck_of_proof prf =
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) new_cl [] in
             Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
-            Buffer.add_char buffer ' ';
+            Buffer.add_string buffer " 0 ";
             Buffer.add_string buffer (string_of_int (get_index (get_result left)));
             Buffer.add_char buffer ' ';
             Buffer.add_string buffer (string_of_int (get_index (get_result right)));
