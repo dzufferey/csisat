@@ -915,7 +915,8 @@ let equisatisfiable pred =
       end
   in
     let subterm = get_subterm_nnf pred in
-      (dico, pred_to_atom, normalize_only (And ((rep pred)::(List.map enc subterm))))
+    let formula = normalize_only (And ((rep pred)::(List.map enc subterm))) in
+      (dico, pred_to_atom, normalize_only (remove_lit_clash formula))
 
 (** Replaces the atoms by the part they represent.*)
 let unabstract_equisat dico formula =

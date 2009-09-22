@@ -84,7 +84,7 @@ let splitN_unsat_cores_set proposition_lst mixed =
     Array.to_list parts
 
 (** LA and EUF are equalities interpolating theories.
- *  Thus it is possible the mkae terms local if an equality is not AB-pure.
+ *  Thus it is possible the make terms local if an equality is not AB-pure.
  * @param th theory that deduced the equality
  * @param side is a function that maps an expr to its side: A/B/Mixed
  * @param common_var variables common to A and B
@@ -559,6 +559,8 @@ let recurse_in_proof a b proof cores_with_info =
   let b_prop = get_proposition_set b in
   let rec recurse prf = match prf with
     | DpllProof.RPNode (pivot, left, right, result) ->
+      Message.print Message.Debug (lazy("proof node: "^(DpllProof.string_of_clause_t result)));
+      Message.print Message.Debug (lazy("pivot: "^(print pivot)));
       if Hashtbl.mem cache result then Hashtbl.find cache result
       else
         begin
@@ -579,7 +581,7 @@ let recurse_in_proof a b proof cores_with_info =
                 end
             | (true, false) -> Or [left_it; right_it]
             | (false, true) -> And [left_it; right_it]
-            | (false, false) -> failwith "Interpolate, recurse_in_proof: pivot does not belong to any side"
+            | (false, false) -> failwith ("Interpolate, recurse_in_proof: pivot ("^(print pivot)^") does not belong to any side")
           in
             Hashtbl.add cache result it;
             it
@@ -603,7 +605,7 @@ let lazy_cnf formula =
     if is_cnf formula then
       begin
         Message.print Message.Debug (lazy("already in CNF"));
-        (Hashtbl.create 0, Hashtbl.create 0, cnf formula)
+        (Hashtbl.create 0, Hashtbl.create 0, formula)
       end
     else 
       begin
@@ -617,8 +619,6 @@ let lazy_cnf formula =
 let interpolate_with_proof a b =
   let (_,_,a) = lazy_cnf (simplify a) in
   let (_,_,b) = lazy_cnf (simplify b) in
-  let a = normalize_only (remove_lit_clash a) in
-  let b = normalize_only (remove_lit_clash b) in
   let a_cnf = cnf a in
   let b_cnf = cnf b in
     match (a,b) with
@@ -664,8 +664,7 @@ let interpolate_with_proof a b =
       end
 
 let interpolate_with_one_proof lst =
-  let lst = List.map (fun x -> let (_,_,f) = lazy_cnf (simplify x) in f) lst in
-  let norms = List.map (fun x -> normalize_only (remove_lit_clash x)) lst in
+  let norms = List.map (fun x -> let (_,_,f) = lazy_cnf (simplify x) in f) lst in
   let all = normalize_only (And norms) in
 
   let rec mk_queries acc_q acc_a lst = match lst with
@@ -846,7 +845,6 @@ let recurse_in_proof_lst lst proof cores_with_info =
 (*
 let interpolate_with_proof_lst lst =
   let lst = List.map (fun x ->  cnf (simplify x)) lst in
-  let lst = List.map (fun x -> normalize_only (remove_lit_clash x)) lst in
   (*TODO trivial cases *)
     begin
       if List.for_all is_conj_only lst then
@@ -877,8 +875,6 @@ let interpolate_with_proof_lst lst =
 let interpolate_propositional_only a b =
   let (_,_,a) = lazy_cnf (simplify a) in
   let (_,_,b) = lazy_cnf (simplify b) in
-  let a = normalize_only (remove_lit_clash a) in
-  let b = normalize_only (remove_lit_clash b) in
   let a_cnf = cnf a in
   let b_cnf = cnf b in
     match (a,b) with

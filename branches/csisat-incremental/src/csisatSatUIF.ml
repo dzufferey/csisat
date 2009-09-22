@@ -164,12 +164,14 @@ class dag = fun expr ->
 
     val mutable given_eq = PredSet.empty
     method add_eq eq = given_eq <- PredSet.add eq given_eq
+    method rm_eq eq = given_eq <- PredSet.remove eq given_eq
     method was_given_eq eq = PredSet.mem eq given_eq
     method get_given_eq = PredSet.fold (fun x acc -> x::acc) given_eq []
     
     val mutable given_neq = PredSet.empty
     method add_neq neq = given_neq <- PredSet.add neq given_neq
     method get_given_neq = PredSet.fold (fun x acc -> x::acc) given_neq []
+    method rm_neq neq = given_neq <- PredSet.remove neq given_neq
 
     method print =
       let buffer = Buffer.create 1000 in
@@ -209,7 +211,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | err::_ -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
+        | err::_ -> failwith ("UIF(1): only for a conjunction of eq/ne "^(AstUtil.print err))
       in
       match conj with
         | And lst ->
@@ -228,6 +230,7 @@ class dag = fun expr ->
             []
           end
         | err -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
+        | err -> failwith ("UIF(2): only for a conjunction of eq/ne "^(AstUtil.print err))
 
    method create_and_add_constr eq = match eq with(*TODO buggy because of congruence parent*)
       | Eq (e1, e2) ->
@@ -661,3 +664,120 @@ let interpolate_euf a_side eq a b =
           args
       end
     | _ -> failwith "SatUIF, interpolate_euf: expected Ands"
+
+
+(*
+open CsisatTheorySolver
+
+class eufSolver preds =
+    let exprs = get_expr (And preds) in
+  object (self)
+    
+    inherit theorySolver
+
+    (**
+     * -added predicate
+     * -changes in the graph (constraints are added anyway)
+     * -deduction
+     *)
+    val stack: (predicate * bool * predicate list) Stack.t = Stack.create ()
+
+    method private get_stack_content =
+      let lst = ref [] in
+        Stack.iter (fun x -> lst := x:: !lst) stack;
+        !lst
+
+    val mutable graph = Some (new Dag.dag exprs)
+    method get_graph = match graph with
+      | Some g -> g
+      | None -> 
+        begin
+          let g = new Dag.dag exprs in
+            ignore (g#is_satisfiable (And self#get_stack_content));
+            graph <- Some g;
+            g
+        end
+
+    (** Adds and test for satisfiability. *)
+    method push predicate =
+      let graph = self#get_graph in
+        match predicate with
+        | Eq(_,_) ->
+          begin
+            let (contra, changed, deductions) =
+              if graph#entailed predicate then
+                begin
+                  graph#add_constr predicate;
+                  (false,false,[])
+                end
+              else
+                begin
+                  let axiom_app = graph#add_constr_with_applied predicate in
+                  let contra = graph#has_contradiction in
+                    (contra , true, axiom_app)
+                end
+            in
+              Stack.push(predicate,changed,deductions);
+              contra
+          end
+        | Not (Eq(_,_)) ->
+          begin
+            Stack.push(predicate,false,[]);
+            graph.neq_contradiction predicate
+          end
+        | err -> failwith ("EUFSolver: push only for a conjunction of eq/ne "^(AstUtil.print err))
+
+    (** Removes the predicate on top of the stacks. *)
+    method pop =
+      let (pred,changed,_) = Stack.pop stack in
+        if not changed then
+          begin
+            assert (deductions = []);
+            match graph with
+            | Some graph ->
+              begin
+                match pred with
+                | Eq _ -> graph#rm_eq pred
+                | Not (Eq _) -> graph#rm_neq pred
+                | err -> failwith ("EUFSolver: should not happen "^(AstUtil.print err))
+              end
+            | None -> ()
+          end
+        else
+          begin
+            graph <- None
+          end
+
+    val propagable_eq =
+      PredSet.filter
+        (match x with Eq _ -> true | _ -> false)
+        (get_proposition_set preds)
+
+    (** Returns a list of predicates equalities that are entailed
+     * by the current stack (report only changes from last addition).
+     *)
+    method propagation =
+      assert false;
+      []
+      (*TODO*)
+      (*a propgation is smth not in the stack, but is entailed.
+       * -for = : has the same representative.
+       * -for <>: exits v <> w and x = v and y = w => x <> y
+       *)
+
+    (** Returns:
+     *  -unsat_core
+     *  -the theory which has a contradiction
+     *  -list of deduced equalities + their respective theories. 
+     *)
+    method unsat_core_with_info =
+      (*TODO improve (avoid recomputing everything) *)
+      let formula = And (self#get_stack_content) in
+      let core = unsat_core formula in
+      let graph = new dag exprs in
+      let uif_ded = graph#add_pred_with_applied core in
+        assert(graph#has_contradiction);
+        (core, EUF, List.map(fun x -> (EUF,x)) uif_ded)
+
+  end
+  *)

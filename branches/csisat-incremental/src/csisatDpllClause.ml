@@ -31,7 +31,7 @@ open   CsisatUtils
 module Global  = CsisatGlobal
 (**/**)
 
-(* TODO *)
+(* TODO other encoding ?? *)
 (* as in DIMACS, variable index starts with 1.*)
 let lFalse = -1
 let lUnk = 0
@@ -45,13 +45,16 @@ let value_of_literal lit =
 
 let index_of_literal = abs 
 
-class int_clause =
+class clause =
   fun max_index int_lst (l:bool) ->
     let literal_array = Array.make (max_index + 1) lUnk in
-    let _ = List.iter (fun x ->
+    let _ =
+      Message.print Message.Debug (lazy("DPLL, clause has size "^(string_of_int max_index)));
+      List.iter (fun x ->
+         Message.print Message.Debug (lazy("DPLL, "^(string_of_int x)^" "^(string_of_int (index_of_literal x))^" "^(string_of_int (value_of_literal x))));
+           (*fails if a clause contains more than once the same proposition*)
           assert(Global.is_off_assert() ||  literal_array.(index_of_literal x) = lUnk );
-          if x < 0 then literal_array.(-x) <- lFalse
-          else literal_array.(x) <- lTrue
+          literal_array.(index_of_literal x) <- (value_of_literal x)
         ) int_lst
     in
   object (self)
@@ -83,7 +86,11 @@ class int_clause =
     initializer
       begin
         let set = ref IntSet.empty in
-          Array.iter (fun x -> if self#has x then set := IntSet.add x !set) literals;
+          for i = 1 to (Array.length literals) -1 do
+            let value = literals.(i) in
+              if value = lTrue then set := IntSet.add i !set
+              else if value = lFalse then set := IntSet.add (lNot i) !set
+          done;
           left <- !set
       end
 
@@ -109,7 +116,7 @@ class int_clause =
 
     method get_literals =
       let lit_set = ref IntSet.empty in
-        Array.iter (fun x -> if x <> lUnk then lit_set := IntSet.add x !lit_set ) literal_array;
+        Array.iteri (fun i x -> if x <> lUnk then lit_set := IntSet.add (i * x) !lit_set ) literal_array;
         !lit_set
 
     (* these are not dynamic !! *)
@@ -139,10 +146,12 @@ class int_clause =
         if self#has pivot then (self,cl)
         else (cl,self)
       in
+        Message.print Message.Debug (lazy("DPLL, resolving (a): "^(pos#to_string)));
+        Message.print Message.Debug (lazy("DPLL, resolving (b): "^(neg#to_string)));
         assert(Global.is_off_assert() || pos#has pivot);
         assert(Global.is_off_assert() || neg#has_not pivot);
         let new_lit = ref [] in
-        for i = 1 to Array.length literals do
+        for i = 1 to (Array.length literals) -1 do
           if i <> (index_of_literal pivot)then
             begin
               assert (Global.is_off_assert() || not (pos#has i && neg#has_not i));
@@ -154,7 +163,9 @@ class int_clause =
             end
         done;
         (* resloved clauses are learned clauses *)
-        new int_clause (Array.length literals) !new_lit true
+        let new_cl = new clause ((Array.length literals) -1) !new_lit true in
+          Message.print Message.Debug (lazy("DPLL, resolving res: "^(new_cl#to_string)));
+          new_cl
 
     (* Remark: affect & forget assume that the decision level is managed as a stack *)
 
@@ -182,101 +193,11 @@ class int_clause =
     method to_string =
       (string_list_cat " "
         (Array.fold_right
-          (fun x acc -> (string_of_int x)::acc)
+          (fun x acc -> if x <> 0 then (string_of_int x)::acc else acc)
           (Array.mapi (fun i x -> i * x ) literals) ["0"] ))
 
     method to_string_detailed =
       "clause: " ^ self#to_string ^ "\n" ^
       "satisfied is: " ^ (string_of_int satisfied) ^ "\n" ^
       "left is: " ^ (string_list_cat ", " (IntSet.fold (fun x acc -> (string_of_int x)::acc) left []))
-  end
-(********)
-
-(** Clause: (disjunction of literals) for the sat solver.
- *  Literals are stored in sets (log lookup/insert/del).
- *)
-class clause =
-  fun disj (l:bool) ->
-  object (self)
-    val propositions = match disj with
-      | Or lst -> List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty lst
-      | _ -> failwith "DPLL: clause expect a disjunction"
-    method get_propositions = propositions (*oups, means literals*)
-
-    (*OrdSet*)
-    method literals = predSet_to_ordSet propositions
-    
-    (** a learned clause comes from the backtracking*)
-    val learned = l
-    method is_learned = learned
-
-    val mutable left = match disj with
-      | Or lst -> List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty lst
-      | _ -> failwith "DPLL: clause expect a disjunction"
-    val mutable satisfied = PredSet.empty
-
-    (** has litteral ?*)
-    method has el = PredSet.mem el propositions
-    (** has (Not litteral) ?*)
-    method has_not el = PredSet.mem (contra el) propositions
-
-    method props = (*proposition in clause not literal*)
-      PredSet.fold
-        (fun e acc -> let p = List.hd (get_proposition e) in PredSet.add p acc)
-        propositions PredSet.empty
-    method pos_props = PredSet.filter self#has     self#props
-    method neg_props = PredSet.filter self#has_not self#props
-
-    method get_choices = left
-    method get_choice = PredSet.choose left
-    method is_sat = not (PredSet.is_empty satisfied)
-    method contradiction = (not self#is_sat) && PredSet.is_empty left
-
-    method size = PredSet.cardinal left
-
-    (** decision for a variable*)
-    method affect atom =
-      let contr = contra atom in
-      if PredSet.mem atom propositions then
-        begin
-          satisfied <- PredSet.add atom satisfied;
-          left <- PredSet.remove atom left
-        end;
-      if PredSet.mem contr propositions then
-        left <- PredSet.remove contr left
-
-    (** unassign a variable (during backtracking) *)
-    method forget atom =
-      let contr = contra atom in
-      if PredSet.mem atom propositions then
-        begin
-          satisfied <- PredSet.remove atom satisfied;
-          left <- PredSet.add atom left
-        end;
-      if PredSet.mem contr propositions then
-        left <- PredSet.add contr left
-
-    method get_satisfied = satisfied
-
-    (* Exists x. x and ¬x in clause*)
-    method has_el_and_contra =
-      PredSet.exists (fun x -> PredSet.mem (contra x) propositions) propositions
-    
-    method to_string =
-      (string_list_cat ", "
-        (PredSet.fold (fun x acc -> (print x)::acc) propositions []))
-
-    method to_string_dimacs atom_to_int =
-      (string_list_cat " "
-        (PredSet.fold
-          (fun x acc -> (string_of_int (atom_to_int x))::acc)
-          propositions ["0"]))
-    
-    method to_string_detailed =
-      "clause: " ^
-      (string_list_cat ", " (PredSet.fold (fun x acc -> (print x)::acc) propositions [])) ^ "\n" ^
-      "satisfied is: " ^
-      (string_list_cat ", " (PredSet.fold (fun x acc -> (print x)::acc) satisfied [])) ^ "\n" ^
-      "left is: " ^
-      (string_list_cat ", " (PredSet.fold (fun x acc -> (print x)::acc) left [])) ^ "\n"
   end
