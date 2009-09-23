@@ -666,6 +666,224 @@ let interpolate_euf a_side eq a b =
     | _ -> failwith "SatUIF, interpolate_euf: expected Ands"
 
 
+(*********************************)
+module Node =
+  struct
+    type t = {
+      id: int;
+      fn: string;
+      args: int list;
+      mutable find: int;
+      mutable ccpar: IntSet.t
+      (* TODO way to report to stack ?? *)
+    }
+
+    let create id fn args = {
+      id = id;
+      fn = fn;
+      args = args;
+      find = id;
+      ccpar = IntSet.empty
+    }
+    
+    method find: node = match parent with
+      | None -> (self :> node)
+      | Some n ->
+        begin 
+          let p = n#find in
+            (*TODO this may change the graph !!*)
+            parent <- Some p;
+            p
+        end
+
+    method union (that: node) = 
+      let n1 = self#find in
+      let n2 = that#find in
+        n1#set_parent n2;
+        n2#set_ccparent (OrdSet.union n1#get_ccparent n2#get_ccparent);
+        n1#set_ccparent []
+
+    method ccpar: node list = (self#find)#get_ccparent
+
+    method congruent (that: node) =
+        self#get_fname = that#get_fname
+      &&
+        self#get_arity = that#get_arity
+      &&
+        List.for_all (fun (a,b) -> a#find = b#find) (List.rev_map2 (fun x y -> (x,y)) (self#get_args) (that#get_args))
+
+    (** return pairs of nodes whose equality may change the result of the 'congruent' method*)
+    method may_be_congruent (that: node) =
+      if self#get_fname <> that#get_fname
+      || self#get_arity <> that#get_arity
+      || self#find = that#find then []
+      else
+        List.filter (fun (a,b) -> a#find <> b#find) (List.rev_map2 (fun x y -> (x,y)) (self#get_args) (that#get_args))
+
+    method merge (that: node) =
+      if self#find <> that#find then
+        begin
+          let p1 = self#ccpar in
+          let p2 = that#ccpar in
+            self#union that;
+            let to_test = Utils.cartesian_product p1 p2 in
+              List.iter (fun (x,y) -> if x#find <> y#find && x#congruent y then x#merge y) to_test
+        end
+    
+    (** return pairs of nodes whose equality comes from congruence*)
+    method merge_with_applied (that: node) =
+      if self#find <> that#find then
+        begin
+          let p1 = self#ccpar in
+          let p2 = that#ccpar in
+            self#union that;
+            let to_test = Utils.cartesian_product p1 p2 in
+              let cong = List.filter (fun (x,y) -> x#find <> y#find && x#congruent y) to_test in
+                List.fold_left
+                  (fun acc (x,y) -> if x#find <> y#find then
+                    (x#merge_with_applied y) @ ((x,y)::acc)
+                  else 
+                    acc) [] cong
+        end
+      else []
+  end
+  end
+
+module Dag =
+  struct
+    type t = {
+      nodes: node array;
+      expr_to_node: (expression, node) Hashtbl.t;
+      node_to_expr: (node, expression) Hashtbl.t
+    }
+
+    let new_dag (set: ExprSet.t) =
+      let id = ref 1 in
+      let nodes_lst = ref [] in
+      let table1 = Hashtbl.create 53 in
+      let table2 = Hashtbl.create 53 in
+      let create_and_add expr fn args =
+        try Hashtbl.find table1 expr
+        with Not_found ->
+          begin
+            (*TODO*)
+            let n = {
+                new node fn args
+            }
+            in
+              Hashtbl.replace table1 expr n;
+              Hashtbl.replace table2 n expr;
+              n
+          end
+      in
+      let rec convert_exp expr = match expr with
+        | Constant c as cst -> create_and_add cst (string_of_float c) []
+        | Variable v as var -> create_and_add var v []
+        | Application (f, args) as appl ->
+          let node_args = (List.map convert_exp args) in
+          let new_node  = create_and_add appl f node_args in
+            List.iter (fun n -> n#add_ccparent new_node) node_args;
+            new_node
+        | Sum lst as sum ->
+          let node_args = (List.map convert_exp lst) in
+          let new_node  = create_and_add sum "+" node_args in
+            List.iter (fun n -> n#add_ccparent new_node) node_args;
+            new_node
+        | Coeff (c, e) as coeff ->
+          let node_args = (List.map convert_exp  [Constant c; e]) in
+          let new_node  = create_and_add coeff "*" node_args in
+            List.iter (fun n -> n#add_ccparent new_node) node_args;
+            new_node
+      in
+      let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
+        (*TODO store nodes in array*)
+        (nodes, table1, table2)
+
+  end
+
+(** The different changes that can happen in the system *)
+type euf_change = StackEq of predicate * node * node * node (*eq, points_to, new_target, old_target*)
+                | StackNeq of predicate 
+                | StackTDeduction of predicate * node * node * node (*application of the congruence axiom*)
+                | StackInternal of node * node * node (* path compression, ... *)
+
+(** an EUF system is composed of: (1) an union find graph, (2) a stack to track changes *)
+type euf_system = (dag, euf_change Stack.t)
+
+let new_system (set: ExprSet.t) =
+  (new dag (exprSet_to_ordSet set), Stack.create ())
+
+let push ((graph, stack): euf_system) pred =
+  if graph#has_contradiction then
+    failwith "EUF: pusch called on an already unsat system."
+  else 
+    match pred with
+    | Eq (e1, e2) ->
+      begin
+        (****)
+        (** return pairs of nodes whose equality comes from congruence*)
+        method merge_with_applied (that: node) =
+          if self#find <> that#find then
+            begin
+              let p1 = self#ccpar in
+              let p2 = that#ccpar in
+                self#union that;
+                let to_test = Utils.cartesian_product p1 p2 in
+                  let cong = List.filter (fun (x,y) -> x#find <> y#find && x#congruent y) to_test in
+                    List.fold_left
+                      (fun acc (x,y) -> if x#find <> y#find then
+                        (x#merge_with_applied y) @ ((x,y)::acc)
+                      else 
+                        acc) [] cong
+            end
+          else []
+        (****)
+        let n1 = self#get_node e1 in
+        let n2 = self#get_node e2 in
+          graph#add_eq eq;
+          List.rev_map
+            (fun (x,y) -> AstUtil.order_eq (Eq (self#get_expr x, self#get_expr y)))
+            (n1#merge_with_applied n2)
+        failwith "TODO"
+      end
+    | Not (Eq(_,_)) ->
+      begin
+        Stack.push (StackNeq pred stack);
+        graph#neq_contradiction pred
+      end
+    | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
+
+let pop ((graph, stack): euf_system) =
+  if Stack.is_empty stack then []
+    failwith "EUF: poping a system with an empty stack."
+  else
+    begin
+      failwith "TODO"
+    end
+
+(** find the new congruence (after the last push). *)
+let t_propagation ((graph, stack): euf_system) =
+  let rec inspect_stack () =
+    if Stack.is_empty stack then []
+    else
+      begin
+        let t = Stack.pop stack in
+        let ans = match t with
+          | StackEq _ | StackNeq _ -> []
+          | StackInternal _ -> inspect_stack ()
+          | StackTDeduction (t_eq, _, _, _) -> t_eq :: (inspect_stack ())
+        in
+          Stack.push t stack;
+          ans
+      end
+  in
+    inspect_stack ()
+
+
+
+(*********************************)
+
+
 (*
 open CsisatTheorySolver
 
