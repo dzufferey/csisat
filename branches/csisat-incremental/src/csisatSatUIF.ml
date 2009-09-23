@@ -667,60 +667,91 @@ let interpolate_euf a_side eq a b =
 
 
 (*********************************)
-module Node =
+(** The different changes that can happen in the system *)
+type euf_change = StackEq of predicate * int * int * int (*eq, points_to, new_target, old_target*)
+                | StackNeq of predicate 
+                | StackTDeduction of predicate * int * int * int (*application of the congruence axiom*)
+                | StackInternal of int * int * int (* path compression, ... *)
+
+module rec Node : sig
+    type t = {
+      id: int;
+      fn: string;
+      args: int list;
+      arity: int;
+      expr: expression;
+      mutable find: int;
+      mutable ccpar: IntSet.t
+      (* TODO way to report to stack ?? *)
+    }
+    
+    val create: expression -> int -> string -> int list -> t
+    val find: t -> t
+    val union: t -> t -> unit
+    val ccpar: t -> IntSet.t
+    val congruent: t -> t -> bool
+    val may_be_congruent: t -> t -> (t * t) list
+    val merge: t -> t -> unit
+  end
+  =
   struct
     type t = {
       id: int;
       fn: string;
       args: int list;
+      arity: int;
+      expr: expression;
       mutable find: int;
       mutable ccpar: IntSet.t
       (* TODO way to report to stack ?? *)
     }
 
-    let create id fn args = {
+    let create expr id fn args = {
       id = id;
       fn = fn;
       args = args;
+      arity = List.length args;
+      expr = expr;
       find = id;
       ccpar = IntSet.empty
     }
     
-    method find: node = match parent with
-      | None -> (self :> node)
-      | Some n ->
-        begin 
-          let p = n#find in
-            (*TODO this may change the graph !!*)
-            parent <- Some p;
+    let find this =
+      if this.find = this.id then this
+      else
+        begin
+          let p = Dag.get (this.find) in
+            parent <- p.id; (*TODO this change the graph !!*)
             p
         end
 
-    method union (that: node) = 
-      let n1 = self#find in
-      let n2 = that#find in
-        n1#set_parent n2;
-        n2#set_ccparent (OrdSet.union n1#get_ccparent n2#get_ccparent);
-        n1#set_ccparent []
+    let union this that = 
+      let n1 = find this in
+      let n2 = find that in
+        n1.find <- n2.id;
+        n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
+        n1.ccpar <- []
 
-    method ccpar: node list = (self#find)#get_ccparent
+    let ccpar node = (find node).ccpar
 
-    method congruent (that: node) =
-        self#get_fname = that#get_fname
+    let congruent this that =
+        this.fn = that.fn
       &&
-        self#get_arity = that#get_arity
+        this.arity = that.arity
       &&
-        List.for_all (fun (a,b) -> a#find = b#find) (List.rev_map2 (fun x y -> (x,y)) (self#get_args) (that#get_args))
+        List.for_all
+          (fun (a,b) -> (find a).id = (find b).id)
+          (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
 
     (** return pairs of nodes whose equality may change the result of the 'congruent' method*)
-    method may_be_congruent (that: node) =
-      if self#get_fname <> that#get_fname
-      || self#get_arity <> that#get_arity
-      || self#find = that#find then []
+    let may_be_congruent this that =
+      if this.fn <> that.fn
+      || this.arity <> that.arity
+      || (find this).id = (find that.id) then []
       else
-        List.filter (fun (a,b) -> a#find <> b#find) (List.rev_map2 (fun x y -> (x,y)) (self#get_args) (that#get_args))
+        List.filter (fun (a,b) -> (find a).id <> (find b).id) (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
 
-    method merge (that: node) =
+    method merge this that =
       if self#find <> that#find then
         begin
           let p1 = self#ccpar in
@@ -731,7 +762,7 @@ module Node =
         end
     
     (** return pairs of nodes whose equality comes from congruence*)
-    method merge_with_applied (that: node) =
+    method merge_with_applied this that =
       if self#find <> that#find then
         begin
           let p1 = self#ccpar in
@@ -747,32 +778,34 @@ module Node =
         end
       else []
   end
-  end
 
-module Dag =
+and Dag: sig
+    type t = {
+      nodes: Node.t array;
+      expr_to_node: (expression, Node.t) Hashtbl.t;
+    }
+    (*TODO*)
+  end
+  =
   struct
     type t = {
-      nodes: node array;
-      expr_to_node: (expression, node) Hashtbl.t;
-      node_to_expr: (node, expression) Hashtbl.t
+      nodes: Node.t array;
+      expr_to_node: (expression, Node.t) Hashtbl.t;
     }
 
     let new_dag (set: ExprSet.t) =
-      let id = ref 1 in
+      let id = ref 0 in
       let nodes_lst = ref [] in
       let table1 = Hashtbl.create 53 in
-      let table2 = Hashtbl.create 53 in
       let create_and_add expr fn args =
         try Hashtbl.find table1 expr
         with Not_found ->
           begin
             (*TODO*)
-            let n = {
-                new node fn args
-            }
+            let n = Node.create expr !id fn args
             in
+              id := !id + 1;
               Hashtbl.replace table1 expr n;
-              Hashtbl.replace table2 n expr;
               n
           end
       in
@@ -797,15 +830,9 @@ module Dag =
       in
       let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
         (*TODO store nodes in array*)
-        (nodes, table1, table2)
+        (nodes, table1)
 
   end
-
-(** The different changes that can happen in the system *)
-type euf_change = StackEq of predicate * node * node * node (*eq, points_to, new_target, old_target*)
-                | StackNeq of predicate 
-                | StackTDeduction of predicate * node * node * node (*application of the congruence axiom*)
-                | StackInternal of node * node * node (* path compression, ... *)
 
 (** an EUF system is composed of: (1) an union find graph, (2) a stack to track changes *)
 type euf_system = (dag, euf_change Stack.t)
