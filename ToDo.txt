@@ -8,6 +8,10 @@ LA:
 
 EUF:
 	-improve the unsat core (over-approximation)
+    -implement incremental EUF solver:
+        maintains a stack of added eq-constraints with previous representative values (when changed).
+        the path compression also add info when it changes the state.
+        changes have to be undone in reverse order.
 
 Nelson Oppen:
 
@@ -24,3 +28,4 @@ Sat Solver:
 General:
     -multiple interpolant from one query (path): finish the code
     -cleanup the code
+
