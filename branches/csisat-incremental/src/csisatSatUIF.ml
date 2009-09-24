@@ -668,10 +668,10 @@ let interpolate_euf a_side eq a b =
 
 (*********************************)
 (** The different changes that can happen in the system *)
-type euf_change = StackEq of predicate * int * int * int (*eq, points_to, new_target, old_target*)
-                | StackNeq of predicate 
-                | StackTDeduction of predicate * int * int * int (*application of the congruence axiom*)
-                | StackInternal of int * int * int (* path compression, ... *)
+type 'a euf_change = StackEq of predicate * ('a * 'a) * ('a * 'a) (* eq + 2 x (old,new) *)
+                   | StackNeq of predicate 
+                   | StackTDeduction of predicate * ('a * 'a) * ('a * 'a) (*application of the congruence axiom*)
+                   | StackInternal of ('a * int) (* path compression, the int is the old 'find' *)
 
 module rec Node : sig
     type t = {
@@ -680,18 +680,22 @@ module rec Node : sig
       args: int list;
       arity: int;
       expr: expression;
+      graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      (* TODO way to report to stack ?? *)
+      TODO (* TODO way to report to stack ?? *)
     }
     
-    val create: expression -> int -> string -> int list -> t
+    val create: expression -> int -> string -> int list -> Dag.t -> t
+    val copy: t -> t
     val find: t -> t
     val union: t -> t -> unit
+    val union_with_reporting: t -> t -> ((t * t) * (t * t))
     val ccpar: t -> IntSet.t
     val congruent: t -> t -> bool
     val may_be_congruent: t -> t -> (t * t) list
     val merge: t -> t -> unit
+    val merge_with_applied: ((t * t) -> (t * t) -> unit) -> t -> t -> unit
   end
   =
   struct
@@ -701,19 +705,32 @@ module rec Node : sig
       args: int list;
       arity: int;
       expr: expression;
+      graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      (* TODO way to report to stack ?? *)
+      TODO (* TODO way to report to stack ?? *)
     }
 
-    let create expr id fn args = {
+    let create expr id fn args graph = {
       id = id;
       fn = fn;
       args = args;
       arity = List.length args;
       expr = expr;
+      graph = graph;
       find = id;
       ccpar = IntSet.empty
+    }
+    
+    let copy n = {
+      id = n.id;
+      fn = n.fn;
+      args = n.args;
+      arity = n.arity;
+      expr = n.expr;
+      graph = n.graph;
+      find = n.find;
+      ccpar = n.ccpar
     }
     
     let find this =
@@ -721,7 +738,8 @@ module rec Node : sig
       else
         begin
           let p = Dag.get (this.find) in
-            parent <- p.id; (*TODO this change the graph !!*)
+            TODO (StackInternal (this,this.find));
+            this.find <- p.id;
             p
         end
 
@@ -731,6 +749,16 @@ module rec Node : sig
         n1.find <- n2.id;
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
         n1.ccpar <- []
+    
+    let union_with_reporting this that = 
+      let n1 = find this in
+      let n2 = find that in
+      let on1 = copy n1 in
+      let on2 = copy n2 in
+        n1.find <- n2.id;
+        n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
+        n1.ccpar <- [];
+        ((n1, on1), (n2, on2))
 
     let ccpar node = (find node).ccpar
 
@@ -747,34 +775,38 @@ module rec Node : sig
     let may_be_congruent this that =
       if this.fn <> that.fn
       || this.arity <> that.arity
-      || (find this).id = (find that.id) then []
+      || (find this).id = (find that).id then []
       else
-        List.filter (fun (a,b) -> (find a).id <> (find b).id) (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
+        List.filter
+          (fun (a,b) -> (find a).id <> (find b).id)
+          (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
 
-    method merge this that =
-      if self#find <> that#find then
+    let rec merge this that =
+      if (find this).id <> (find that).id then
         begin
-          let p1 = self#ccpar in
-          let p2 = that#ccpar in
-            self#union that;
+          let p1 = ccpar this in
+          let p2 = ccpar that in
+            union this that;
             let to_test = Utils.cartesian_product p1 p2 in
-              List.iter (fun (x,y) -> if x#find <> y#find && x#congruent y then x#merge y) to_test
+              List.iter
+                (fun (x,y) -> if (find x).id <> (find y).id && congruent x y then merge x y)
+                to_test
         end
     
     (** return pairs of nodes whose equality comes from congruence*)
-    method merge_with_applied this that =
-      if self#find <> that#find then
+    let rec merge_with_applied to_stack this that =
+      if (find this).id <> (find that).id then
         begin
-          let p1 = self#ccpar in
-          let p2 = that#ccpar in
-            self#union that;
+          let p1 = ccpar this in
+          let p2 = ccpar that in
+          let (a,b) = union_with_reporting this that (fun a b -> (a,b)) in
+            to_stack a b; (* report changes *)
             let to_test = Utils.cartesian_product p1 p2 in
-              let cong = List.filter (fun (x,y) -> x#find <> y#find && x#congruent y) to_test in
-                List.fold_left
-                  (fun acc (x,y) -> if x#find <> y#find then
-                    (x#merge_with_applied y) @ ((x,y)::acc)
-                  else 
-                    acc) [] cong
+              List.iter
+                (fun (x,y) ->
+                  if (find x).id <> (find y).id && congruent x y then
+                    merge_with_applied (fun a b -> TODO (StackTDeduction a b)) x y)
+                to_test
         end
       else []
   end
@@ -785,6 +817,7 @@ and Dag: sig
       expr_to_node: (expression, Node.t) Hashtbl.t;
     }
     (*TODO*)
+    val get: t -> int -> Node.t
   end
   =
   struct
