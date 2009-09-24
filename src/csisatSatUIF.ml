@@ -668,10 +668,10 @@ let interpolate_euf a_side eq a b =
 
 (*********************************)
 (** The different changes that can happen in the system *)
-type 'a euf_change = StackEq of predicate * ('a * 'a) * ('a * 'a) (* eq + 2 x (old,new) *)
-                   | StackNeq of predicate 
-                   | StackTDeduction of predicate * ('a * 'a) * ('a * 'a) (*application of the congruence axiom*)
-                   | StackInternal of ('a * int) (* path compression, the int is the old 'find' *)
+type euf_change = StackEq of predicate * (int * int * IntSet.t) * (int * int * IntSet.t) (* eq + 2 x (id,find,ccpar) *)
+                | StackNeq of predicate 
+                | StackTDeduction of predicate * (int * int * IntSet.t) * (int * int * IntSet.t) (*application of the congruence axiom*)
+                | StackInternal of (int * int) (* path compression: (id, old find) *)
 
 module rec Node : sig
     type t = {
@@ -683,19 +683,19 @@ module rec Node : sig
       graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      TODO (* TODO way to report to stack ?? *)
+      logger: euf_change -> unit
     }
     
-    val create: expression -> int -> string -> int list -> Dag.t -> t
+    val create: expression -> int -> string -> int list -> Dag.t -> (euf_change -> unit) -> t
     val copy: t -> t
     val find: t -> t
     val union: t -> t -> unit
-    val union_with_reporting: t -> t -> ((t * t) * (t * t))
+    val union_with_reporting: t -> t -> (t * t)
     val ccpar: t -> IntSet.t
     val congruent: t -> t -> bool
     val may_be_congruent: t -> t -> (t * t) list
     val merge: t -> t -> unit
-    val merge_with_applied: ((t * t) -> (t * t) -> unit) -> t -> t -> unit
+    val merge_with_applied: t -> t -> unit
   end
   =
   struct
@@ -708,10 +708,10 @@ module rec Node : sig
       graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      TODO (* TODO way to report to stack ?? *)
+      logger: euf_change -> unit
     }
 
-    let create expr id fn args graph = {
+    let create expr id fn args graph logger = {
       id = id;
       fn = fn;
       args = args;
@@ -719,7 +719,8 @@ module rec Node : sig
       expr = expr;
       graph = graph;
       find = id;
-      ccpar = IntSet.empty
+      ccpar = IntSet.empty;
+      logger = logger
     }
     
     let copy n = {
@@ -730,15 +731,16 @@ module rec Node : sig
       expr = n.expr;
       graph = n.graph;
       find = n.find;
-      ccpar = n.ccpar
+      ccpar = n.ccpar;
+      logger = n.logger
     }
     
     let find this =
       if this.find = this.id then this
       else
         begin
-          let p = Dag.get (this.find) in
-            TODO (StackInternal (this,this.find));
+          let p = Dag.get this.graph this.find in
+            logger (StackInternal (this.id, this.find));
             this.find <- p.id;
             p
         end
@@ -758,7 +760,7 @@ module rec Node : sig
         n1.find <- n2.id;
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
         n1.ccpar <- [];
-        ((n1, on1), (n2, on2))
+        (on1, on2)
 
     let ccpar node = (find node).ccpar
 
@@ -794,21 +796,25 @@ module rec Node : sig
         end
     
     (** return pairs of nodes whose equality comes from congruence*)
-    let rec merge_with_applied to_stack this that =
-      if (find this).id <> (find that).id then
-        begin
-          let p1 = ccpar this in
-          let p2 = ccpar that in
-          let (a,b) = union_with_reporting this that (fun a b -> (a,b)) in
-            to_stack a b; (* report changes *)
-            let to_test = Utils.cartesian_product p1 p2 in
-              List.iter
-                (fun (x,y) ->
-                  if (find x).id <> (find y).id && congruent x y then
-                    merge_with_applied (fun a b -> TODO (StackTDeduction a b)) x y)
-                to_test
-        end
-      else []
+    let merge_with_applied this that =
+      (* always report the first equality *)
+      logger (StackEq (this.id, this.find, this.ccpar) (that.id, that.find, that.ccpar));
+      let rec process to_stack this that =
+        if (find this).id <> (find that).id then
+          begin
+            let p1 = ccpar this in
+            let p2 = ccpar that in
+            let (a,b) = union_with_reporting this that (fun a b -> (a,b)) in
+              to_stack a b; (* report changes *)
+              let to_test = Utils.cartesian_product p1 p2 in
+                List.iter
+                  (fun (x,y) ->
+                    if (find x).id <> (find y).id && congruent x y then
+                      process (fun a b -> logger (StackTDeduction (a.id, a.find, a.ccpar) (b.id, b.find, b.ccpar))) x y)
+                  to_test
+          end
+      in
+        process (fun a b -> () ) this that 
   end
 
 and Dag: sig
@@ -816,8 +822,10 @@ and Dag: sig
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
     }
-    (*TODO*)
+
+    val create: ExprSet.t -> (euf_change -> unit) -> t
     val get: t -> int -> Node.t
+    (*TODO*)
   end
   =
   struct
@@ -826,17 +834,21 @@ and Dag: sig
       expr_to_node: (expression, Node.t) Hashtbl.t;
     }
 
-    let new_dag (set: ExprSet.t) =
+    let create (set: ExprSet.t) logger =
       let id = ref 0 in
-      let nodes_lst = ref [] in
-      let table1 = Hashtbl.create 53 in
+      let rec nodes =
+        Array.make
+          (ExprSet.cardinal set)
+          (Node.create (Constant -1.) (-1) "Dummy" [] nodes)
+      in
+      let table1 = Hashtbl.create (ExprSet.cardinal set) in
+      let graph = (nodes, table1) in
       let create_and_add expr fn args =
         try Hashtbl.find table1 expr
         with Not_found ->
           begin
-            (*TODO*)
-            let n = Node.create expr !id fn args
-            in
+            let n = Node.create expr !id fn args graph logger in
+              nodes.(!id) <- n;
               id := !id + 1;
               Hashtbl.replace table1 expr n;
               n
@@ -862,9 +874,9 @@ and Dag: sig
             new_node
       in
       let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
-        (*TODO store nodes in array*)
-        (nodes, table1)
+        graph
 
+      let get (nodes, _) i = nodes.(i)
   end
 
 (** an EUF system is composed of: (1) an union find graph, (2) a stack to track changes *)
