@@ -683,10 +683,9 @@ module rec Node : sig
       graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      logger: euf_change -> unit
     }
     
-    val create: expression -> int -> string -> int list -> Dag.t -> (euf_change -> unit) -> t
+    val create: expression -> int -> string -> int list -> Dag.t -> t
     val copy: t -> t
     val find: t -> t
     val union: t -> t -> unit
@@ -708,10 +707,9 @@ module rec Node : sig
       graph: Dag.t;
       mutable find: int;
       mutable ccpar: IntSet.t
-      logger: euf_change -> unit
     }
 
-    let create expr id fn args graph logger = {
+    let create expr id fn args graph = {
       id = id;
       fn = fn;
       args = args;
@@ -720,7 +718,6 @@ module rec Node : sig
       graph = graph;
       find = id;
       ccpar = IntSet.empty;
-      logger = logger
     }
     
     let copy n = {
@@ -732,7 +729,6 @@ module rec Node : sig
       graph = n.graph;
       find = n.find;
       ccpar = n.ccpar;
-      logger = n.logger
     }
     
     let find this =
@@ -740,7 +736,7 @@ module rec Node : sig
       else
         begin
           let p = Dag.get this.graph this.find in
-            logger (StackInternal (this.id, this.find));
+            Stack.push (StackInternal (this.id, this.find)) (this.graph.stack);
             this.find <- p.id;
             p
         end
@@ -798,7 +794,7 @@ module rec Node : sig
     (** return pairs of nodes whose equality comes from congruence*)
     let merge_with_applied this that =
       (* always report the first equality *)
-      logger (StackEq (this.id, this.find, this.ccpar) (that.id, that.find, that.ccpar));
+      Stack.push (StackEq (this.id, this.find, this.ccpar) (that.id, that.find, that.ccpar)) (this.graph.stack);
       let rec process to_stack this that =
         if (find this).id <> (find that).id then
           begin
@@ -810,7 +806,7 @@ module rec Node : sig
                 List.iter
                   (fun (x,y) ->
                     if (find x).id <> (find y).id && congruent x y then
-                      process (fun a b -> logger (StackTDeduction (a.id, a.find, a.ccpar) (b.id, b.find, b.ccpar))) x y)
+                      process (fun a b -> Stack.push (StackTDeduction (a.id, a.find, a.ccpar) (b.id, b.find, b.ccpar)) a.graph.stack) x y)
                   to_test
           end
       in
@@ -821,11 +817,17 @@ and Dag: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
+      stack: euf_change Stack.t
     }
 
-    val create: ExprSet.t -> (euf_change -> unit) -> t
+    val create: PredSet.t -> t
     val get: t -> int -> Node.t
     (*TODO*)
+    val push: t -> Ast.predicate -> bool
+    val pop: t -> unit
+    val propagation: t -> Ast.predicate list
+    val unsat_core_with_info: t -> (Ast.predicate * Ast.theory * (Ast.predicate * Ast.theory) list)
+    val unsat_core: t -> Ast.predicate
   end
   =
   struct
@@ -834,7 +836,13 @@ and Dag: sig
       expr_to_node: (expression, Node.t) Hashtbl.t;
     }
 
-    let create (set: ExprSet.t) logger =
+    let create pset =
+      let set =
+        PredSet.fold
+          (fun p acc -> ExprSet.union (get_expr_deep_set p) acc)
+          pset
+          ExprSet.empty
+      in
       let id = ref 0 in
       let rec nodes =
         Array.make
@@ -847,7 +855,7 @@ and Dag: sig
         try Hashtbl.find table1 expr
         with Not_found ->
           begin
-            let n = Node.create expr !id fn args graph logger in
+            let n = Node.create expr !id fn args graph in
               nodes.(!id) <- n;
               id := !id + 1;
               Hashtbl.replace table1 expr n;

@@ -533,9 +533,9 @@ let get_expr pred = exprSet_to_ordSet (get_expr_set pred)
 
 (** Returns the expressions of a predicate as a set.
  * Also fetches subexpressions.
- * @return an OrdSet.
+ * @return an ExprSet.
  *)
-let get_expr_deep pred =
+let get_expr_deep_set pred =
   let rec process_expr expr = match expr with
     | Constant _ as c -> ExprSet.singleton c
     | Variable _ as v -> ExprSet.singleton v
@@ -554,8 +554,14 @@ let get_expr_deep pred =
     | Leq (e1,e2) -> ExprSet.union (process_expr e1) (process_expr e2)
     | Atom _ -> ExprSet.empty
   in
-    exprSet_to_ordSet (process_pred pred)
-  
+    process_pred pred
+
+(** Returns the expressions of a predicate as a set.
+ * Also fetches subexpressions.
+ * @return an OrdSet.
+ *)
+let get_expr_deep pred =
+    exprSet_to_ordSet (get_expr_deep_set pred)
 
 (** Gets all the sub-predicates.
  * @return a Set.
