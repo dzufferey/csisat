@@ -818,13 +818,12 @@ and Dag: sig
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
       stack: euf_change Stack.t;
-      mutable neqs: predicate list
-      mutable eqs: predicate list
+      mutable neqs: (int * int) list (* neqs as pairs of node id *)
+      mutable eqs: (int * int) list (* eqs as pairs of node id *)
     }
 
     val create: PredSet.t -> t
     val get: t -> int -> Node.t
-    (*TODO*)
     val push: t -> Ast.predicate -> bool
     val pop: t -> unit
     val propagation: t -> Ast.predicate list
@@ -836,8 +835,8 @@ and Dag: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
-      mutable neqs: predicate list
-      mutable eqs: predicate list
+      mutable neqs: (int * int) list (* neqs as pairs of node id *)
+      mutable eqs: (int * int) list (* eqs as pairs of node id *)
     }
 
     let create pset =
@@ -896,58 +895,34 @@ and Dag: sig
 
     let get (nodes, _) i = nodes.(i)
     
-    let push dag pred = failwith "TODO"
+    let push dag pred =
+      if graph#has_contradiction then
+        failwith "EUF: pusch called on an already unsat system.";
+      match pred with
+      | Eq (e1, e2) ->
+        begin
+          let n1 = get_node dag e1 in
+          let n2 = get_node dag e2 in
+            dag.eqs <- (n1.id, n2.id) :: dag.eqs;
+            Node.merge_with_applied n1 n2;
+            (*TODO check for contradiction *)
+        end
+      | Not (Eq(e1, e2)) ->
+        begin
+          let n1 = get_node dag e1 in
+          let n2 = get_node dag e2 in
+            dag.neqs <- (n1.id, n2.id) :: dag.neqs;
+            Stack.push (StackNeq pred) dag.stack;
+            (*TODO check for contradiction *)
+        end
+      | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
+
     let pop dag = failwith "TODO"
     let propagation = failwith "TODO"
     let unsat_core_with_info = failwith "TODO"
     let unsat_core = failwith "TODO"
   end
 
-(** an EUF system is composed of: (1) an union find graph, (2) a stack to track changes *)
-type euf_system = (dag, euf_change Stack.t)
-
-let new_system (set: ExprSet.t) =
-  (new dag (exprSet_to_ordSet set), Stack.create ())
-
-let push ((graph, stack): euf_system) pred =
-  if graph#has_contradiction then
-    failwith "EUF: pusch called on an already unsat system."
-  else 
-    match pred with
-    | Eq (e1, e2) ->
-      begin
-        (****)
-        (** return pairs of nodes whose equality comes from congruence*)
-        method merge_with_applied (that: node) =
-          if self#find <> that#find then
-            begin
-              let p1 = self#ccpar in
-              let p2 = that#ccpar in
-                self#union that;
-                let to_test = Utils.cartesian_product p1 p2 in
-                  let cong = List.filter (fun (x,y) -> x#find <> y#find && x#congruent y) to_test in
-                    List.fold_left
-                      (fun acc (x,y) -> if x#find <> y#find then
-                        (x#merge_with_applied y) @ ((x,y)::acc)
-                      else 
-                        acc) [] cong
-            end
-          else []
-        (****)
-        let n1 = self#get_node e1 in
-        let n2 = self#get_node e2 in
-          graph#add_eq eq;
-          List.rev_map
-            (fun (x,y) -> AstUtil.order_eq (Eq (self#get_expr x, self#get_expr y)))
-            (n1#merge_with_applied n2)
-        failwith "TODO"
-      end
-    | Not (Eq(_,_)) ->
-      begin
-        Stack.push (StackNeq pred stack);
-        graph#neq_contradiction pred
-      end
-    | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
 
 let pop ((graph, stack): euf_system) =
   if Stack.is_empty stack then []
