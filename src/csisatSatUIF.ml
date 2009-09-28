@@ -817,7 +817,9 @@ and Dag: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
-      stack: euf_change Stack.t
+      stack: euf_change Stack.t;
+      mutable neqs: predicate list
+      mutable eqs: predicate list
     }
 
     val create: PredSet.t -> t
@@ -834,6 +836,8 @@ and Dag: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
+      mutable neqs: predicate list
+      mutable eqs: predicate list
     }
 
     let create pset =
@@ -850,7 +854,13 @@ and Dag: sig
           (Node.create (Constant -1.) (-1) "Dummy" [] nodes)
       in
       let table1 = Hashtbl.create (ExprSet.cardinal set) in
-      let graph = (nodes, table1) in
+      let graph = {
+          nodes = nodes;
+          expr_to_node = table1;
+          neqs = [];
+          eqs = []
+        }
+      in
       let create_and_add expr fn args =
         try Hashtbl.find table1 expr
         with Not_found ->
@@ -884,7 +894,13 @@ and Dag: sig
       let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
         graph
 
-      let get (nodes, _) i = nodes.(i)
+    let get (nodes, _) i = nodes.(i)
+    
+    let push dag pred = failwith "TODO"
+    let pop dag = failwith "TODO"
+    let propagation = failwith "TODO"
+    let unsat_core_with_info = failwith "TODO"
+    let unsat_core = failwith "TODO"
   end
 
 (** an EUF system is composed of: (1) an union find graph, (2) a stack to track changes *)
