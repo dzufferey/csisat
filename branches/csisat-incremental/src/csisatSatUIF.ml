@@ -917,38 +917,79 @@ and Dag: sig
         end
       | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
 
-    let pop dag = failwith "TODO"
-    let propagation = failwith "TODO"
-    let unsat_core_with_info = failwith "TODO"
-    let unsat_core = failwith "TODO"
+    let pop dag =
+      let undo (id, find, parent) =
+        let n = get id in
+          n.find <- find;
+          n.parent <- parent
+      in
+      let rec process () =
+        if Stack.is_empty dag.stack then
+          failwith "EUF: pop called on an empty stack"
+        else
+          begin
+            let t = Stack.pop dag.stack in
+              match t with
+              | StackEq ((Eq (e1,e2)), old1, old2) ->
+                begin
+                  undo old1;
+                  undo old2;
+                  assert(Global.is_off_assert() || 
+                    (List.head dag.eqs) = ((get_node e1).id, (get_node e2).id)
+                  );
+                  dag.eqs <- List.tail dag.eqs;
+                  (*TODO assert satisfiability, since the solver should when unsat *)
+                end
+              | StackNeq (Not (Eq (e1,e2))) ->
+                begin
+                  assert(Global.is_off_assert() || 
+                    (List.head dag.neqs) = ((get_node e1).id, (get_node e2).id)
+                  );
+                  dag.neqs <- List.tail dag.neqs;
+                  (*TODO assert satisfiability *)
+                end
+              | StackInternal (id, find) ->
+                begin
+                  (get id).find <- find;
+                  process ()
+                end
+              | StackTDeduction (eq, old1, old2) ->
+                begin
+                  undo old1;
+                  undo old2;
+                  process ()
+                end
+          end
+      in
+        process ()
+
+    let propagation dag =
+      let rec inspect_stack () =
+        if Stack.is_empty dag.stack then []
+        else
+          begin
+            let t = Stack.pop dag.stack in
+            let ans = match t with
+              | StackEq _ | StackNeq _ -> []
+              | StackInternal _ -> inspect_stack ()
+              | StackTDeduction (t_eq, _, _, _) -> t_eq :: (inspect_stack ())
+            in
+              Stack.push t dag.stack;
+              ans
+          end
+      in
+        inspect_stack ()
+
+    let unsat_core_with_info =
+      failwith "TODO"
+
+    let unsat_core = 
+      failwith "TODO"
   end
 
 
-let pop ((graph, stack): euf_system) =
-  if Stack.is_empty stack then []
-    failwith "EUF: poping a system with an empty stack."
-  else
-    begin
-      failwith "TODO"
-    end
-
 (** find the new congruence (after the last push). *)
 let t_propagation ((graph, stack): euf_system) =
-  let rec inspect_stack () =
-    if Stack.is_empty stack then []
-    else
-      begin
-        let t = Stack.pop stack in
-        let ans = match t with
-          | StackEq _ | StackNeq _ -> []
-          | StackInternal _ -> inspect_stack ()
-          | StackTDeduction (t_eq, _, _, _) -> t_eq :: (inspect_stack ())
-        in
-          Stack.push t stack;
-          ans
-      end
-  in
-    inspect_stack ()
 
 
 
