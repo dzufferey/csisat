@@ -40,7 +40,7 @@ module type TheorySolver =
      *)
     val create: PredSet.t -> t
 
-    (** Adds and test for satisfiabilitys. *)
+    (** Adds and test for satisfiability. *)
     val push: t -> Ast.predicate -> bool
     
     (** Removes the predicate on top of the stacks. *)
