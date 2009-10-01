@@ -980,11 +980,17 @@ and Dag: sig
       in
         inspect_stack ()
 
-    let unsat_core_with_info =
-      failwith "TODO"
+    let unsat_core_with_info dag =
+      failwith "TODO";
+      let core = ... in
+      let congruences = ... in
+        (* congruences are in the stack *)
+        (* the last (dis)equality added is part of the core *)
+        (* ... *)
+        (core, EUF, congruences)
 
-    let unsat_core = 
-      failwith "TODO"
+    let unsat_core dag = 
+      let (core, _, _) = unsat_core_with_info dag
   end
 
 
