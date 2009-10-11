@@ -893,7 +893,14 @@ and Dag: sig
       let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
         graph
 
-    let get (nodes, _) i = nodes.(i)
+    let get dag i = dag.nodes.(i)
+
+    let check_sat dag =
+      not (
+        List.exists
+          (fun (id1,id2) -> (Node.find (get dag id1)).id = (Node.find (get dag id2)).id)
+          dag.neqs
+      )
     
     let push dag pred =
       if graph#has_contradiction then
@@ -905,7 +912,7 @@ and Dag: sig
           let n2 = get_node dag e2 in
             dag.eqs <- (n1.id, n2.id) :: dag.eqs;
             Node.merge_with_applied n1 n2;
-            (*TODO check for contradiction *)
+            check_sat dag
         end
       | Not (Eq(e1, e2)) ->
         begin
@@ -913,7 +920,7 @@ and Dag: sig
           let n2 = get_node dag e2 in
             dag.neqs <- (n1.id, n2.id) :: dag.neqs;
             Stack.push (StackNeq pred) dag.stack;
-            (*TODO check for contradiction *)
+            check_sat dag
         end
       | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
 
@@ -938,7 +945,7 @@ and Dag: sig
                     (List.head dag.eqs) = ((get_node e1).id, (get_node e2).id)
                   );
                   dag.eqs <- List.tail dag.eqs;
-                  (*TODO assert satisfiability, since the solver should when unsat *)
+                  assert (check_sat dag)
                 end
               | StackNeq (Not (Eq (e1,e2))) ->
                 begin
@@ -946,7 +953,7 @@ and Dag: sig
                     (List.head dag.neqs) = ((get_node e1).id, (get_node e2).id)
                   );
                   dag.neqs <- List.tail dag.neqs;
-                  (*TODO assert satisfiability *)
+                  assert (check_sat dag)
                 end
               | StackInternal (id, find) ->
                 begin
