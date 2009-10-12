@@ -945,7 +945,9 @@ and Dag: sig
                     (List.head dag.eqs) = ((get_node e1).id, (get_node e2).id)
                   );
                   dag.eqs <- List.tail dag.eqs;
-                  assert (check_sat dag)
+                  assert(Global.is_off_assert() || 
+                    check_sat dag
+                  )
                 end
               | StackNeq (Not (Eq (e1,e2))) ->
                 begin
@@ -953,7 +955,9 @@ and Dag: sig
                     (List.head dag.neqs) = ((get_node e1).id, (get_node e2).id)
                   );
                   dag.neqs <- List.tail dag.neqs;
-                  assert (check_sat dag)
+                  assert(Global.is_off_assert() || 
+                    check_sat dag
+                  )
                 end
               | StackInternal (id, find) ->
                 begin
