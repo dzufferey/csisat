@@ -668,10 +668,11 @@ let interpolate_euf a_side eq a b =
 
 (*********************************)
 (** The different changes that can happen in the system *)
-type euf_change = StackEq of predicate * (int * int * IntSet.t) * (int * int * IntSet.t) (* eq + 2 x (id,find,ccpar) *)
+type find_t =  int * (predicate list)
+type euf_change = StackEq of predicate * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* eq + 2 x (id,find,ccpar) *)
                 | StackNeq of predicate 
                 | StackTDeduction of predicate * (int * int * IntSet.t) * (int * int * IntSet.t) (*application of the congruence axiom*)
-                | StackInternal of (int * int) (* path compression: (id, old find) *)
+                | StackInternal of int * find_t (* path compression: (id, old find) *)
 
 module rec Node : sig
     type t = {
@@ -681,20 +682,18 @@ module rec Node : sig
       arity: int;
       expr: expression;
       graph: Dag.t;
-      mutable find: int;
+      mutable find: find_t; (*the predicate list is used to construct the unsat core faster *)
       mutable ccpar: IntSet.t
     }
     
     val create: expression -> int -> string -> int list -> Dag.t -> t
     val copy: t -> t
     val find: t -> t
-    val union: t -> t -> unit
-    val union_with_reporting: t -> t -> (t * t)
+    val union: t -> t -> (t * t)
     val ccpar: t -> IntSet.t
     val congruent: t -> t -> bool
     val may_be_congruent: t -> t -> (t * t) list
     val merge: t -> t -> unit
-    val merge_with_applied: t -> t -> unit
   end
   =
   struct
@@ -705,7 +704,7 @@ module rec Node : sig
       arity: int;
       expr: expression;
       graph: Dag.t;
-      mutable find: int;
+      mutable find: find_t;
       mutable ccpar: IntSet.t
     }
 
@@ -716,7 +715,7 @@ module rec Node : sig
       arity = List.length args;
       expr = expr;
       graph = graph;
-      find = id;
+      find = (id, []);
       ccpar = IntSet.empty;
     }
     
@@ -731,29 +730,26 @@ module rec Node : sig
       ccpar = n.ccpar;
     }
     
-    let find this =
-      if this.find = this.id then this
+    (*TODO is it right ?? (predicate update) *)
+    let rec find this =
+      if (fst this.find) = this.id then this
       else
         begin
-          let p = Dag.get this.graph this.find in
+          let p = Dag.get this.graph (fst this.find) in
+          let top = find p in
             Stack.push (StackInternal (this.id, this.find)) (this.graph.stack);
-            this.find <- p.id;
-            p
+            this.find <- (top.id, (snd p.find) @ (snd this.find));
+            top
         end
 
+    (*TODO is it right ?? (predicate update) *)
     let union this that = 
-      let n1 = find this in
-      let n2 = find that in
-        n1.find <- n2.id;
-        n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
-        n1.ccpar <- []
-    
-    let union_with_reporting this that = 
       let n1 = find this in
       let n2 = find that in
       let on1 = copy n1 in
       let on2 = copy n2 in
-        n1.find <- n2.id;
+      let eq = order_eq (Eq (this.expr, that.expr)) in
+        n1.find <- (n2.id, eq :: (snd this.find) @ (snd.that find));
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
         n1.ccpar <- [];
         (on1, on2)
@@ -779,20 +775,8 @@ module rec Node : sig
           (fun (a,b) -> (find a).id <> (find b).id)
           (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
 
-    let rec merge this that =
-      if (find this).id <> (find that).id then
-        begin
-          let p1 = ccpar this in
-          let p2 = ccpar that in
-            union this that;
-            let to_test = Utils.cartesian_product p1 p2 in
-              List.iter
-                (fun (x,y) -> if (find x).id <> (find y).id && congruent x y then merge x y)
-                to_test
-        end
-    
     (** return pairs of nodes whose equality comes from congruence*)
-    let merge_with_applied this that =
+    let merge this that =
       (* always report the first equality *)
       Stack.push (StackEq (this.id, this.find, this.ccpar) (that.id, that.find, that.ccpar)) (this.graph.stack);
       let rec process to_stack this that =
@@ -800,7 +784,7 @@ module rec Node : sig
           begin
             let p1 = ccpar this in
             let p2 = ccpar that in
-            let (a,b) = union_with_reporting this that (fun a b -> (a,b)) in
+            let (a,b) = union this that in
               to_stack a b; (* report changes *)
               let to_test = Utils.cartesian_product p1 p2 in
                 List.iter
@@ -819,7 +803,6 @@ and Dag: sig
       expr_to_node: (expression, Node.t) Hashtbl.t;
       stack: euf_change Stack.t;
       mutable neqs: (int * int) list (* neqs as pairs of node id *)
-      mutable eqs: (int * int) list (* eqs as pairs of node id *)
     }
 
     val create: PredSet.t -> t
@@ -836,7 +819,6 @@ and Dag: sig
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
       mutable neqs: (int * int) list (* neqs as pairs of node id *)
-      mutable eqs: (int * int) list (* eqs as pairs of node id *)
     }
 
     let create pset =
@@ -857,7 +839,6 @@ and Dag: sig
           nodes = nodes;
           expr_to_node = table1;
           neqs = [];
-          eqs = []
         }
       in
       let create_and_add expr fn args =
@@ -910,8 +891,7 @@ and Dag: sig
         begin
           let n1 = get_node dag e1 in
           let n2 = get_node dag e2 in
-            dag.eqs <- (n1.id, n2.id) :: dag.eqs;
-            Node.merge_with_applied n1 n2;
+            Node.merge n1 n2;
             check_sat dag
         end
       | Not (Eq(e1, e2)) ->
@@ -941,10 +921,6 @@ and Dag: sig
                 begin
                   undo old1;
                   undo old2;
-                  assert(Global.is_off_assert() || 
-                    (List.head dag.eqs) = ((get_node e1).id, (get_node e2).id)
-                  );
-                  dag.eqs <- List.tail dag.eqs;
                   assert(Global.is_off_assert() || 
                     check_sat dag
                   )
@@ -1004,127 +980,3 @@ and Dag: sig
       let (core, _, _) = unsat_core_with_info dag
   end
 
-
-(** find the new congruence (after the last push). *)
-let t_propagation ((graph, stack): euf_system) =
-
-
-
-(*********************************)
-
-
-(*
-open CsisatTheorySolver
-
-class eufSolver preds =
-    let exprs = get_expr (And preds) in
-  object (self)
-    
-    inherit theorySolver
-
-    (**
-     * -added predicate
-     * -changes in the graph (constraints are added anyway)
-     * -deduction
-     *)
-    val stack: (predicate * bool * predicate list) Stack.t = Stack.create ()
-
-    method private get_stack_content =
-      let lst = ref [] in
-        Stack.iter (fun x -> lst := x:: !lst) stack;
-        !lst
-
-    val mutable graph = Some (new Dag.dag exprs)
-    method get_graph = match graph with
-      | Some g -> g
-      | None -> 
-        begin
-          let g = new Dag.dag exprs in
-            ignore (g#is_satisfiable (And self#get_stack_content));
-            graph <- Some g;
-            g
-        end
-
-    (** Adds and test for satisfiability. *)
-    method push predicate =
-      let graph = self#get_graph in
-        match predicate with
-        | Eq(_,_) ->
-          begin
-            let (contra, changed, deductions) =
-              if graph#entailed predicate then
-                begin
-                  graph#add_constr predicate;
-                  (false,false,[])
-                end
-              else
-                begin
-                  let axiom_app = graph#add_constr_with_applied predicate in
-                  let contra = graph#has_contradiction in
-                    (contra , true, axiom_app)
-                end
-            in
-              Stack.push(predicate,changed,deductions);
-              contra
-          end
-        | Not (Eq(_,_)) ->
-          begin
-            Stack.push(predicate,false,[]);
-            graph.neq_contradiction predicate
-          end
-        | err -> failwith ("EUFSolver: push only for a conjunction of eq/ne "^(AstUtil.print err))
-
-    (** Removes the predicate on top of the stacks. *)
-    method pop =
-      let (pred,changed,_) = Stack.pop stack in
-        if not changed then
-          begin
-            assert (deductions = []);
-            match graph with
-            | Some graph ->
-              begin
-                match pred with
-                | Eq _ -> graph#rm_eq pred
-                | Not (Eq _) -> graph#rm_neq pred
-                | err -> failwith ("EUFSolver: should not happen "^(AstUtil.print err))
-              end
-            | None -> ()
-          end
-        else
-          begin
-            graph <- None
-          end
-
-    val propagable_eq =
-      PredSet.filter
-        (match x with Eq _ -> true | _ -> false)
-        (get_proposition_set preds)
-
-    (** Returns a list of predicates equalities that are entailed
-     * by the current stack (report only changes from last addition).
-     *)
-    method propagation =
-      assert false;
-      []
-      (*TODO*)
-      (*a propgation is smth not in the stack, but is entailed.
-       * -for = : has the same representative.
-       * -for <>: exits v <> w and x = v and y = w => x <> y
-       *)
-
-    (** Returns:
-     *  -unsat_core
-     *  -the theory which has a contradiction
-     *  -list of deduced equalities + their respective theories. 
-     *)
-    method unsat_core_with_info =
-      (*TODO improve (avoid recomputing everything) *)
-      let formula = And (self#get_stack_content) in
-      let core = unsat_core formula in
-      let graph = new dag exprs in
-      let uif_ded = graph#add_pred_with_applied core in
-        assert(graph#has_contradiction);
-        (core, EUF, List.map(fun x -> (EUF,x)) uif_ded)
-
-  end
-  *)
