@@ -968,6 +968,19 @@ and Dag: sig
         inspect_stack ()
 
     let unsat_core_with_info dag =
+      let (c1,c2) = try
+          List.find
+            (fun (id1,id2) -> (Node.find (get dag id1)).id = (Node.find (get dag id2)).id)
+            dag.neqs
+        with Not_found ->
+          failwith "EUF, unsat_core_with_info: system is sat!"
+      in
+      let raw_core = c1.find @ c2.find in
+      (* raw_core contains both given equalities and congruences.
+       * it may contains multiple time the same eqs and congr.
+       * it is an overapproximation ...
+       * TODO filter eqs from congr, order congr, ...
+       *)
       failwith "TODO";
       let core = ... in
       let congruences = ... in
