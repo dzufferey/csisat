@@ -23,6 +23,8 @@ IN THE SOFTWARE.
 #ifndef picosat_h_INCLUDED
 #define picosat_h_INCLUDED
 
+#define PICOSAT_MODIFIED_GET_PROOF
+
 /*------------------------------------------------------------------------*/
 
 #include <stdlib.h>

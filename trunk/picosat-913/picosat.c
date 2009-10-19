@@ -1,3 +1,5 @@
+//leopoldhaller@gmail.com TODO: USED PROOF CODE FROM CSISAT, INCLUDE LICENSE
+
 /****************************************************************************
 Copyright (c) 2006 - 2009, Armin Biere, Johannes Kepler University.
 
@@ -19,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ****************************************************************************/
+
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -464,6 +467,8 @@ static enum State
   UNKNOWN = 4,
 } 
 state = RESET;
+
+static int* proof = NULL;
 
 static FILE *out;
 static char * prefix;
@@ -1394,6 +1399,9 @@ static void
 reset (void)
 {
   ABORTIF (state == RESET, "API usage: reset without initialization");
+
+  if(proof != NULL)
+    free(proof);
 
   delete_clauses ();
 #ifdef TRACE
@@ -5681,6 +5689,8 @@ decide (void)
   decisions++;
 }
 
+
+
 static int
 sat (int l)
 {
@@ -6111,12 +6121,10 @@ write_trace (FILE * file, int fmt)
   (void) fmt;
 #endif
 }
-
 /**
- * method to access the zhains without printing to a file
+ * method to access the zhains without pinting to a file
  */
 
-static int* proof = NULL;
 static int cursor = 0;
 #define PROOF_BLOCK 10000
 static int current_size;
@@ -6224,7 +6232,7 @@ get_proof()
   unsigned i;
 
   core ();
-
+  
   for (p = SOC; p != EOC; p = NXC (p))
     {
       cls = *p;
@@ -6264,6 +6272,8 @@ picosat_get_proof(){
   return get_proof();
 }
 ////
+
+
 
 static void
 write_core_wrapper (FILE * file, int fmt)
