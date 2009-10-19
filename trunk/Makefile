@@ -70,7 +70,7 @@ OCAML_LIB = libcsisat
 
 
 all: glpk pico picosat server $(FILES) $(MAIN) lib
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-913/libpicosat.a $(FILES) $(MAIN)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat/libpicosat.a $(FILES) $(MAIN)
 	$(shell sed -i 's/Version .*\\n\\n/Version 1.2 (Rev REV, Build DATE)\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svnversion)
@@ -151,7 +151,7 @@ $(LIB)/$(OCAML_LIB).cmxa $(LIB)/$(OCAML_LIB).a: $(OCAML_LIB_OBJ:%=%.cmx)
 	@mkdir -p $(LIB)
 	$(OCAML_OPT_LD) $(OCAML_LD_FLAGS) -a -o $@ $(FILES)
 
-.PHONY: doc server
+.PHONY: doc server picosat
 
 doc: odoc
 
@@ -180,9 +180,9 @@ pico:
 	cp pico_ml_wrapper/libcamlpico.a $(LIB)/
 
 picosat:
-	cd picosat-913; ./configure -t;  make
+	cd picosat; ./configure -t;  make
 	@mkdir -p $(LIB)
-	cp picosat-913/libpicosat.a $(LIB)/
+	cp picosat/libpicosat.a $(LIB)/
 
 server:
 	cd server; make
@@ -191,5 +191,5 @@ clean:
 	$(RM) $(TARGET) $(OBJ)/* $(LIB)/*
 	cd glpk_ml_wrapper; make clean
 	cd pico_ml_wrapper; make clean
-	cd picosat-913; make clean
+	cd picosat; make clean
 	cd server; make clean

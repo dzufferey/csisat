@@ -1,5 +1,3 @@
-//leopoldhaller@gmail.com TODO: USED PROOF CODE FROM CSISAT, INCLUDE LICENSE
-
 /****************************************************************************
 Copyright (c) 2006 - 2009, Armin Biere, Johannes Kepler University.
 

@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS= -O2 -Wall
-INCLUDE= -I../picosat-913
-LIBS= -lpicosat -L../picosat-913
+INCLUDE= -I../picosat
+LIBS= -lpicosat -L../picosat
 RM = /bin/rm -f
 
 SRC = src/camlpico.c
