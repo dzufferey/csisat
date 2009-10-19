@@ -1400,8 +1400,10 @@ reset (void)
 {
   ABORTIF (state == RESET, "API usage: reset without initialization");
 
-  if(proof != NULL)
+  if(proof != NULL) {
     free(proof);
+    proof = NULL;
+  }
 
   delete_clauses ();
 #ifdef TRACE
