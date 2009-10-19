@@ -4417,7 +4417,7 @@ static void add_int_to_proof(int i)
 {
   if(cursor >= current_size){
     current_size += PROOF_BLOCK;
-    proof = realloc(proof, current_size);
+    proof = realloc(proof, current_size * sizeof(int));
   }
   proof[cursor] = i;
   cursor++;
