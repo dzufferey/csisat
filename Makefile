@@ -180,7 +180,7 @@ pico:
 	cp pico_ml_wrapper/libcamlpico.a $(LIB)/
 
 picosat:
-	cd picosat-913; ./configure;  make
+	cd picosat-913; ./configure -t;  make
 	@mkdir -p $(LIB)
 	cp picosat-913/libpicosat.a $(LIB)/
 
