@@ -13,6 +13,7 @@ int pclose (FILE *);
 
 static int lineno;
 static FILE *input;
+static int inputid;
 static FILE *output;
 static int verbose;
 static char buffer[100];
@@ -20,12 +21,37 @@ static char *bhead = buffer;
 static const char *eob = buffer + 80;
 static FILE * incremental_rup_file;
 
+extern void picosat_enter (void);
+extern void picosat_leave (void);
+
+static char page[4096];
+static char * top;
+static char * end;
+
 static int
 next (void)
 {
-  int res = getc (input);
+  size_t bytes;
+  int res;
+
+  if (top == end)
+    {
+      if (end < page + sizeof page)
+	return EOF;
+
+      bytes = fread (page, 1, sizeof page, input);
+      if (bytes == 0)
+	return EOF;
+
+      top = page;
+      end = page + bytes;
+    }
+
+  res = *top++;
+
   if (res == '\n')
     lineno++;
+
   return res;
 }
 
@@ -35,6 +61,7 @@ parse (int force)
   int ch, sign, lit, vars, clauses;
 
   lineno = 1;
+  inputid = fileno (input);
 
 SKIP_COMMENTS:
   ch = next ();
@@ -52,7 +79,39 @@ SKIP_COMMENTS:
 INVALID_HEADER:
     return "missing or invalid 'p cnf <variables> <clauses>' header";
 
-  if (fscanf (input, " cnf %d %d\n", &vars, &clauses) != 2)
+  if (!isspace (next ()))
+    goto INVALID_HEADER;
+
+  while (isspace (ch = next ()))
+    ;
+
+  if (ch != 'c' || next () != 'n' || next () != 'f' || !isspace (next ()))
+    goto INVALID_HEADER;
+
+  while (isspace (ch = next ()))
+    ;
+    
+  if (!isdigit (ch))
+    goto INVALID_HEADER;
+
+  vars = ch - '0';
+  while (isdigit (ch = next ()))
+    vars = 10 * vars + (ch - '0');
+
+  if (!isspace (ch))
+    goto INVALID_HEADER;
+
+  while (isspace (ch = next ()))
+    ;
+
+  if (!isdigit (ch))
+    goto INVALID_HEADER;
+
+  clauses = ch - '0';
+  while (isdigit (ch = next ()))
+    clauses = 10 * clauses + (ch - '0');
+
+  if (!isspace (ch) && ch != '\n' )
     goto INVALID_HEADER;
 
   if (verbose)
@@ -192,15 +251,6 @@ write_core_variables (FILE * file)
 }
 
 static void
-write_used_variables (FILE * file)
-{
-  int i, max_idx = picosat_variables ();
-  for (i = 1; i <= max_idx; i++)
-    if (picosat_usedlit (i))
-      fprintf (file, "%d\n", i);
-}
-
-static void
 write_to_file (const char *name, const char *type, void (*writer) (FILE *))
 {
   int pclose_file, zipped = has_suffix (name, ".gz");
@@ -251,10 +301,12 @@ write_to_file (const char *name, const char *type, void (*writer) (FILE *))
 "  -v           enable verbose output\n" \
 "  -f           ignore invalid header\n" \
 "  -n           do not print satisfying assignment\n" \
+"  -p           print formula in DIMACS format and exit\n" \
 "  -a <lit>     start with an assumption\n" \
-"  -l <limit>   set decision limit\n" \
-"  -s <seed>    set random number generator seed\n" \
-"  -o <output>  set output file\n" \
+"  -l <limit>   set decision limit (no limit per default)\n" \
+"  -i <0/1>     force FALSE respectively TRUE as default phase\n" \
+"  -s <seed>    set random number generator seed (default 0)\n" \
+"  -o <output>  set output file (<stdout> per default)\n" \
 "  -t <trace>   generate compact proof trace file\n" \
 "  -T <trace>   generate extended proof trace file\n" \
 "  -r <trace>   generate reverse unit propagation proof file\n" \
@@ -267,12 +319,12 @@ write_to_file (const char *name, const char *type, void (*writer) (FILE *))
 int
 picosat_main (int argc, char **argv)
 {
-  const char * clausal_core_name, * variable_core_name, * used_variables_name;
+  int res, done, err, print_satisfying_assignment, force, print_formula;
   const char *compact_trace_name, *extended_trace_name, * rup_trace_name;
-  int res, done, err, print_satisfying_assignment, force;
+  const char * clausal_core_name, * variable_core_name;
+  int assumption, assumptions, defaultphase;
   const char *input_name, *output_name;
   int close_input, pclose_input;
-  int assumption, assumptions;
   int i, decision_limit;
   double start_time;
   unsigned seed;
@@ -283,7 +335,6 @@ picosat_main (int argc, char **argv)
 
   clausal_core_name = 0;
   variable_core_name = 0;
-  used_variables_name = 0;
   output_name = 0;
   compact_trace_name = 0;
   extended_trace_name = 0;
@@ -294,14 +345,19 @@ picosat_main (int argc, char **argv)
   input_name = "<stdin>";
   input = stdin;
   output = stdout;
-  verbose = done = err = 0;
+  verbose = 1;
+  done = err = 0;
   decision_limit = -1;
+  defaultphase = 0;
   assumptions = 0;
   force = 0;
   trace = 0;
   seed = 0;
 
+  top = end = page + sizeof page;
+
   print_satisfying_assignment = 1;
+  print_formula = 0;
 
   for (i = 1; !done && !err && i < argc; i++)
     {
@@ -317,12 +373,12 @@ picosat_main (int argc, char **argv)
 	}
       else if (!strcmp (argv[i], "--config"))
 	{
-	  fprintf (output, "%s", picosat_config ());
+	  fprintf (output, "%s\n", picosat_config ());
 	  done = 1;
 	}
       else if (!strcmp (argv[i], "-v"))
 	{
-	  verbose = 1;
+	  verbose++;
 	}
       else if (!strcmp (argv[i], "-f"))
 	{
@@ -331,6 +387,10 @@ picosat_main (int argc, char **argv)
       else if (!strcmp (argv[i], "-n"))
 	{
 	  print_satisfying_assignment = 0;
+	}
+      else if (!strcmp (argv[i], "-p"))
+	{
+	  print_formula = 1;
 	}
       else if (!strcmp (argv[i], "-l"))
 	{
@@ -341,6 +401,27 @@ picosat_main (int argc, char **argv)
 	    }
 	  else
 	    decision_limit = atoi (argv[i]);
+	}
+      else if (!strcmp (argv[i], "-i"))
+	{
+	  if (++i == argc)
+	    {
+	      fprintf (output, "*** picosat: argument to '-i' missing\n");
+	      err = 1;
+	    }
+	  else if (!strcmp (argv[i], "0"))
+	    {
+	      defaultphase = -1;
+	    }
+	  else if (!strcmp (argv[i], "1"))
+	    {
+	      defaultphase = 1;
+	    }
+	  else
+	    {
+	      fprintf (output, "*** picosat: invalid argument to '-i'\n");
+	      err = 1;
+	    }
 	}
       else if (!strcmp (argv[i], "-a"))
 	{
@@ -531,24 +612,6 @@ picosat_main (int argc, char **argv)
 	      trace = 1;
 	    }
 	}
-      else if (!strcmp (argv[i], "-U"))
-	{
-	  if (used_variables_name)
-	    {
-	      fprintf (output,
-		       "*** picosat: "
-		       "multiple used variable files '%s' and '%s'\n",
-		       used_variables_name, argv[i]);
-	      err = 1;
-	    }
-	  else if (++i == argc)
-	    {
-	      fprintf (output, "*** picosat: argument ot '-U' missing\n");
-	      err = 1;
-	    }
-	  else
-	    used_variables_name = argv[i];
-	}
       else if (argv[i][0] == '-')
 	{
 	  fprintf (output,
@@ -606,22 +669,40 @@ picosat_main (int argc, char **argv)
       if (verbose)
 	{
 	  fprintf (output,
-		   "c PicoSAT SAT Solver Version %s\n"
-		   "c %s\n", picosat_version (), picosat_id ());
+		   "c PicoSAT SAT Solver Version %s\n",
+		   picosat_version ());
 
 	  fprintf (output, "c %s\n", picosat_copyright ());
+	  fprintf (output, "c %s\n", picosat_config ());
 	}
 
       picosat_init ();
+      picosat_enter ();
 
       if (output_name)
 	picosat_set_output (output);
 
-      if (verbose)
-	picosat_enable_verbosity ();
+      picosat_set_verbosity (verbose);
+
+      if (verbose && (trace || defaultphase))
+	fputs ("c\n", output);
 
       if (trace)
-	picosat_enable_trace_generation ();
+	{
+	  if (verbose)
+	    fprintf (output, "c tracing proof\n");
+	  picosat_enable_trace_generation ();
+	}
+
+      if (defaultphase)
+	{
+	  if (verbose)
+	    fprintf (output,
+		     "c using %s as default phase\n",
+		     defaultphase < 0 ? "FALSE" : "TRUE");
+
+	  picosat_set_global_default_phase (defaultphase);
+	}
 
       if (verbose)
 	fprintf (output, "c\nc parsing %s\n", input_name);
@@ -633,18 +714,6 @@ picosat_main (int argc, char **argv)
 	}
       else
 	{
-	  if (verbose)
-	    fprintf (output,
-		     "c initialized %u variables\n"
-		     "c found %u non trivial clauses\n",
-		     picosat_variables (), picosat_added_original_clauses ());
-
-	  picosat_set_seed (seed);
-	  if (verbose)
-	    fprintf (output,
-	             "c\nc random number generator seed %u\n", 
-		     seed);
-
 	  if (assumptions)
 	    {
 	      for (i = 1; i < argc; i++)
@@ -670,48 +739,65 @@ picosat_main (int argc, char **argv)
 		}
 	    }
 
-	  res = picosat_sat (decision_limit);
-
-	  if (res == PICOSAT_UNSATISFIABLE)
+	  if (print_formula)
 	    {
-	      fputs ("s UNSATISFIABLE\n", output);
-
-	      if (compact_trace_name)
-		write_to_file (compact_trace_name,
-		               "compact trace", 
-			       picosat_write_compact_trace);
-
-	      if (extended_trace_name)
-		write_to_file (extended_trace_name,
-		               "extended trace", 
-			       picosat_write_extended_trace);
-
-	      if (!incremental_rup_file && rup_trace_name)
-		write_to_file (rup_trace_name,
-		               "rup trace", 
-			       picosat_write_rup_trace);
-
-	      if (clausal_core_name)
-		write_to_file (clausal_core_name, 
-		               "clausal core", picosat_write_clausal_core);
-
-	      if (variable_core_name)
-		write_to_file (variable_core_name, 
-		               "variable core", write_core_variables);
-
-	      if (used_variables_name)
-		write_to_file (used_variables_name,
-		               "used variables", write_used_variables);
-	    }
-	  else if (res == PICOSAT_SATISFIABLE)
-	    {
-	      fputs ("s SATISFIABLE\n", output);
-
-	      if (print_satisfying_assignment)
-		printa ();
+	      picosat_print (output);
 	    }
 	  else
-	    fputs ("s UNKNOWN\n", output);
+	    {
+	      if (verbose)
+		fprintf (output,
+			 "c initialized %u variables\n"
+			 "c found %u non trivial clauses\n",
+			 picosat_variables (),
+			 picosat_added_original_clauses ());
+
+	      picosat_set_seed (seed);
+	      if (verbose)
+		fprintf (output,
+			 "c\nc random number generator seed %u\n", 
+			 seed);
+
+	      res = picosat_sat (decision_limit);
+
+	      if (res == PICOSAT_UNSATISFIABLE)
+		{
+		  fputs ("s UNSATISFIABLE\n", output);
+
+		  if (compact_trace_name)
+		    write_to_file (compact_trace_name,
+				   "compact trace", 
+				   picosat_write_compact_trace);
+
+		  if (extended_trace_name)
+		    write_to_file (extended_trace_name,
+				   "extended trace", 
+				   picosat_write_extended_trace);
+
+		  if (!incremental_rup_file && rup_trace_name)
+		    write_to_file (rup_trace_name,
+				   "rup trace", 
+				   picosat_write_rup_trace);
+
+		  if (clausal_core_name)
+		    write_to_file (clausal_core_name, 
+				   "clausal core",
+				   picosat_write_clausal_core);
+
+		  if (variable_core_name)
+		    write_to_file (variable_core_name, 
+				   "variable core", write_core_variables);
+		}
+	      else if (res == PICOSAT_SATISFIABLE)
+		{
+		  fputs ("s SATISFIABLE\n", output);
+
+		  if (print_satisfying_assignment)
+		    printa ();
+		}
+	      else
+		fputs ("s UNKNOWN\n", output);
+	    }
 	}
 
       if (!err && verbose)
@@ -719,12 +805,11 @@ picosat_main (int argc, char **argv)
 	  fputs ("c\n", output);
 	  picosat_stats ();
 	  fprintf (output,
-		   "c %.1f seconds total run time\n"
-		   "c %.1f MB maximally allocated\n",
-		   picosat_time_stamp () - start_time,
-		   picosat_max_bytes_allocated () / (double) (1 << 20));
+	           "c %.1f seconds total run time\n",
+		   picosat_time_stamp () - start_time);
 	}
 
+      picosat_leave ();
       picosat_reset ();
     }
 
