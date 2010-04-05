@@ -204,7 +204,7 @@ let sat_only_ () =
     if ans then
       Message.print Message.Normal (lazy "satisfiable")
     else
-      Message.print Message.Normal  (lazy "unsatisfiable")
+      Message.print Message.Normal (lazy "unsatisfiable")
 
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));

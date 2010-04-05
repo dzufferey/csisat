@@ -148,7 +148,7 @@ let is_sat formula =
   | False -> false
   | formula ->
     begin
-      let solver = get_solver true in (* TODO *)
+      let solver = get_solver false in (* TODO true to test the satsolver *)
       let (_, _, f) =
         (*if is already in cnf ...*)
         if AstUtil.is_cnf formula then
@@ -189,7 +189,7 @@ let is_sat formula =
             end
           else
             begin
-              solver#get_proof; (* TODO *)
+              (*solver#get_proof; (* TODO to test the satsolver *)*)
               false
             end
         in

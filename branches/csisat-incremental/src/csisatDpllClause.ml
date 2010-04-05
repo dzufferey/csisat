@@ -152,7 +152,7 @@ class clause =
         assert(Global.is_off_assert() || neg#has_not pivot);
         let new_lit = ref [] in
         for i = 1 to (Array.length literals) -1 do
-          if i <> (index_of_literal pivot)then
+          if i <> (index_of_literal pivot) then
             begin
               assert (Global.is_off_assert() || not (pos#has i && neg#has_not i));
               assert (Global.is_off_assert() || not (pos#has_not i && neg#has i));

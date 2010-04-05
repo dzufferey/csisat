@@ -222,7 +222,8 @@ class system =
      *  The learned clause has to be in a not contradictory state.
      *)
     method private force_learning cl prf =
-        assert (Global.is_off_assert() || self#new_clause cl);
+      let res = self#new_clause cl in
+        assert (Global.is_off_assert() || res);
         self#store_proof cl prf
 
     method affect p reason =
@@ -399,8 +400,19 @@ class system =
               if (int_get_result prf)#has_prop pivot then
                 begin
                   let resolved_clause = (int_get_result prf)#resolve pivot (int_get_result proof) in
+                  (*
+                  (* TODO there is some redundant computation somewhere -> improve learning *)
+                  let rec ancestor_contains cls prf = match prf with
+                    | IRPNode (_, left, right, cls2) ->
+                         IntSet.equal cls#get_literals cls2#get_literals
+                      || ancestor_contains cls left
+                      || ancestor_contains cls right
+                    | IRPLeaf cls2 -> IntSet.equal cls#get_literals cls2#get_literals
+                  in
+                  assert (not (ancestor_contains resolved_clause prf));
+                  assert (not (ancestor_contains resolved_clause proof));
+                  *)
                   let new_prf =
-                    (*index_of_literal is used as proposition_of_lit*)
                     if keep_proof then IRPNode (index_of_literal pivot, prf, proof, resolved_clause)
                     else IRPLeaf resolved_clause
                   in
@@ -551,8 +563,8 @@ class csi_dpll =
             end
       in
       let proof = sys#get_proof_of_unsat in 
-      (*TODO when fixed, remove prf in csisatSatPL*)
       let transformed = transform proof in
+        (* output the satsolver proof *)
         Message.print Message.Debug (lazy(string_of_proof transformed));
         Message.print Message.Debug (lazy(tracecheck_of_proof transformed));
         transformed
