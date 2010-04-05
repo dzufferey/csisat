@@ -28,10 +28,11 @@ open   CsisatAst
 (**/**)
 module Global  = CsisatGlobal
 module AstUtil = CsisatAstUtil
-module PredSet = CsisatAstUtil.PredSet
-module ExprSet = CsisatAstUtil.ExprSet
+module PredSet = AstUtil.PredSet
+module ExprSet = AstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
+module IntSet  = Utils.IntSet
 module OrdSet  = CsisatOrdSet
 module Dag     = CsisatDag
 (**/**)
@@ -229,7 +230,6 @@ class dag = fun expr ->
             self#add_neq neq;
             []
           end
-        | err -> failwith ("UIF: only for a conjunction of eq/ne "^(AstUtil.print err))
         | err -> failwith ("UIF(2): only for a conjunction of eq/ne "^(AstUtil.print err))
 
    method create_and_add_constr eq = match eq with(*TODO buggy because of congruence parent*)
@@ -671,22 +671,23 @@ let interpolate_euf a_side eq a b =
 type find_t =  int * (predicate list)
 type euf_change = StackEq of predicate * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* eq + 2 x (id,find,ccpar) *)
                 | StackNeq of predicate 
-                | StackTDeduction of predicate * (int * int * IntSet.t) * (int * int * IntSet.t) (*application of the congruence axiom*)
+                | StackTDeduction of predicate * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (*application of the congruence axiom*)
                 | StackInternal of int * find_t (* path compression: (id, old find) *)
 
-module rec Node : sig
+module Node : sig
     type t = {
       id: int;
       fn: string;
       args: int list;
       arity: int;
       expr: expression;
-      graph: Dag.t;
+      nodes: t array;
+      events: euf_change Stack.t;
       mutable find: find_t; (*the predicate list is used to construct the unsat core faster *)
       mutable ccpar: IntSet.t
     }
     
-    val create: expression -> int -> string -> int list -> Dag.t -> t
+    val create: expression -> int -> string -> int list -> t array -> euf_change Stack.t -> t
     val copy: t -> t
     val find: t -> t
     val union: t -> t -> (t * t)
@@ -703,18 +704,20 @@ module rec Node : sig
       args: int list;
       arity: int;
       expr: expression;
-      graph: Dag.t;
+      nodes: t array;
+      events: euf_change Stack.t;
       mutable find: find_t;
       mutable ccpar: IntSet.t
     }
 
-    let create expr id fn args graph = {
+    let create expr id fn args nodes events = {
       id = id;
       fn = fn;
       args = args;
       arity = List.length args;
       expr = expr;
-      graph = graph;
+      nodes = nodes;
+      events = events;
       find = (id, []);
       ccpar = IntSet.empty;
     }
@@ -725,7 +728,8 @@ module rec Node : sig
       args = n.args;
       arity = n.arity;
       expr = n.expr;
-      graph = n.graph;
+      nodes = n.nodes;
+      events = n.events;
       find = n.find;
       ccpar = n.ccpar;
     }
@@ -735,9 +739,9 @@ module rec Node : sig
       if (fst this.find) = this.id then this
       else
         begin
-          let p = Dag.get this.graph (fst this.find) in
+          let p = this.nodes.(fst this.find) in
           let top = find p in
-            Stack.push (StackInternal (this.id, this.find)) (this.graph.stack);
+            Stack.push (StackInternal (this.id, this.find)) (this.events);
             this.find <- (top.id, (snd p.find) @ (snd this.find));
             top
         end
@@ -748,10 +752,10 @@ module rec Node : sig
       let n2 = find that in
       let on1 = copy n1 in
       let on2 = copy n2 in
-      let eq = order_eq (Eq (this.expr, that.expr)) in
-        n1.find <- (n2.id, eq :: (snd this.find) @ (snd.that find));
+      let eq = AstUtil.order_eq (Eq (this.expr, that.expr)) in
+        n1.find <- (n2.id, eq :: (snd this.find) @ (snd that.find));
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
-        n1.ccpar <- [];
+        n1.ccpar <- IntSet.empty;
         (on1, on2)
 
     let ccpar node = (find node).ccpar
@@ -763,7 +767,7 @@ module rec Node : sig
       &&
         List.for_all
           (fun (a,b) -> (find a).id = (find b).id)
-          (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
+          (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
 
     (** return pairs of nodes whose equality may change the result of the 'congruent' method*)
     let may_be_congruent this that =
@@ -773,12 +777,20 @@ module rec Node : sig
       else
         List.filter
           (fun (a,b) -> (find a).id <> (find b).id)
-          (List.rev_map2 (fun x y -> (x,y)) (this.args) (that.args))
+          (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
 
     (** return pairs of nodes whose equality comes from congruence*)
     let merge this that =
       (* always report the first equality *)
-      Stack.push (StackEq (this.id, this.find, this.ccpar) (that.id, that.find, that.ccpar)) (this.graph.stack);
+      Stack.push
+        (StackEq (AstUtil.order_eq (Eq (this.expr, that.expr)), (this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar)))
+        (this.events);
+      let first_to_stack a b = () in
+      let other_to_stack a b =
+        Stack.push
+          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), (a.id, a.find, a.ccpar), (b.id, b.find, b.ccpar)))
+          a.events
+      in
       let rec process to_stack this that =
         if (find this).id <> (find that).id then
           begin
@@ -786,18 +798,21 @@ module rec Node : sig
             let p2 = ccpar that in
             let (a,b) = union this that in
               to_stack a b; (* report changes *)
-              let to_test = Utils.cartesian_product p1 p2 in
+              let to_test = Utils.cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
                 List.iter
                   (fun (x,y) ->
-                    if (find x).id <> (find y).id && congruent x y then
-                      process (fun a b -> Stack.push (StackTDeduction (a.id, a.find, a.ccpar) (b.id, b.find, b.ccpar)) a.graph.stack) x y)
+                    let x = this.nodes.(x) in
+                    let y = this.nodes.(y) in
+                      if (find x).id <> (find y).id && congruent x y then
+                        process other_to_stack x y
+                  )
                   to_test
           end
       in
-        process (fun a b -> () ) this that 
+        process first_to_stack this that 
   end
 
-and Dag: sig
+module Dag2: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
@@ -807,37 +822,39 @@ and Dag: sig
 
     val create: PredSet.t -> t
     val get: t -> int -> Node.t
-    val push: t -> Ast.predicate -> bool
+    val get_node: t -> expression -> Node.t
+    val is_sat: t -> bool
+    val push: t -> predicate -> bool
     val pop: t -> unit
-    val propagation: t -> Ast.predicate list
-    val unsat_core_with_info: t -> (Ast.predicate * Ast.theory * (Ast.predicate * Ast.theory) list)
-    val unsat_core: t -> Ast.predicate
+    val propagation: t -> predicate list
+    val congruences: t -> predicate list
+    val unsat_core_with_info: t -> (predicate * theory * (predicate * theory) list)
+    val unsat_core: t -> predicate
   end
   =
   struct
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
+      stack: euf_change Stack.t;
       mutable neqs: (int * int) list (* neqs as pairs of node id *)
     }
 
     let create pset =
       let set =
         PredSet.fold
-          (fun p acc -> ExprSet.union (get_expr_deep_set p) acc)
+          (fun p acc -> ExprSet.union (AstUtil.get_expr_deep_set p) acc)
           pset
           ExprSet.empty
       in
       let id = ref 0 in
-      let rec nodes =
-        Array.make
-          (ExprSet.cardinal set)
-          (Node.create (Constant -1.) (-1) "Dummy" [] nodes)
-      in
       let table1 = Hashtbl.create (ExprSet.cardinal set) in
       let graph = {
-          nodes = nodes;
+          nodes = Array.make
+            (ExprSet.cardinal set)
+            (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()));
           expr_to_node = table1;
+          stack = Stack.create ();
           neqs = [];
         }
       in
@@ -845,8 +862,8 @@ and Dag: sig
         try Hashtbl.find table1 expr
         with Not_found ->
           begin
-            let n = Node.create expr !id fn args graph in
-              nodes.(!id) <- n;
+            let n = Node.create expr !id fn args graph.nodes graph.stack in
+              graph.nodes.(!id) <- n;
               id := !id + 1;
               Hashtbl.replace table1 expr n;
               n
@@ -856,35 +873,33 @@ and Dag: sig
         | Constant c as cst -> create_and_add cst (string_of_float c) []
         | Variable v as var -> create_and_add var v []
         | Application (f, args) as appl ->
-          let node_args = (List.map convert_exp args) in
+          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp args) in
           let new_node  = create_and_add appl f node_args in
-            List.iter (fun n -> n#add_ccparent new_node) node_args;
             new_node
         | Sum lst as sum ->
-          let node_args = (List.map convert_exp lst) in
+          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp lst) in
           let new_node  = create_and_add sum "+" node_args in
-            List.iter (fun n -> n#add_ccparent new_node) node_args;
             new_node
         | Coeff (c, e) as coeff ->
-          let node_args = (List.map convert_exp  [Constant c; e]) in
+          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp  [Constant c; e]) in
           let new_node  = create_and_add coeff "*" node_args in
-            List.iter (fun n -> n#add_ccparent new_node) node_args;
             new_node
       in
-      let _ = List.iter (fun x -> ignore (convert_exp x)) expr in
+      let _ = ExprSet.iter (fun x -> ignore (convert_exp x)) set in
         graph
 
     let get dag i = dag.nodes.(i)
+    let get_node dag expr = Hashtbl.find dag.expr_to_node expr
 
-    let check_sat dag =
+    let is_sat dag =
       not (
         List.exists
-          (fun (id1,id2) -> (Node.find (get dag id1)).id = (Node.find (get dag id2)).id)
+          (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
       )
     
     let push dag pred =
-      if graph#has_contradiction then
+      if not (is_sat dag) then
         failwith "EUF: pusch called on an already unsat system.";
       match pred with
       | Eq (e1, e2) ->
@@ -892,23 +907,23 @@ and Dag: sig
           let n1 = get_node dag e1 in
           let n2 = get_node dag e2 in
             Node.merge n1 n2;
-            check_sat dag
+            is_sat dag
         end
       | Not (Eq(e1, e2)) ->
         begin
           let n1 = get_node dag e1 in
           let n2 = get_node dag e2 in
-            dag.neqs <- (n1.id, n2.id) :: dag.neqs;
+            dag.neqs <- (n1.Node.id, n2.Node.id) :: dag.neqs;
             Stack.push (StackNeq pred) dag.stack;
-            check_sat dag
+            is_sat dag
         end
       | err -> failwith ("EUF: push only for an eq/ne "^(AstUtil.print err))
 
     let pop dag =
       let undo (id, find, parent) =
-        let n = get id in
-          n.find <- find;
-          n.parent <- parent
+        let n = get dag id in
+          n.Node.find <- find;
+          n.Node.ccpar <- parent
       in
       let rec process () =
         if Stack.is_empty dag.stack then
@@ -922,22 +937,22 @@ and Dag: sig
                   undo old1;
                   undo old2;
                   assert(Global.is_off_assert() || 
-                    check_sat dag
+                    is_sat dag
                   )
                 end
               | StackNeq (Not (Eq (e1,e2))) ->
                 begin
                   assert(Global.is_off_assert() || 
-                    (List.head dag.neqs) = ((get_node e1).id, (get_node e2).id)
+                    (List.hd dag.neqs) = ((get_node dag e1).Node.id, (get_node dag e2).Node.id)
                   );
-                  dag.neqs <- List.tail dag.neqs;
+                  dag.neqs <- List.tl dag.neqs;
                   assert(Global.is_off_assert() || 
-                    check_sat dag
+                    is_sat dag
                   )
                 end
               | StackInternal (id, find) ->
                 begin
-                  (get id).find <- find;
+                  (get dag id).Node.find <- find;
                   process ()
                 end
               | StackTDeduction (eq, old1, old2) ->
@@ -946,6 +961,7 @@ and Dag: sig
                   undo old2;
                   process ()
                 end
+              | _ -> failwith ("EUF: pop called with unexpected arugments")
           end
       in
         process ()
@@ -959,7 +975,23 @@ and Dag: sig
             let ans = match t with
               | StackEq _ | StackNeq _ -> []
               | StackInternal _ -> inspect_stack ()
-              | StackTDeduction (t_eq, _, _, _) -> t_eq :: (inspect_stack ())
+              | StackTDeduction (t_eq, _, _) -> t_eq :: (inspect_stack ())
+            in
+              Stack.push t dag.stack;
+              ans
+          end
+      in
+        inspect_stack ()
+    
+    let congruences dag =
+      let rec inspect_stack () =
+        if Stack.is_empty dag.stack then []
+        else
+          begin
+            let t = Stack.pop dag.stack in
+            let ans = match t with
+              | StackEq _ | StackNeq _ | StackInternal _ -> inspect_stack ()
+              | StackTDeduction (t_eq, _, _) -> t_eq :: (inspect_stack ())
             in
               Stack.push t dag.stack;
               ans
@@ -970,26 +1002,25 @@ and Dag: sig
     let unsat_core_with_info dag =
       let (c1,c2) = try
           List.find
-            (fun (id1,id2) -> (Node.find (get dag id1)).id = (Node.find (get dag id2)).id)
+            (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
             dag.neqs
         with Not_found ->
           failwith "EUF, unsat_core_with_info: system is sat!"
       in
-      let raw_core = c1.find @ c2.find in
+      let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+      let raw_congruences = congruences dag in
+      let all_congruences = OrdSet.list_to_ordSet raw_congruences in
+      let raw_core = OrdSet.list_to_ordSet ((snd (get dag c1).Node.find) @ (snd (get dag c2).Node.find)) in
       (* raw_core contains both given equalities and congruences.
-       * it may contains multiple time the same eqs and congr.
-       * it is an overapproximation ...
-       * TODO filter eqs from congr, order congr, ...
-       *)
-      failwith "TODO";
-      let core = ... in
-      let congruences = ... in
-        (* congruences are in the stack *)
-        (* the last (dis)equality added is part of the core *)
-        (* ... *)
-        (core, EUF, congruences)
+       * it is an overapproximation ... TODO improve *)
+      let needed_congruences = OrdSet.intersection all_congruences raw_core in
+      let congruences = List.filter (fun x -> OrdSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
+      let info = List.map (fun x -> (x,EUF)) congruences in
+      let core = contradiction :: (OrdSet.subtract raw_core congruences) in
+        (And core, EUF, info)
 
     let unsat_core dag = 
-      let (core, _, _) = unsat_core_with_info dag
+      let (core, _, _) = unsat_core_with_info dag in
+        core
   end
 
