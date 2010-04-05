@@ -101,24 +101,24 @@ let tracecheck_of_proof prf =
       if atom = proposition then index else -index
   in
   let buffer = Buffer.create 10000 in
+  (*TODO it is possible that some clause are redundant*)
   let indexes = Hashtbl.create 1000 in
   let counter = ref 1 in
+  let get_fresh_index cl =
+    let index = !counter in
+      counter := !counter+1;
+      Hashtbl.replace indexes cl index;
+      index
+  in
   let get_index cl =
     try Hashtbl.find indexes cl
-    with Not_found ->
-      begin
-        let index = !counter in
-          counter := !counter+1;
-          Hashtbl.add indexes cl index;
-          index
-      end
+    with Not_found -> get_fresh_index cl
   in
   let printed = Hashtbl.create 1000 in
   let is_printed x = Hashtbl.mem printed x in
   let rec print_prf prf =
     if not (is_printed (get_result prf)) then
       begin
-        Hashtbl.add printed (get_result prf) true;
         match prf with
         | RPLeaf cl ->
           begin
@@ -126,13 +126,14 @@ let tracecheck_of_proof prf =
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) cl [] in
             Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
-            Buffer.add_string buffer " 0 0\n"
+            Buffer.add_string buffer " 0 0\n";
+            Hashtbl.replace printed (get_result prf) ()
           end
         | RPNode (pivot,left,right,new_cl) ->
           begin
             print_prf left;
             print_prf right;
-            Buffer.add_string buffer (string_of_int (get_index new_cl));
+            Buffer.add_string buffer (string_of_int (get_fresh_index new_cl));
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) new_cl [] in
             Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
@@ -140,7 +141,8 @@ let tracecheck_of_proof prf =
             Buffer.add_string buffer (string_of_int (get_index (get_result left)));
             Buffer.add_char buffer ' ';
             Buffer.add_string buffer (string_of_int (get_index (get_result right)));
-            Buffer.add_string buffer " 0\n"
+            Buffer.add_string buffer " 0\n";
+            Hashtbl.replace printed (get_result prf) ()
           end
       end
   in

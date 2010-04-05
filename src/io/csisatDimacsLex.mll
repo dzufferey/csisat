@@ -38,3 +38,4 @@ rule token = parse
   | white+                              { token lexbuf }     (* skip blanks *)
   | 'c' [^'\n']* '\n'                   { token lexbuf }     (* skip comments *)
   | eof                                 { EOF }
+  | '%'                                 { EOF }
