@@ -35,7 +35,6 @@
 type theory =
   | EUF (** equality with uninterpreted function symbols (also referred as UIF)*)
   | LA  (** linear arithmetic (also referred as LI)*)
-  | EUF_LA
 
 (** variable or uninterpreted fct*)
 type symbol = string
@@ -88,15 +87,15 @@ let is_expr_LI expr = match expr with
   | Application _ -> false
 (** is the root symbol in LI only*)
 let is_expr_LI_only expr = match expr with
-  | Constant _ | Variable _ | Application _ -> false
-  | Sum _ | Coeff _ -> true
+  | Variable _ | Application _ -> false
+  | Constant _ | Sum _ | Coeff _ -> true
 let is_pred_LI pred = match pred with
   | True | False | And _ | Or _ | Atom _ | Not (Eq _) -> false
   | Not _ | Eq _ | Lt _ | Leq _ -> true (*assume the pred to be in normal form*)
 (** is one symbol in LI only (deep)*)
 let rec has_LI_only_term expr = match expr with
   | Variable _ -> false
-  | Constant _ |Sum _ | Coeff _ -> true
+  | Constant _ | Sum _ | Coeff _ -> true
   | Application (_,lst) -> List.exists has_LI_only_term lst
 (** is one symbol in LI only (deep)*)
 let rec has_LI_only pred = match pred with
@@ -134,10 +133,10 @@ let rec has_UIF_only pred = match pred with
 
 let theory_of formula =
    match (has_LI_only formula, has_UIF_only formula) with
-   | (true,true) -> EUF_LA
-   | (false,true) -> EUF
-   | (true,false) -> LA
-   | (false,false) -> EUF
+   | (true,true) -> [EUF;LA]
+   | (false,true) -> [EUF]
+   | (true,false) -> [LA]
+   | (false,false) -> []
 
 (* exceptions common the many part*)
 exception SAT

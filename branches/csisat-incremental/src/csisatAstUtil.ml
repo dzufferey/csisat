@@ -63,6 +63,22 @@ let rec print_infix pred_lst =
     (*remove the trailling "; "*)
     Buffer.sub buffer 0 ((Buffer.length buffer) -2)
 
+(*conversion function: convert the tree from its leaves*)
+let rec map_pred fct pred = match pred with 
+  | True -> fct True
+  | False -> fct False
+  | Not pred -> fct (Not (map_pred fct pred))
+  | And lst -> fct (And (List.map (map_pred fct) lst)) 
+  | Or lst -> fct (Or (List.map (map_pred fct) lst))
+  | p -> fct p
+
+(*conversion function: convert the tree from its leaves*)
+let rec map_expr fct expr = match expr with 
+  | Application (sym, lst) -> fct (Application (sym, List.map (map_expr fct) lst))
+  | Sum lst -> fct (Sum (List.map (map_expr fct) lst))
+  | Coeff (co, expr) -> fct (Coeff (co, map_expr fct expr))
+  | e -> fct e
+
 (** convert to NNF.
  * @param negate true means that an odd number of Not were found
  * @param pred the predicate to convert
@@ -736,18 +752,63 @@ let alpha_convert_pred origin _new formula =
   in
     process formula
 
+let keep_LA pred = match pred with
+  | Not (Eq _) -> false
+  | Eq (e1,e2) -> (is_expr_LI e1) && (is_expr_LI e2)
+  | Lt _ -> true
+  | Leq _ -> true
+  | err -> failwith ("keep_LA: unexpected "^(print_pred err))
+
+let keep_EUF pred = match pred with
+  | Not (Eq _) -> true
+  | Eq (e1,e2) -> (is_expr_UIF e1) && (is_expr_UIF e2)
+  | Lt _ -> false
+  | Leq _ -> false
+  | err -> failwith ("keep_EUF: unexpected "^(print_pred err))
+
+let keep theories pred =
+  let test t = match t with
+    | EUF -> keep_EUF pred
+    | LA -> keep_LA pred
+  in
+    List.exists test theories
+
+let is_pred_root_symbol_only theories pred =
+  let test t = match t with
+    | EUF -> is_pred_UIF pred
+    | LA -> is_pred_LI pred
+  in
+    List.exists test theories
+
+let is_expr_root_symbol_only theories expr =
+  let test t = match t with
+    | EUF -> is_expr_UIF_only expr
+    | LA -> is_expr_LI_only expr
+  in
+    List.exists test theories
+
+let has_only theories pred =
+  let test t = match t with
+    | EUF -> has_UIF_only pred
+    | LA -> has_LI_only pred
+  in
+    List.exists test theories
 
 (** Splits a formula into separate theories.
  *  This methods works only for the conjunctive fragment.
- * @return a formula in LI, in UIF, and a set of shared variable:
- *      list of uif_preds (without And),
- *      list of li_preds  (without And),
+ * @return a formula in t1, in t2, and a set of shared variable:
+ *      list of t1_preds (without And),
+ *      list of t2_preds (without And),
  *      list of shared variables,
  *      association list for the new variables: variable -> expression
  *)
-let split_formula_LI_UIF pred =
+let split_formula_t1_t2 t1 t2 pred = 
+  let only_t1_pred = is_pred_root_symbol_only t1 in
+  let only_t2_pred = is_pred_root_symbol_only t2 in
+  let only_t1_expr = is_expr_root_symbol_only t1 in
+  let only_t2_expr = is_expr_root_symbol_only t2 in
   let counter = ref 0 in
-  let expr_to_var = Hashtbl.create 13 in
+  let expr_to_var = Hashtbl.create 111 in
   let defs = ref [] in
   let assoc = ref [] in
   (* allocate a new var if needed and the new definition*)
@@ -763,113 +824,79 @@ let split_formula_LI_UIF pred =
           v
       end
   in
-  let rec process_e_li expr = match expr with
-    | Constant _ as c -> c
-    | Variable _ as v -> v
-    | Application (sym, lst) -> (*UIF*)
+  let rec process_e only_a only_b expr =
+    let process_a = process_e only_a only_b in
+    let process_b = process_e only_b only_a in
+    if only_a expr then
       begin
-        let uif_pure = Application (sym, List.map process_e_uif lst) in
-          get_fresh_var uif_pure
+        assert( not (only_b expr));
+        match expr with
+        | Constant _ as c -> c
+        | Application (sym, lst) -> Application (sym, List.map process_a lst)
+        | Sum lst -> Sum (List.map process_a lst)
+        | Coeff (c,e) -> Coeff (c, process_a e)
+        | err -> failwith ("already pure ? "^(print_expr err))
       end
-    | Sum lst -> Sum (List.map process_e_li lst)
-    | Coeff (c,e) -> Coeff(c, process_e_li e)
-  and process_e_uif expr = match expr with
-    | Constant _ as c -> (*LI*) get_fresh_var c
-    | Variable _ as v -> v
-    | Application (sym, lst) -> Application(sym, List.map process_e_uif lst)
-    | Sum lst -> (*LI*)
+    else if only_b expr then get_fresh_var (process_b expr)
+    else
       begin
-        let li_pure = Sum (List.map process_e_li lst) in
-          get_fresh_var li_pure
-      end
-    | Coeff (c,e) -> (*LI*)
-      begin
-        let li_pure = Coeff (c, process_e_li e) in
-          get_fresh_var li_pure
+        match expr with
+        | Variable _ as v -> v
+        | err -> failwith ("split_formula_t1_t2: belong to no theory "^(print_expr err))
       end
   in
+  let process_e_t1 = process_e only_t1_expr only_t2_expr in
+  let process_e_t2 = process_e only_t2_expr only_t1_expr in
+  (* matches the NNF cases *)
   let rec process_p pred = match pred with
     | And lst -> And (List.map process_p lst)
-    | Not (Eq (e1,e2)) -> Not (Eq(process_e_uif e1, process_e_uif e2))(*UIF*)
-    (*both side should have the same theory*)
     | Eq (e1,e2) ->
       begin
-        let li = order_eq (Eq(process_e_li e1, process_e_li e2)) in
-        let uif = order_eq (Eq(process_e_uif e1, process_e_uif e2)) in
-          if li <> uif then defs := li::!defs;
-          uif
+        let t1 = order_eq (Eq(process_e_t1 e1, process_e_t1 e2)) in
+        let t2 = order_eq (Eq(process_e_t2 e1, process_e_t2 e2)) in
+          if t1 <> t2 then defs := t1::!defs;
+          t2
       end
-    | Lt (e1,e2) -> Lt(process_e_li e1, process_e_li e2)(*LI*)
-    | Leq (e1,e2) -> Leq(process_e_li e1, process_e_li e2)(*LI*)
-    | Atom _ -> failwith "separating theories: found Atom"
-    | True -> (*True*) failwith "separating theories: found True"
-    | False -> (*False*) failwith "separating theories: found False"
-    | Or lst -> (*Or (List.map process_p lst)*) failwith "separating theories: found Or"
-    | Not p -> failwith "separating theories: expect formula in NNF (Not)"
+    | Not (Eq (e1,e2)) | Lt (e1,e2) | Leq (e1,e2) ->
+      begin
+        let (e1', e2') = match (only_t1_pred pred, only_t2_pred pred) with
+          | (true, true) -> failwith ("split_formula_t1_t2: theory are not disjoints "^(print_pred pred))
+          | (true, false) -> (process_e_t1 e1, process_e_t1 e2)
+          | (false, true) -> (process_e_t2 e1, process_e_t2 e2)
+          | (false, false) -> failwith ("split_formula_t1_t2: belong to no theory "^(print_pred pred))
+        in
+          match pred with
+          | Not (Eq _) -> Not (Eq (e1', e2'))
+          | Lt _ -> Lt (e1', e2')
+          | Leq _ -> Leq (e1', e2')
+          | _ -> assert false
+      end
+    | other -> failwith ("split_formula_t1_t2: unexpected "^(print_pred other))
   in
-  let keep_li pred = match pred with
-    | And lst -> failwith "separating theories: found And"
-    | Not (Eq _) -> false
-    | Eq (e1,e2) ->(is_expr_LI e1) && (is_expr_LI e2)
-    | Lt _ -> true
-    | Leq _ -> true
-    | Atom _ -> failwith "separating theories: found Atom"
-    | True -> (*True*) failwith "separating theories: found True"
-    | False -> (*False*) failwith "separating theories: found False"
-    | Or lst -> (*Or (List.find query_fct lst)*) failwith "separating theories: found Or"
-    | Not p -> failwith "separating theories: expect formula in NNF (Not)"
-  in
-  let keep_uif pred = match pred with
-    | And lst -> failwith "separating theories: found And"
-    | Not (Eq _) -> true
-    | Eq (e1,e2) -> (is_expr_UIF e1) && (is_expr_UIF e2)
-    | Lt _ -> false
-    | Leq _ -> false
-    | Atom _ -> failwith "separating theories: found Atom"
-    | True -> (*True*) failwith "separating theories: found True"
-    | False -> (*False*) failwith "separating theories: found False"
-    | Or lst -> (*Or (List.find query_fct lst)*) failwith "separating theories: found Or"
-    | Not p -> failwith "separating theories: expect formula in NNF (Not)"
-  in
-  (*Begin Here*)
   let p_lst = OrdSet.list_to_ordSet (match (process_p pred) with
     | And lst -> lst @ !defs
     | e -> e::!defs)
   in
-  match (List.exists has_LI_only p_lst, List.exists has_UIF_only p_lst) with
+  let to_conjunctive_list p = match p with
+    | And lst -> lst
+    | elt -> [elt]
+  in
+  match (List.exists (has_only t1) p_lst, List.exists (has_only t2) p_lst) with
   | (true, true) ->
     begin
-      let uif_formula = List.filter keep_uif p_lst in
-      let li_formula = List.filter keep_li p_lst in
-      let var_uif = get_var (And uif_formula) in
-      let var_li = get_var (And li_formula) in
-      let shared_var = OrdSet.intersection var_uif var_li in
-        (uif_formula, li_formula, shared_var, !assoc)
+      let t1_formula = List.filter (keep t1) p_lst in
+      let t2_formula = List.filter (keep t2) p_lst in
+      let var_t1 = get_var (And t1_formula) in
+      let var_t2 = get_var (And t2_formula) in
+      let shared_var = OrdSet.intersection var_t1 var_t2 in
+        (t1_formula, t2_formula, shared_var, !assoc)
     end
-  | (true, false) ->
-    begin
-      let lst = match pred with 
-        | And lst -> lst
-        | el -> [el] (*so few checks because process_pred already did them*)
-      in
-        ([], lst, [], [])
-    end
-  | (false, true) ->
-    begin
-      let lst = match pred with 
-        | And lst -> lst
-        | el -> [el] (*so few checks because process_pred already did them*)
-      in
-        (lst, [], [], [])
-    end
-  | (false, false) -> (*UIF arbirary choice*)
-    begin
-      let lst = match pred with 
-        | And lst -> lst
-        | el -> [el] (*so few checks because process_pred already did them*)
-      in
-        (lst, [], [], [])
-    end
+  | (true, false) -> (to_conjunctive_list pred, [], [], [])
+  | (false, true) -> ([], to_conjunctive_list pred, [], [])
+  (*formula with only equality -> arbirary choice*)
+  | (false, false) -> (to_conjunctive_list pred, [], [], [])
+
+let split_formula_LI_UIF pred = split_formula_t1_t2 [EUF] [LA] pred
 
 let counter_equisat = ref 0
 (**return an equisatisfiable formula in CNF

@@ -132,7 +132,7 @@ let interior: li_solver = {
     cols_dual   = Camlglpk.ipt_cols_dual
 }
 
-let solver = ref simplex
+let solver = ref simplex_wo_presolve
 
 let set_solver str = match str with
   | "simplex" -> solver := simplex

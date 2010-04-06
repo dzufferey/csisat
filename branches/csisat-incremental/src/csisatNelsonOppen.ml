@@ -34,6 +34,7 @@ module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
 module SatLI   = CsisatSatLI
 module SatUIF  = CsisatSatUIF
+module TSolver = CsisatTheorySolver
 (**/**)
 
 (** Returns the unsat core for a formula (expensive).
@@ -440,49 +441,50 @@ let unsat_core_NO formula =
  *)
 let unsat_core formula =
   match theory_of formula with
-  | EUF ->
+  | [EUF] | [] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
       SatUIF.unsat_core formula 
     end
-  | LA ->
+  | [LA] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
       SatLI.unsat_core formula
     end
-  | EUF_LA ->
+  | [EUF;LA] | [LA;EUF] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
       unsat_core_NO formula 
     end
+  | _ -> failwith "NO unsupported theories"
 
 let precise_unsat_core formula =
   match theory_of formula with
-  | EUF ->
+  | [EUF] | [] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
       let core = SatUIF.unsat_core formula in
         unsat_core_for_convex_theory SatUIF.is_uif_sat core
     end
-  | LA ->
+  | [LA] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
       SatLI.unsat_core formula
     end
-  (*| EUF_LA -> unsat_core_for_convex_theory is_liuif_sat formula*)
-  | EUF_LA ->
+  | [EUF;LA] | [LA;EUF] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
       let core = unsat_core_NO formula in
         unsat_core_for_convex_theory is_liuif_sat core
     end
+  | _ -> failwith "NO unsupported theories"
 
 (**
  * @return the unsat core, theory that finds the contradiction, list of deduced equalities.
  *)
 let unsat_core_with_info formula =
   match theory_of formula with
-  | EUF ->
+  | [EUF] | [] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
       let core = SatUIF.unsat_core formula in
@@ -490,7 +492,7 @@ let unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (core, t, eq)
     end
-  | LA ->  (*TODO better*)
+  | [LA] ->  (*TODO better*)
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
       let unsat_core = SatLI.unsat_core formula in
@@ -498,7 +500,7 @@ let unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
-  | EUF_LA ->
+  | [EUF;LA] | [LA;EUF] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
       let unsat_core = unsat_core_NO formula in
@@ -506,11 +508,12 @@ let unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
+  | _ -> failwith "NO unsupported theories"
 
 (** Like unsat_core_with_info but more precise, and more expensive. *)
 let precise_unsat_core_with_info formula =
   match theory_of formula with
-  | EUF ->
+  | [EUF] | [] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with EUF theory");
       let core = SatUIF.unsat_core formula in(*overapprox: this is better but much slower: unsat_core_for_convex_theory SatUIF.is_uif_sat formula*)
@@ -519,7 +522,7 @@ let precise_unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (core, t, eq)
     end
-  | LA ->  (*TODO better*)
+  | [LA] ->  (*TODO better*)
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA theory");
       let unsat_core = SatLI.unsat_core formula in
@@ -527,7 +530,7 @@ let precise_unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
-  | EUF_LA ->
+  | [EUF;LA] | [LA;EUF] ->
     begin
       Message.print Message.Debug (lazy "UNSAT CORE with LA+EUF theory");
       let unsat_core = unsat_core_NO formula in
@@ -536,6 +539,7 @@ let precise_unsat_core_with_info formula =
         | (SATISFIABLE, _) -> raise (SAT_FORMULA formula)
         | (t,eq) -> (unsat_core, t, eq)(*TODO is it possible to avoid calling is_liuif_sat_with_eq again ??*)
     end
+  | _ -> failwith "NO unsupported theories"
 
 (** Special fct with catch of boolean contradiction.
  *  This method is used when bypassing the satsolver (conjunction only).
@@ -590,3 +594,51 @@ let unsat_LIUIF conj =
           end
       end
     | _ -> failwith "NelsonOppen: not a conjunction"
+
+module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
+  struct
+    
+    type t = {
+      t1: T1.t;
+      t2: T2.t;
+      shared: expression list;
+      propagations: ( (int * (predicate list)) list) Stack.t
+    }
+
+    (*direction of equality propagations *)
+    let t1_to_t2 = 0
+    let t2_to_t1 = 0
+
+    let theory = T1.theory @ T2.theory
+
+    (** Creates a new solver, initially without constraints.
+     * @param list of all potential predicates (for T-propagation) *)
+    (*TODO how to cleanly split the formula ?? *)
+    let create pred_set =
+      if List.exists (fun x -> List.mem x T2.theory) T1.theory
+      then failwith "NOSolver the two solvers handle theories that intersect";
+      failwith "TODO"
+
+    let push t pred =
+      failwith "TODO"
+    
+    let pop t =
+      failwith "TODO"
+    
+    (** Returns a list of predicates equalities that are
+     * entailed by the current stack (report only changes from last addition). *)
+    let propagation t =
+      failwith "TODO"
+    
+    (** Returns:
+     *  -unsat_core
+     *  -the theory which has a contradiction
+     *  -list of deduced equalities + their respective theories. *)
+    let unsat_core_with_info t =
+      failwith "TODO"
+
+    (** Performs some conflict analysis and
+     * returns an unsatisfiable conjuntion composed
+     * of predicate from the current stack. *)
+    let unsat_core t = let (p,_,_) = unsat_core_with_info t in p
+  end

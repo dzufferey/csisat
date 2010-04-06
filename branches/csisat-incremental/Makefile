@@ -55,6 +55,7 @@ FILES = \
 	$(OBJ)/csisatDimacsLex.cmx \
 	$(OBJ)/csisatDimacsParse.cmx \
 	$(OBJ)/csisatClpLI.cmx \
+	$(OBJ)/csisatTheorySolver.cmx \
 	$(OBJ)/csisatDag.cmx \
 	$(OBJ)/csisatSatUIF.cmx \
 	$(OBJ)/csisatSatLI.cmx \

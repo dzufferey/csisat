@@ -24,16 +24,17 @@
 (** Interface for stateful incremental theory solver. *)
 
 (**/**)
-module Ast       = CsisatAst
+module Ast     = CsisatAst
 module AstUtil = CsisatAstUtil
-module AstUtil = CsisatAstUtil
-module PredSet = CsisatAstUtil.PredSet
+module PredSet = AstUtil.PredSet
 (**/**)
 
 module type TheorySolver =
   sig
     (** a mutable/stateful incremental theory solver *)
     type t
+
+    val theory: Ast.theory list
 
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation)
