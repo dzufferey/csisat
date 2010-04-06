@@ -34,7 +34,7 @@ module Message = CsisatMessage
 module Utils   = CsisatUtils
 module IntSet  = Utils.IntSet
 module OrdSet  = CsisatOrdSet
-module Dag     = CsisatDag
+module EqDag   = CsisatDag
 (**/**)
 
 (*TODO UIF interpolation*)
@@ -539,12 +539,12 @@ let unsat_core formula =
           | And lst -> lst
           | _ -> failwith "SatUIF: unsat_core (1)"
         in
-        let eqs = ref (fst (Dag.split_eq_neq [] [] formula_lst)) in
+        let eqs = ref (fst (EqDag.split_eq_neq [] [] formula_lst)) in
           match List.hd (graph#test_for_contradition) with
           | Not (Eq(e1,e2)) as neq ->
             begin
-              let path = Dag.bfs (!ded @ !eqs) e1 e2 in
-              let proof = Dag.path_to_eq path in
+              let path = EqDag.bfs (!ded @ !eqs) e1 e2 in
+              let proof = EqDag.path_to_eq path in
               let rec justify_ded eq =
                 if OrdSet.mem eq !ded then
                   begin (*need a deduced eq*)
@@ -558,8 +558,8 @@ let unsat_core formula =
                               if x = y then True
                               else
                                 begin
-                                  let path = Dag.bfs (prev @ !eqs) x y in (*TODO Not_Found*)
-                                  let proof = Dag.path_to_eq path in
+                                  let path = EqDag.bfs (prev @ !eqs) x y in (*TODO Not_Found*)
+                                  let proof = EqDag.path_to_eq path in
                                     And (List.map justify_ded proof)
                                 end
                             ) args1 args2
@@ -575,8 +575,8 @@ let unsat_core formula =
                               if x = y then True
                               else
                                 begin
-                                  let path = Dag.bfs (prev @ !eqs) x y in
-                                  let proof = Dag.path_to_eq path in
+                                  let path = EqDag.bfs (prev @ !eqs) x y in
+                                  let proof = EqDag.path_to_eq path in
                                     And (List.map justify_ded proof)
                                 end
                             ) [Constant c1; e1] [Constant c2; e2]
@@ -606,7 +606,7 @@ let find_common_expr a b ea eb common_var common_sym =
     begin
       let args = List.map2
         (fun arg brg ->
-          if arg <> brg then Dag.find_common_expr arg brg (a_lst @ b_lst) common_var common_sym
+          if arg <> brg then EqDag.find_common_expr arg brg (a_lst @ b_lst) common_var common_sym
           else arg
         )
         argsa argsb
@@ -631,8 +631,8 @@ let interpolate_euf a_side eq a b =
   let a_expr = AstUtil.get_expr a in
   let b_expr = AstUtil.get_expr b in
 
-  let graph_a = new Dag.dag a_expr in
-  let graph_b = new Dag.dag b_expr in
+  let graph_a = new EqDag.dag a_expr in
+  let graph_b = new EqDag.dag b_expr in
     ignore (graph_a#is_satisfiable a, graph_b#is_satisfiable b);
     match eq with
     | Eq (Application(_, args1), Application(_, args2)) ->
@@ -652,7 +652,7 @@ let interpolate_euf a_side eq a b =
                 end;
               let it =
                 try
-                  Dag.interpolate_from_graph graph_a graph_b
+                  EqDag.interpolate_from_graph graph_a graph_b
                 with SAT ->
                   False
               in
@@ -785,10 +785,10 @@ module Node : sig
       Stack.push
         (StackEq (AstUtil.order_eq (Eq (this.expr, that.expr)), (this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar)))
         (this.events);
-      let first_to_stack a b = () in
-      let other_to_stack a b =
+      let first_to_stack _ _ _ _ = () in
+      let other_to_stack a b changed_a changed_b =
         Stack.push
-          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), (a.id, a.find, a.ccpar), (b.id, b.find, b.ccpar)))
+          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
       in
       let rec process to_stack this that =
@@ -797,7 +797,7 @@ module Node : sig
             let p1 = ccpar this in
             let p2 = ccpar that in
             let (a,b) = union this that in
-              to_stack a b; (* report changes *)
+              to_stack this that a b; (* report changes *)
               let to_test = Utils.cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
                 List.iter
                   (fun (x,y) ->
@@ -812,7 +812,7 @@ module Node : sig
         process first_to_stack this that 
   end
 
-module Dag2: sig
+module Dag: sig
     type t = {
       nodes: Node.t array;
       expr_to_node: (expression, Node.t) Hashtbl.t;
@@ -1012,7 +1012,9 @@ module Dag2: sig
       let all_congruences = OrdSet.list_to_ordSet raw_congruences in
       let raw_core = OrdSet.list_to_ordSet ((snd (get dag c1).Node.find) @ (snd (get dag c2).Node.find)) in
       (* raw_core contains both given equalities and congruences.
-       * it is an overapproximation ... TODO improve *)
+       * it is an overapproximation ...
+       * TODO improve -> do a search for eq paths that makes the contradiction possible
+       *)
       let needed_congruences = OrdSet.intersection all_congruences raw_core in
       let congruences = List.filter (fun x -> OrdSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
