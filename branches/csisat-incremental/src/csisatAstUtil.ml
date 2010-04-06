@@ -518,10 +518,14 @@ module Pred =
 module PredSet = Set.Make(Pred)
 
 let exprSet_to_ordSet set =
-  OrdSet.list_to_ordSet (ExprSet.fold (fun x acc -> x::acc) set [])
+  OrdSet.list_to_ordSet (ExprSet.elements set)
+let exprSet_of_list lst =
+  List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty lst
 
 let predSet_to_ordSet set =
-  OrdSet.list_to_ordSet (PredSet.fold (fun x acc -> x::acc) set [])
+  OrdSet.list_to_ordSet (PredSet.elements set)
+let predSet_of_list lst =
+  List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty lst
 (**************************************)
 
 (** Returns the expressions of a predicate as a set.

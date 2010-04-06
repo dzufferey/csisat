@@ -25,8 +25,6 @@
 
 (**/**)
 module Ast     = CsisatAst
-module AstUtil = CsisatAstUtil
-module PredSet = AstUtil.PredSet
 (**/**)
 
 module type TheorySolver =
@@ -39,7 +37,7 @@ module type TheorySolver =
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation)
      *)
-    val create: PredSet.t -> t
+    val create: CsisatAstUtil.PredSet.t -> t
 
     (** Adds and test for satisfiability. *)
     val push: t -> Ast.predicate -> bool
