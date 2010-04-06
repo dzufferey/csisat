@@ -32,7 +32,7 @@ module PredSet = AstUtil.PredSet
 module ExprSet = AstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
-module IntSet  = Utils.IntSet
+module IntSet  = CsisatUtils.IntSet
 module OrdSet  = CsisatOrdSet
 module EqDag   = CsisatDag
 (**/**)

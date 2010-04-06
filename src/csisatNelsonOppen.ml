@@ -602,6 +602,7 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
       t1: T1.t;
       t2: T2.t;
       shared: expression list;
+      var_to_expr: (expression * expression) list;
       propagations: ( (int * (predicate list)) list) Stack.t
     }
 
@@ -613,11 +614,17 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
 
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation) *)
-    (*TODO how to cleanly split the formula ?? *)
     let create pred_set =
       if List.exists (fun x -> List.mem x T2.theory) T1.theory
       then failwith "NOSolver the two solvers handle theories that intersect";
-      failwith "TODO"
+      let (t1_formula, t2_formula, shared, var_to_expr) = AstUtil.split_formula_t1_t2 T1.theory T2.theory (And (PredSet.elements pred_set)) in
+      let t1_solver = T1.create (CsisatAstUtil.predSet_of_list t1_formula) in
+      let t2_solver = T2.create (CsisatAstUtil.predSet_of_list t2_formula) in
+        { t1 = t1_solver;
+          t2 = t2_solver;
+          shared = shared;
+          var_to_expr = var_to_expr;
+          propagations = Stack.create () }
 
     let push t pred =
       failwith "TODO"
