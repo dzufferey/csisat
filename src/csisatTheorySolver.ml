@@ -38,6 +38,9 @@ module type TheorySolver =
      * @param list of all potential predicates (for T-propagation)
      *)
     val create: CsisatAstUtil.PredSet.t -> t
+    
+    (** tells if the system is satisfiable *)
+    val is_sat: t -> bool
 
     (** Adds and test for satisfiability. *)
     val push: t -> Ast.predicate -> bool
@@ -47,8 +50,9 @@ module type TheorySolver =
     
     (** Returns a list of predicates equalities that are
      * entailed by the current stack (report only changes from last addition).
+     * Returns only predicate over the given list of expressions (variables)
      *)
-    val propagation: t -> Ast.predicate list
+    val propagation: t -> Ast.expression list -> Ast.predicate list
     
     (** Returns:
      *  -unsat_core

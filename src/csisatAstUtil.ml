@@ -64,20 +64,45 @@ let rec print_infix pred_lst =
     Buffer.sub buffer 0 ((Buffer.length buffer) -2)
 
 (*conversion function: convert the tree from its leaves*)
-let rec map_pred fct pred = match pred with 
-  | True -> fct True
-  | False -> fct False
-  | Not pred -> fct (Not (map_pred fct pred))
-  | And lst -> fct (And (List.map (map_pred fct) lst)) 
-  | Or lst -> fct (Or (List.map (map_pred fct) lst))
-  | p -> fct p
+let rec map_expr_bottom_up fct expr = match expr with 
+  | Application (sym, lst) -> fct (Application (sym, List.map (map_expr_bottom_up fct) lst))
+  | Sum lst -> fct (Sum (List.map (map_expr_bottom_up fct) lst))
+  | Coeff (co, expr) -> fct (Coeff (co, map_expr_bottom_up fct expr))
+  | e -> fct e
 
 (*conversion function: convert the tree from its leaves*)
-let rec map_expr fct expr = match expr with 
-  | Application (sym, lst) -> fct (Application (sym, List.map (map_expr fct) lst))
-  | Sum lst -> fct (Sum (List.map (map_expr fct) lst))
-  | Coeff (co, expr) -> fct (Coeff (co, map_expr fct expr))
-  | e -> fct e
+let rec map_all_bottom_up fct_pred fct_expr pred = match pred with
+  | True -> fct_pred True
+  | False -> fct_pred False
+  | Atom _ -> fct_pred pred
+  | Not pred -> fct_pred (Not (map_all_bottom_up fct_pred fct_expr pred))
+  | And lst -> fct_pred (And (List.map (map_all_bottom_up fct_pred fct_expr) lst)) 
+  | Or lst -> fct_pred (Or (List.map (map_all_bottom_up fct_pred fct_expr) lst))
+  | Eq (e1,e2) -> fct_pred (Eq (map_expr_bottom_up fct_expr e1, map_expr_bottom_up fct_expr e2))
+  | Lt (e1,e2) -> fct_pred (Lt (map_expr_bottom_up fct_expr e1, map_expr_bottom_up fct_expr e2))
+  | Leq (e1,e2) -> fct_pred (Leq (map_expr_bottom_up fct_expr e1, map_expr_bottom_up fct_expr e2))
+
+(*conversion function: convert the tree from its leaves*)
+let rec map_pred_bottom_up fct pred = map_all_bottom_up fct (fun x -> x) pred
+
+(*conversion function: convert the tree from its root*)
+let rec map_expr_top_down fct expr = match fct expr with 
+  | Application (sym, lst) -> Application (sym, List.map (map_expr_top_down fct) lst)
+  | Sum lst -> Sum (List.map (map_expr_top_down fct) lst)
+  | Coeff (co, expr) -> Coeff (co, map_expr_top_down fct expr)
+  | e -> e
+(*conversion function: convert the tree from its root *)
+let rec map_all_top_down fct_pred fct_expr pred = match fct_pred pred with
+  | Not pred -> Not (map_all_top_down fct_pred fct_expr pred)
+  | And lst -> And (List.map (map_all_top_down fct_pred fct_expr) lst)
+  | Or lst -> Or (List.map (map_all_top_down fct_pred fct_expr) lst)
+  | Eq (e1,e2) -> Eq (map_expr_top_down fct_expr e1, map_expr_top_down fct_expr e2)
+  | Lt (e1,e2) -> Lt (map_expr_top_down fct_expr e1, map_expr_top_down fct_expr e2)
+  | Leq (e1,e2) -> Leq (map_expr_top_down fct_expr e1, map_expr_top_down fct_expr e2)
+  | p -> p
+
+(*conversion function: convert the tree from its root *)
+let rec map_pred_top_down fct pred = map_all_top_down fct (fun x -> x) pred
 
 (** convert to NNF.
  * @param negate true means that an odd number of Not were found
@@ -509,6 +534,7 @@ module Expr =
     let compare = compare
   end
 module ExprSet = Set.Make(Expr)
+module ExprMap = Map.Make(Expr)
 
 module Pred =
   struct
@@ -516,6 +542,7 @@ module Pred =
     let compare = compare
   end
 module PredSet = Set.Make(Pred)
+module PredMap = Map.Make(Pred)
 
 let exprSet_to_ordSet set =
   OrdSet.list_to_ordSet (ExprSet.elements set)
@@ -798,33 +825,36 @@ let has_only theories pred =
   in
     List.exists test theories
 
+(*TODO should return one map for each theory ??*)
 (** Splits a formula into separate theories.
  *  This methods works only for the conjunctive fragment.
  * @return a formula in t1, in t2, and a set of shared variable:
  *      list of t1_preds (without And),
  *      list of t2_preds (without And),
  *      list of shared variables,
- *      association list for the new variables: variable -> expression
+ *      map for the new variables: variable -> expression (expression might contains shared variables)
+ *      map for t2 expr to shared variable (t1 abstraction map) TODO
+ *      map for t1 expr to shared variable (t2 abstraction map) TODO
  *)
+let split_counter = ref 0
 let split_formula_t1_t2 t1 t2 pred = 
   let only_t1_pred = is_pred_root_symbol_only t1 in
   let only_t2_pred = is_pred_root_symbol_only t2 in
   let only_t1_expr = is_expr_root_symbol_only t1 in
   let only_t2_expr = is_expr_root_symbol_only t2 in
-  let counter = ref 0 in
   let expr_to_var = Hashtbl.create 111 in
   let defs = ref [] in
-  let assoc = ref [] in
+  let assoc = ref ExprMap.empty in
   (* allocate a new var if needed and the new definition*)
   let get_fresh_var expr = 
     try Hashtbl.find expr_to_var expr
     with Not_found ->
       begin
-        counter := 1 + !counter;
-        let v = Variable ("fresh_split_var"^(string_of_int !counter)) in
+        split_counter := 1 + !split_counter;
+        let v = Variable ("fresh_split_var"^(string_of_int !split_counter)) in
           Hashtbl.add expr_to_var expr v;
           defs := (order_eq (Eq(expr, v)))::!defs;
-          assoc := (v,expr)::!assoc;
+          assoc := ExprMap.add v expr !assoc;
           v
       end
   in
@@ -895,10 +925,21 @@ let split_formula_t1_t2 t1 t2 pred =
       let shared_var = OrdSet.intersection var_t1 var_t2 in
         (t1_formula, t2_formula, shared_var, !assoc)
     end
-  | (true, false) -> (to_conjunctive_list pred, [], [], [])
-  | (false, true) -> ([], to_conjunctive_list pred, [], [])
+  | (true, false) -> (to_conjunctive_list pred, [], [], ExprMap.empty)
+  | (false, true) -> ([], to_conjunctive_list pred, [], ExprMap.empty)
   (*formula with only equality -> arbirary choice*)
-  | (false, false) -> (to_conjunctive_list pred, [], [], [])
+  | (false, false) -> (to_conjunctive_list pred, [], [], ExprMap.empty)
+
+let remove_theory_split_variables defs pred =
+  let fct_expr x = if ExprMap.mem x defs then ExprMap.find x defs else x in
+  let fct_pred x = x in
+    map_all_top_down fct_pred fct_expr pred
+
+let put_theory_split_variables rev_defs pred =
+  (*rev_defs it a mapping from theory expressions to variables*)
+  let fct_expr x = if ExprMap.mem x rev_defs then ExprMap.find x rev_defs else x in
+  let fct_pred x = x in
+    map_all_bottom_up fct_pred fct_expr pred
 
 let split_formula_LI_UIF pred = split_formula_t1_t2 [EUF] [LA] pred
 
@@ -957,39 +998,25 @@ let equisatisfiable pred =
 
 (** Replaces the atoms by the part they represent.*)
 let unabstract_equisat dico formula =
-  let rec process formula = match formula with
-    | And lst -> And (List.map process lst)
-    | Or lst -> Or (List.map process lst)
-    | Not p -> Not (process p)
-    | Eq _ as eq -> eq
-    | Lt _ as lt ->  lt
+  let process f = match f with
     | Leq(e1,e2) -> (Not (Lt(e2,e1)))
-    | Atom (External _) as a -> a
-    | Atom (Internal _) as a -> process (Hashtbl.find dico a)
-    | True -> True
-    | False -> False
+    | Atom (Internal _) as a -> Hashtbl.find dico a
+    | p -> p
   in
-    normalize_only (process formula)
+    normalize_only (map_pred_top_down process formula)
 
 (** Formula is an equisatisfiable formula (assignment returned by the satsolver),
  * it removes the atoms, keeps only the theory literals.
  * Assumes NNF.
  *)
 let remove_equisat_atoms formula =
-  let rec process formula = match formula with
+  let process formula = match formula with
     | Atom (Internal _)  -> True
     | Not (Atom (Internal _)) -> True
-    | Atom (External _) as a -> a
-    | And lst -> And (List.map process lst)
-    | Or lst -> Or (List.map process lst)
-    | Not _ as np -> np
-    | Eq _ as eq -> eq
-    | Lt _ as lt ->  lt
     | Leq(e1,e2) -> (Not (Lt(e2,e1)))
-    | True -> True
-    | False -> False
+    | p -> p
   in
-    normalize_only (process formula)
+    normalize_only (map_pred_bottom_up process formula)
 
 (** Returns the 'external' atoms (with negation).
  *  Assume NNF.
@@ -1009,19 +1036,13 @@ let get_external_atoms formula =
  * Assumes NNF.
  *)
 let remove_atoms formula =
-  let rec process formula = match formula with
+  let process formula = match formula with
     | Atom _  -> True
     | Not (Atom _)  -> True
-    | And lst -> And (List.map process lst)
-    | Or lst -> Or (List.map process lst)
-    | Not _ as np -> np
-    | Eq _ as eq -> eq
-    | Lt _ as lt ->  lt
     | Leq(e1,e2) -> (Not (Lt(e2,e1)))
-    | True -> True
-    | False -> False
+    | p -> p
   in
-    normalize_only (process formula)
+    normalize_only (map_pred_top_down process formula)
 
 (** Simple trick to replace x > y by x>= y+1.
  * Helps in many integer problems,
@@ -1030,15 +1051,8 @@ let remove_atoms formula =
  * this is only incomplete.
  *)
 let rec integer_heuristic p =
-  let p' = 
-    match p with 
-    | True | False -> p
-    | And plist -> And (List.map integer_heuristic plist)
-    | Or plist-> Or (List.map integer_heuristic plist)
-    | Not np -> 
-      let p' = push_negation false p in
-        if p = p' then p else integer_heuristic p'
+  let process p = match p with 
     | Lt (e1, e2) -> Leq(Sum [Constant 1.0; e1], e2)
-    | Eq _ | Leq _ | Atom _ -> p 
+    | p -> p 
   in
-    p'
+    map_pred_top_down process (nnf p)
