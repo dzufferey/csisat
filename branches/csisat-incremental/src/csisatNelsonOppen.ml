@@ -29,6 +29,7 @@ open   CsisatAst
 module AstUtil = CsisatAstUtil
 module PredSet = CsisatAstUtil.PredSet
 module ExprSet = CsisatAstUtil.ExprSet
+module ExprMap = CsisatAstUtil.ExprMap
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
@@ -104,7 +105,7 @@ let is_liuif_sat formula =
     Message.print Message.Debug (lazy("uif is "^(AstUtil.print (And uif))));
     Message.print Message.Debug (lazy("li  is "^(AstUtil.print (And li))));
     Message.print Message.Debug (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map AstUtil.print_expr shared))));
-    Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def))));
+    (*Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def))));*)
   let possible_deduction = ref (
     OrdSet.list_to_ordSet (
       Utils.map_filter 
@@ -188,10 +189,11 @@ type contradiction_in = LI
                       | BOOL (*used elsewhere, TODO refactor*)
                       | SATISFIABLE
 
+(*TODO what about LA (this handles only EUF)*)
 let remove_theory_split_var def eq =
   let rec find_equiv expr = match expr with
     | Application(s,lst) -> Application(s, List.map find_equiv lst)
-    | e -> if List.mem_assoc e def then find_equiv (List.assoc e def) else e
+    | e -> if ExprMap.mem e def then find_equiv (ExprMap.find e def) else e
   in
   let process eq = match eq with
     | Eq (e1,e2) -> AstUtil.order_eq (Eq (find_equiv e1, find_equiv e2))
@@ -200,6 +202,7 @@ let remove_theory_split_var def eq =
   in
     process eq
 
+(*
 let put_theory_split_var def eq =
   let rev_def = List.map (fun (x,y) -> (y,x)) def in
   let rec find_equiv expr = match expr with
@@ -216,6 +219,7 @@ let put_theory_split_var def eq =
     | _ -> failwith "remove_theory_split_var"
   in
     process eq
+*)
 
 (** Nelson Oppen for LI + UIF.
  * Assumes the given formula is And [...] (job of sat solver).
@@ -228,12 +232,12 @@ let is_liuif_sat_with_eq formula =
   let uif_eq = ref PredSet.empty in
   let solver_eq = ref [] in (*~reversed proof*)
   let new_eq = ref PredSet.empty in
-  let (uif, li, shared, def) = AstUtil.split_formula_LI_UIF formula in
+  let (uif, li, shared, def) = CsisatAstUtil.split_formula_LI_UIF formula in
     Message.print Message.Debug (lazy("formula is "^(AstUtil.print formula)));
     Message.print Message.Debug (lazy("uif is "^(AstUtil.print (And uif))));
     Message.print Message.Debug (lazy("li  is "^(AstUtil.print (And li))));
     Message.print Message.Debug (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map AstUtil.print_expr shared))));
-    Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def))));
+    (*Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def))));*)
   let possible_deduction = ref (
     OrdSet.list_to_ordSet (
       Utils.map_filter 
@@ -597,18 +601,20 @@ let unsat_LIUIF conj =
 
 module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
   struct
+
+    type events = PropagationT1toT2 of (predicate list)
+                | PropagationT2toT1 of (predicate list)
+                | Added of predicate * (predicate option)(*added to t1*) * (predicate option)(*added to t2*)
     
+    (*TODO keep a dag of equality on shared variables for the propagation ... *)
     type t = {
       t1: T1.t;
       t2: T2.t;
+      dag: SatUIF.Dag.t;
       shared: expression list;
-      var_to_expr: (expression * expression) list;
-      propagations: ( (int * (predicate list)) list) Stack.t
+      var_to_expr: expression ExprMap.t;
+      propagations: (events list) Stack.t
     }
-
-    (*direction of equality propagations *)
-    let t1_to_t2 = 0
-    let t2_to_t1 = 0
 
     let theory = T1.theory @ T2.theory
 
@@ -617,25 +623,41 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
     let create pred_set =
       if List.exists (fun x -> List.mem x T2.theory) T1.theory
       then failwith "NOSolver the two solvers handle theories that intersect";
-      let (t1_formula, t2_formula, shared, var_to_expr) = AstUtil.split_formula_t1_t2 T1.theory T2.theory (And (PredSet.elements pred_set)) in
-      let t1_solver = T1.create (CsisatAstUtil.predSet_of_list t1_formula) in
-      let t2_solver = T2.create (CsisatAstUtil.predSet_of_list t2_formula) in
-        { t1 = t1_solver;
-          t2 = t2_solver;
+      let (t1_formula, t2_formula, shared, var_to_expr) = CsisatAstUtil.split_formula_t1_t2 T1.theory T2.theory (And (PredSet.elements pred_set)) in
+      (*keep a dag of equalities only when there are shared variables*)
+      let dag =
+        if List.length shared > 1 then
+          begin
+            let (_, pred_shared) = List.fold_left
+                (fun (e1, acc) e2 -> (e2, PredSet.add (AstUtil.order_eq (Eq (e1,e2))) acc))
+                (List.hd shared, PredSet.empty)
+                (List.tl shared)
+            in
+              SatUIF.Dag.create pred_shared
+          end
+        else SatUIF.Dag.create PredSet.empty
+      in
+        { t1 = T1.create (CsisatAstUtil.predSet_of_list t1_formula);
+          t2 = T2.create (CsisatAstUtil.predSet_of_list t2_formula);
+          dag = dag;
           shared = shared;
           var_to_expr = var_to_expr;
           propagations = Stack.create () }
 
+    let is_sat t = T1.is_sat t.t1 && T2.is_sat t.t2
+
     let push t pred =
+      if not (is_sat t) then failwith "NOSolver: pusch called on an already unsat system.";
+      (*TODO makes the predicate belongs to t1 and/or t2
+       * then push and propagate ... *)
       failwith "TODO"
     
     let pop t =
       failwith "TODO"
     
-    (** Returns a list of predicates equalities that are
-     * entailed by the current stack (report only changes from last addition). *)
-    let propagation t =
-      failwith "TODO"
+    let propagation t variables =
+      (* delegates to the dag *)
+      SatUIF.Dag.propagation t.dag variables
     
     (** Returns:
      *  -unsat_core

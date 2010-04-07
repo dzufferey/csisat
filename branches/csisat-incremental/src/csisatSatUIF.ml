@@ -28,8 +28,8 @@ open   CsisatAst
 (**/**)
 module Global  = CsisatGlobal
 module AstUtil = CsisatAstUtil
-module PredSet = AstUtil.PredSet
-module ExprSet = AstUtil.ExprSet
+module PredSet = CsisatAstUtil.PredSet
+module ExprSet = CsisatAstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module IntSet  = CsisatUtils.IntSet
@@ -826,7 +826,7 @@ module Dag: sig
     val is_sat: t -> bool
     val push: t -> predicate -> bool
     val pop: t -> unit
-    val propagation: t -> predicate list
+    val propagation: t -> expression list -> predicate list
     val congruences: t -> predicate list
     val unsat_core_with_info: t -> (predicate * theory * (predicate * theory) list)
     val unsat_core: t -> predicate
@@ -843,7 +843,7 @@ module Dag: sig
     let create pset =
       let set =
         PredSet.fold
-          (fun p acc -> ExprSet.union (AstUtil.get_expr_deep_set p) acc)
+          (fun p acc -> ExprSet.union (CsisatAstUtil.get_expr_deep_set p) acc)
           pset
           ExprSet.empty
       in
@@ -966,7 +966,10 @@ module Dag: sig
       in
         process ()
 
-    let propagation dag =
+    (* Propagation on given variables ...
+     * the given expressions are assumed to be not kown equal *)
+    let propagation dag variables =
+      (*
       let rec inspect_stack () =
         if Stack.is_empty dag.stack then []
         else
@@ -981,7 +984,20 @@ module Dag: sig
               ans
           end
       in
-        inspect_stack ()
+      let new_deductions = inspect_stack () in
+      *)
+      let var_nodes = List.map (get_node dag) variables in
+      let rec process_nodes acc lst = match lst with
+        | x::xs ->
+          begin
+            let x_class = (Node.find x).Node.id in
+            let same,rest = List.partition (fun n -> (Node.find n).Node.id = x_class) xs in
+            let deductions = List.map (fun n -> AstUtil.order_eq (Eq (x.Node.expr, n.Node.expr))) same in
+              process_nodes (deductions @ acc) rest
+          end
+        | [] -> acc
+      in
+        process_nodes [] var_nodes
     
     let congruences dag =
       let rec inspect_stack () =
