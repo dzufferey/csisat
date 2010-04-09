@@ -98,6 +98,11 @@ let remove_some lst =
       | None -> failwith "remove_some found a None"
     ) lst
 
+(** Applies fct to some, returns default otherwise *)
+let maybe fct default opt = match opt with
+  | Some x -> fct x
+  | None -> Lazy.force default
+
 (** splits a list after position n.*)
 let split_list n lst =
   let acc = ref [] in
