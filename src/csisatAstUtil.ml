@@ -825,7 +825,18 @@ let has_only theories pred =
   in
     List.exists test theories
 
-(*TODO should return one map for each theory ??*)
+(* about putting/removing the variables that have been 'purified' *)
+let remove_theory_split_variables defs pred =
+  let fct_expr x = if ExprMap.mem x defs then ExprMap.find x defs else x in
+  let fct_pred x = x in
+    map_all_top_down fct_pred fct_expr pred
+
+let put_theory_split_variables rev_defs pred =
+  (*rev_defs it a mapping from theory expressions to variables*)
+  let fct_expr x = if ExprMap.mem x rev_defs then ExprMap.find x rev_defs else x in
+  let fct_pred x = x in
+    map_all_bottom_up fct_pred fct_expr pred
+
 (** Splits a formula into separate theories.
  *  This methods works only for the conjunctive fragment.
  * @return a formula in t1, in t2, and a set of shared variable:
@@ -833,8 +844,6 @@ let has_only theories pred =
  *      list of t2_preds (without And),
  *      list of shared variables,
  *      map for the new variables: variable -> expression (expression might contains shared variables)
- *      map for t2 expr to shared variable (t1 abstraction map) TODO
- *      map for t1 expr to shared variable (t2 abstraction map) TODO
  *)
 let split_counter = ref 0
 let split_formula_t1_t2 t1 t2 pred = 
@@ -882,14 +891,47 @@ let split_formula_t1_t2 t1 t2 pred =
   let process_e_t1 = process_e only_t1_expr only_t2_expr in
   let process_e_t2 = process_e only_t2_expr only_t1_expr in
   (* matches the NNF cases *)
+  (* TODO Not Eq might also be shared ... *)
   let rec process_p pred = match pred with
     | And lst -> And (List.map process_p lst)
     | Eq (e1,e2) ->
       begin
-        let t1 = order_eq (Eq(process_e_t1 e1, process_e_t1 e2)) in
-        let t2 = order_eq (Eq(process_e_t2 e1, process_e_t2 e2)) in
+        let e1_t1 = process_e_t1 e1 in
+        let e2_t1 = process_e_t1 e2 in
+        let e1_t2 = process_e_t2 e1 in
+        let e2_t2 = process_e_t2 e2 in
+        let t1 = order_eq (Eq(e1_t1, e2_t1)) in
+        let t2 = order_eq (Eq(e1_t2, e2_t2)) in
           if t1 <> t2 then defs := t1::!defs;
           t2
+      (*
+        (*
+        Message.print Message.Normal (lazy("pred ="^(print pred)));
+        Message.print Message.Normal (lazy("t1 ="^(print t1)));
+        Message.print Message.Normal (lazy("t2 ="^(print t2)));
+        Message.print Message.Normal (lazy("defs ="^(String.concat ", " (List.map print !defs))));
+        *)
+        (*TODO this seems correct, but makes the solver WAY TOO SLOW *)
+        (*both side should contains exatcly one variable at top level*)
+        let var t = match t with
+          | Eq ((Variable _ as v), rest) | Eq (rest, (Variable _ as v)) -> v
+          | els -> failwith ("expected variable in "^(print els))
+        in
+        let samekind e1 e2 = match (e1,e2) with
+          | (Constant  _, Constant _) | (Variable _, Variable _)  | (Sum _, Sum _)
+          | (Application _, Application _) | (Coeff _, Coeff _) -> true
+          | _ -> false
+        in
+        let top_level_diff eq1 eq2 = match (eq1,eq2) with
+          | (Eq(e11,e12), Eq(e21,e22)) -> not (samekind e11 e21 && samekind e12 e22)
+          | _ -> failwith "TODO"
+        in
+          match (top_level_diff t1 pred, top_level_diff t2 pred)  with
+          | (true, true) -> order_eq (Eq (var t1, var t2))
+          | (true, false) -> t2
+          | (false, true) -> t1
+          | (false, false) -> t2
+      *)
       end
     | Not (Eq (e1,e2)) | Lt (e1,e2) | Leq (e1,e2) ->
       begin
@@ -929,17 +971,6 @@ let split_formula_t1_t2 t1 t2 pred =
   | (false, true) -> ([], to_conjunctive_list pred, [], ExprMap.empty)
   (*formula with only equality -> arbirary choice*)
   | (false, false) -> (to_conjunctive_list pred, [], [], ExprMap.empty)
-
-let remove_theory_split_variables defs pred =
-  let fct_expr x = if ExprMap.mem x defs then ExprMap.find x defs else x in
-  let fct_pred x = x in
-    map_all_top_down fct_pred fct_expr pred
-
-let put_theory_split_variables rev_defs pred =
-  (*rev_defs it a mapping from theory expressions to variables*)
-  let fct_expr x = if ExprMap.mem x rev_defs then ExprMap.find x rev_defs else x in
-  let fct_pred x = x in
-    map_all_bottom_up fct_pred fct_expr pred
 
 let split_formula_LI_UIF pred = split_formula_t1_t2 [EUF] [LA] pred
 

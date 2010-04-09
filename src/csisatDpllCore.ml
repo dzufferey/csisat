@@ -47,11 +47,15 @@ let int_get_result proof = match proof with
   | IRPNode (_,_,_,r) -> r
   | IRPLeaf r -> r
 
-(** To store the decision level.
- *)
+(** To store the decision level. *)
 type var_assign = Open (** free choice (decision policy) *)
                 | Implied of int_res_proof (** unit resolution*)
                 | TImplied of int_res_proof (** implied by a theory (bool+T) TODO *)
+(* for partial solving *)
+type int_status = IAffected of int
+                | IAffectation of int list (*full affectation that satifies the system *)
+                | IBacktracked of int (*how many atoms where set to Unk*)
+                | IProof of int_res_proof option (* unsat: return resolution proof if asked *)
 
 class system =
   fun with_prf ->
@@ -459,9 +463,40 @@ class system =
       | Some prf -> prf
       | None -> failwith "DPLL, no resolution proof"
 
+    method next =
+      if possibly_sat then
+        begin
+          Message.print Message.Debug (lazy("DPLL, system is possibly sat."));
+          if self#is_sat then IAffectation (self#get_assign)
+          else if self#has_contra then
+            begin
+              let cl = self#get_unsat_clause in
+                Message.print Message.Debug (lazy("DPLL, backtracking with: "^(cl#to_string)));
+                let old_decision_level = Stack.length choices in
+                  self#backjump cl;
+                  let new_decision_level = Stack.length choices in
+                    IBacktracked (old_decision_level - new_decision_level)
+            end
+          else
+            begin
+              Message.print Message.Debug (lazy("DPLL taking decision_policy branch"));
+              self#decision_policy;
+              let (pivot,_,_) = Stack.top choices in
+                IAffected pivot
+            end
+        end
+      else
+        IProof resolution_proof
   end
 
 (*** Wrapper ***)
+
+(* for partial solving *)
+type status = Affected of predicate
+            | Affectation of predicate list (*full affectation that satifies the system *)
+            | Backtracked of int (*how many atoms where set to Unk*)
+            | Proof of res_proof option (* unsat: return resolution proof if asked *)
+
 class csi_dpll =
   fun with_proof ->
   object (self)
@@ -568,6 +603,18 @@ class csi_dpll =
         Message.print Message.Debug (lazy(string_of_proof transformed));
         Message.print Message.Debug (lazy(tracecheck_of_proof transformed));
         transformed
+
+
+    method next = match sys#next with
+      | IAffected lit -> Affected (self#get_atom lit)
+      | IAffectation lst -> Affectation (List.map self#get_atom lst)
+      | IBacktracked level -> Backtracked level
+      | IProof prf ->
+        begin
+          match prf with
+          | Some _ -> Proof (Some self#get_proof)
+          | None -> Proof None
+        end
 
   end
 

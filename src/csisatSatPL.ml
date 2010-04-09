@@ -35,6 +35,7 @@ module Utils       = CsisatUtils
 module NelsonOppen = CsisatNelsonOppen
 module DpllClause  = CsisatDpllClause
 module DpllProof   = CsisatDpllProof
+module SatInterface = CsisatSatInterface
 (**/**)
 
 let solver = ref "csi_dpll"
@@ -45,8 +46,8 @@ let set_solver str = match str with
   | _ -> failwith "SatPL: unknown SAT solver"
 
 let get_solver prf = match !solver with
-  | "pico" -> new picosat prf
-  | "csi_dpll" -> new csi_dpll prf
+  | "pico" -> let s = new picosat prf in (s :> SatInterface.sat_solver)
+  | "csi_dpll" -> let s = new csi_dpll prf in (s :> SatInterface.sat_solver)
   | _ -> failwith "SatPL: unknown SAT solver"
 
 (*TODO*)

@@ -613,10 +613,16 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
       dag: SatUIF.Dag.t;
       shared: expression list;
       var_to_expr: expression ExprMap.t;
-      propagations: (events list) Stack.t
+      propagations: events Stack.t
     }
 
     let theory = T1.theory @ T2.theory
+
+    (*
+    There is something wrong in the splitting as it is now.
+    -> I should keep a map from predicate to (t1_predicate opt, t2_predicate opt).
+    -> The definitions should be sent to the solver direclty at the initialisation.
+    *)
 
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation) *)
@@ -647,13 +653,89 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
     let is_sat t = T1.is_sat t.t1 && T2.is_sat t.t2
 
     let push t pred =
-      if not (is_sat t) then failwith "NOSolver: pusch called on an already unsat system.";
       (*TODO makes the predicate belongs to t1 and/or t2
-       * then push and propagate ... *)
-      failwith "TODO"
+       * what if one side is empty ???
+       * then push and propagate ...
+       * propagations are also put in the dag
+       *)
+      if not (is_sat t) then failwith "NOSolver: push called on an already unsat system.";
+      let rev_defs = failwith "TODO" in
+      let with_vars = AstUtil.put_theory_split_variables rev_defs pred in
+      let (t1_pred, t2_pred) = failwith "TODO" in
+      let sat1, t1_prop = Utils.maybe (fun p -> let res = T1.push t.t1 p in (res, T1.propagation t.t1 t.shared)) (lazy (true ,[])) t1_pred in
+        if not sat1 then
+          begin
+            Stack.push (Added (pred, t1_pred, None)) t.propagations;
+            false
+          end
+        else
+          let sat2, t2_prop = Utils.maybe (fun p -> let res = T2.push t.t2 p in (res, T2.propagation t.t2 t.shared)) (lazy (true,[])) t2_pred in
+            if not sat2 then
+              begin
+                Utils.maybe (fun _ -> T1.pop t.t1) (lazy ()) t1_pred;
+                Stack.push (Added (pred, None, t2_pred)) t.propagations;
+                false
+              end
+            else
+              begin
+                let t1_queue = Queue.create () in
+                let t2_queue = Queue.create () in
+                let rec propagates_t
+                    queue mk_event push prop_t
+                    other_queue other_mk_event other_push other_prop_t
+                    acc =
+                  let same_propagates = propagates_t
+                    queue mk_event push prop_t
+                    other_queue other_mk_event other_push other_prop_t
+                  in
+                  let other_propagates = propagates_t
+                    other_queue other_mk_event other_push other_prop_t
+                    queue mk_event push prop_t
+                  in
+                  if not (Queue.is_empty queue) then
+                    begin
+                      let p = Queue.take queue in
+                        SatUIF.Dag.push t.dag p;
+                        if push p then 
+                          begin
+                            List.iter (fun x -> Queue.add x queue) (prop_t ());
+                            same_propagates (p::acc)
+                          end
+                        else
+                          begin
+                            Stack.push (mk_event (p::acc)) t.propagations;
+                            false
+                          end
+                    end
+                  else
+                    begin
+                      Stack.push (mk_event acc) t.propagations;
+                      if not (Queue.is_empty other_queue) then other_propagates [] else true
+                    end
+                in
+                  List.iter (fun p -> Queue.add p t1_queue) t1_prop;
+                  List.iter (fun p -> Queue.add p t2_queue) t2_prop;
+                  propagates_t
+                    t1_queue (fun lst -> PropagationT1toT2 lst) (T2.push t.t2) (fun () -> T2.propagation t.t2 t.shared)
+                    t2_queue (fun lst -> PropagationT2toT1 lst) (T1.push t.t1) (fun () -> T1.propagation t.t1 t.shared)
+                    []
+              end
     
     let pop t =
-      failwith "TODO"
+      let rec inspect_stack () = 
+        if Stack.is_empty t.propagations then
+          failwith "NOSolver: pop called on an empty stack"
+        else
+          begin
+            match Stack.pop t.propagations with
+            | PropagationT1toT2 lst -> List.iter (fun _ -> T2.pop t.t2; SatUIF.Dag.pop t.dag) lst; inspect_stack ()
+            | PropagationT2toT1 lst -> List.iter (fun _ -> T1.pop t.t1; SatUIF.Dag.pop t.dag) lst; inspect_stack ()
+            | Added (_, added_to_t1, added_to_t2) ->
+              Utils.maybe (fun _ -> T1.pop t.t1) (lazy ()) added_to_t1;
+              Utils.maybe (fun _ -> T2.pop t.t2) (lazy ()) added_to_t2
+          end
+      in
+        inspect_stack ()
     
     let propagation t variables =
       (* delegates to the dag *)
