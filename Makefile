@@ -62,8 +62,7 @@ FILES = \
 	$(OBJ)/csisatNelsonOppen.cmx \
 	$(OBJ)/csisatSatPL.cmx \
 	$(OBJ)/csisatInterpolate.cmx \
-	$(OBJ)/csisatConfig.cmx \
-	$(OBJ)/csisatTests.cmx
+	$(OBJ)/csisatConfig.cmx
 
 MAIN =  $(OBJ)/csisatMain.cmx
 TARGET = bin/csisat

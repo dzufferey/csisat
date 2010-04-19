@@ -191,9 +191,10 @@ module CoreSolver: sig
     type t = {
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
-      mutable expr_to_node: (expression, Node.t) ExprMap.t;
+      mutable expr_to_node: Node.t ExprMap.t;(*TODO not really mutable*)
       stack: change Stack.t;
       mutable neqs: (int * int) list (* neqs as pairs of node id *)
+      mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t
       (* TODO what is needed for the theory splitting and theory solvers *)
       (* a theory solver being a module, there are some problem
        * Functors: modular, but only handles a fixed number of solver
@@ -255,13 +256,13 @@ module CoreSolver: sig
     let get dag i = dag.nodes.(i)
     let get_node dag expr = ExprMap.find expr dag.expr_to_node
 
-    let is_sat dag =
+    let is_euf_sat dag =
       not (
         List.exists
           (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
-      ) && failwith "TODO what about the theories"
-    
+      )    
+
     let push dag pred =
       if not (is_sat dag) then failwith "CoreSolver: push called on an already unsat system.";
       failwith "TODO"
@@ -306,19 +307,47 @@ module CoreSolver: sig
       in
         process_nodes [] var_nodes
     
-    (* partially sat / no explicit contradiction *)
-    let is_consistent t = failwith "TODO"
+    let is_theory_consistent t = is_euf_sat t
+
     (* has a satisfiable assignement *)
-    let is_sat t = failwith "TODO"
-    (* has theory contradition *)
-    let has_theory_contradiction t = failwith "TODO"
+    let is_sat t = t.dpll#is_sat && is_theory_consistent t
+
+    (* partially sat / no explicit contradiction *)
+    let is_consistent t = t.dpll#is_consistent && is_theory_consistent t
+
+    let euf_lemma_with_info dag =
+      let (c1,c2) = try
+          List.find
+            (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
+            dag.neqs
+        with Not_found ->
+          failwith "EUF, unsat_core_with_info: system is sat!"
+      in
+      let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+      let raw_congruences = congruences dag in
+      let all_congruences = OrdSet.list_to_ordSet raw_congruences in
+      let raw_core = OrdSet.list_to_ordSet ((snd (get dag c1).Node.find) @ (snd (get dag c2).Node.find)) in
+      (* raw_core contains both given equalities and congruences.
+       * it is an overapproximation ...
+       * TODO improve -> do a search for eq paths that makes the contradiction possible
+       *)
+      let needed_congruences = OrdSet.intersection all_congruences raw_core in
+      let congruences = List.filter (fun x -> OrdSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
+      let info = List.map (fun x -> (x,EUF)) congruences in
+      let core = contradiction :: (OrdSet.subtract raw_core congruences) in
+        (And core, EUF, info)
+
+    (* blocking clause *)
+    let theory_lemma t = euf_lemma_with_info t
+
+    type solved = Sat of predicate list
+                | Unsat of DpllCore.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
 
     let rec solve t =
       if is_consistent t then
         begin
           if is_sat t then
-            (* returns a clause that satisfies the boolean structure and is T-satisfiable *)
-            failwith "TODO"
+            Sat t.dpll#get_solution
           else
             match t.dpll#next with
             | Affected lst -> (*TODO push to the theories *)
@@ -328,16 +357,20 @@ module CoreSolver: sig
             | Backtracked howmany ->
               let new_state = List.fold_left (fun _ -> pop t) (Utils.range 0 howmany) in
                 solve new_state
-            | Proof proof -> (*TODO return the proof, with the theory lemmas*)
-              failwith "TODO"
+            | Proof proof -> Unsat (proof, t.explanations)
         end
       else
         begin
-          if has_theory_contradiction t then
-            failwith "TODO"
-          else
-            (*contradiciton must come from the sat solver*)
-            failwith "TODO"
+          assert (has_theory_contradiction t);
+          let (new_clause, explanation) = theory_lemma t in
+            t.explanations <- PredMap.add new_clause explanation t.explanations;
+            t.dpll#add_clause new_clause;
+            match t.dpll#next with
+            | Backtracked howmany ->
+              let new_state = List.fold_left (fun _ -> pop t) (Utils.range 0 howmany) in
+                solve new_state
+            | Proof proof -> Unsat (proof, t.explanations)
+            | _ -> failwith "expecting Backtracked of Proof"
         end
   end
 
