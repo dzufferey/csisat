@@ -6,13 +6,12 @@ SRC = src
 DOC = doc
 LIB = lib
 
-INLCUDES = -I /home/zufferey/include -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
-LIB_GLPK_DIR = /home/zufferey/lib
-
+INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
+LIB_GLPK_DIR = /usr/lib
 
 ifndef STATIC
 GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
-LIBS = -cclib '-L $(PWD)/$(LIB)  -L $(LIB_GLPK_DIR) \
+LIBS = -cclib '-L $(PWD)/$(LIB) \
 	-lglpk -lpicosat -lcamlpico -lcamlglpk'
 else
 GLPK = $(LIB_GLPK_DIR)/libglpk.a  /usr/lib/libgmp.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a # for GLPK 4.28
@@ -63,7 +62,8 @@ FILES = \
 	$(OBJ)/csisatNelsonOppen.cmx \
 	$(OBJ)/csisatSatPL.cmx \
 	$(OBJ)/csisatInterpolate.cmx \
-	$(OBJ)/csisatConfig.cmx
+	$(OBJ)/csisatConfig.cmx \
+	$(OBJ)/csisatTests.cmx
 
 MAIN =  $(OBJ)/csisatMain.cmx
 TARGET = bin/csisat
