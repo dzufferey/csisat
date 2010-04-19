@@ -242,3 +242,11 @@ let round n =
 
 let cartesian_product l1 l2 =
   List.flatten (List.map (fun x -> List.map (fun y -> (x,y)) l2) l1)
+
+(*does not include max*)
+let range min max =
+  let rec process acc curr =
+    if curr >= max then List.rev acc
+    else process (curr::acc) (curr + 1)
+  in
+    process [] min

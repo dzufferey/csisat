@@ -51,7 +51,8 @@ type change = StackSat of predicate * (sat_changes list) (* predicate given by s
             | StackTDeduction of predicate * theory * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* theory deduction (one equality) TODO how to extend this to non convex theories *)
             | StackInternal of int * find_t (* path compression: (id, old find) *)
 
-module Node : sig
+module Node =
+  struct
     type t = {
       id: int;
       fn: string;
@@ -63,30 +64,8 @@ module Node : sig
       mutable find: find_t; (*the predicate list is used to construct the unsat core faster *)
       mutable ccpar: IntSet.t
     }
-    
-    val create: expression -> int -> string -> int list -> t array -> euf_change Stack.t -> t
-    val copy: t -> t
-    val find: t -> t
-    val union: t -> t -> (t * t)
-    val ccpar: t -> IntSet.t
-    val congruent: t -> t -> bool
-    val may_be_congruent: t -> t -> (t * t) list
-    val merge: t -> t -> unit
-  end
-  =
-  struct
-    type t = {
-      id: int;
-      fn: string;
-      args: int list;
-      arity: int;
-      expr: expression;
-      nodes: t array;
-      events: euf_change Stack.t;
-      mutable find: find_t;
-      mutable ccpar: IntSet.t
-    }
 
+    (*val create: expression -> int -> string -> int list -> t array -> euf_change Stack.t -> t*)
     let create expr id fn args nodes events = {
       id = id;
       fn = fn;
@@ -99,6 +78,7 @@ module Node : sig
       ccpar = IntSet.empty;
     }
     
+    (*val copy: t -> t*)
     let copy n = {
       id = n.id;
       fn = n.fn;
@@ -112,6 +92,7 @@ module Node : sig
     }
     
     (*TODO is it right ?? (predicate update) *)
+    (*val find: t -> t*)
     let rec find this =
       if (fst this.find) = this.id then this
       else
@@ -124,6 +105,7 @@ module Node : sig
         end
 
     (*TODO is it right ?? (predicate update) *)
+    (*val union: t -> t -> (t * t)*)
     let union this that = 
       let n1 = find this in
       let n2 = find that in
@@ -135,8 +117,10 @@ module Node : sig
         n1.ccpar <- IntSet.empty;
         (on1, on2)
 
+    (*val ccpar: t -> IntSet.t*)
     let ccpar node = (find node).ccpar
 
+    (*val congruent: t -> t -> bool*)
     let congruent this that =
         this.fn = that.fn
       &&
@@ -147,6 +131,7 @@ module Node : sig
           (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
 
     (** return pairs of nodes whose equality may change the result of the 'congruent' method*)
+    (*val may_be_congruent: t -> t -> (t * t) list*)
     let may_be_congruent this that =
       if this.fn <> that.fn
       || this.arity <> that.arity
@@ -157,6 +142,7 @@ module Node : sig
           (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
 
     (** return pairs of nodes whose equality comes from congruence*)
+    (*val merge: t -> t -> unit*)
     let merge this that =
       (* always report the first equality *)
       Stack.push
@@ -189,11 +175,23 @@ module Node : sig
         process first_to_stack this that 
   end
 
+(*TODO firs make it work for EUF, then extend to EUF + T *)
 module CoreSolver: sig
+    type t
+    val create: predicate -> t
+    val get: t -> int -> Node.t
+    val get_node: t -> expression -> Node.t
+    val is_sat: t -> bool
+    val push: t -> predicate -> bool
+    val pop: t -> unit
+    val propagation: t -> predicate list (*propagates only on the variables known b the sat solver. *)
+  end
+  =
+  struct
     type t = {
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
-      expr_to_node: (expression, Node.t) Hashtbl.t;
+      mutable expr_to_node: (expression, Node.t) ExprMap.t;
       stack: change Stack.t;
       mutable neqs: (int * int) list (* neqs as pairs of node id *)
       (* TODO what is needed for the theory splitting and theory solvers *)
@@ -204,28 +202,9 @@ module CoreSolver: sig
        *)
     }
 
-    val create: PredSet.t -> t
-    val get: t -> int -> Node.t
-    val get_node: t -> expression -> Node.t
-    val is_sat: t -> bool
-    val push: t -> predicate -> bool
-    val pop: t -> unit
-    val propagation: t -> predicate list (*propagates only on the variables known b the sat solver. *)
-    val unsat_core_with_info: t -> (predicate * theory * (predicate * theory) list)
-    val unsat_core: t -> predicate
-  end
-  =
-  struct
-    type t = {
-      sat_solver: Dpll.csi_dpll;
-      nodes: Node.t array;
-      expr_to_node: (expression, Node.t) Hashtbl.t;
-      stack: change Stack.t;
-      mutable neqs: (int * int) list
-    }
-
     (*TODO split the theories and keep what belongs to what*)
-    let create pset =
+    let create pred =
+      let pset = AstUtil.get_proposition_set pred in
       let set =
         PredSet.fold
           (fun p acc -> ExprSet.union (CsisatAstUtil.get_expr_deep_set p) acc)
@@ -233,25 +212,24 @@ module CoreSolver: sig
           ExprSet.empty
       in
       let id = ref 0 in
-      let table1 = Hashtbl.create (ExprSet.cardinal set) in
       let graph = {
           sat_solver = new Dpll.csi_dpll true;
           nodes = Array.make
             (ExprSet.cardinal set)
             (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()));
-          expr_to_node = table1;
+          expr_to_node = ExprMap.empty;
           stack = Stack.create ();
           neqs = [];
         }
       in
       let create_and_add expr fn args =
-        try Hashtbl.find table1 expr
+        try ExprMap.find expr graph.expr_to_node
         with Not_found ->
           begin
             let n = Node.create expr !id fn args graph.nodes graph.stack in
               graph.nodes.(!id) <- n;
               id := !id + 1;
-              Hashtbl.replace table1 expr n;
+              graph.expr_to_node <- ExprMap.add expr n graph.expr_to_node;
               n
           end
       in
@@ -275,7 +253,7 @@ module CoreSolver: sig
         graph
 
     let get dag i = dag.nodes.(i)
-    let get_node dag expr = Hashtbl.find dag.expr_to_node expr
+    let get_node dag expr = ExprMap.find expr dag.expr_to_node
 
     let is_sat dag =
       not (
@@ -328,10 +306,38 @@ module CoreSolver: sig
       in
         process_nodes [] var_nodes
     
-    let unsat_core_with_info dag = failwith "TODO"
+    (* partially sat / no explicit contradiction *)
+    let is_consistent t = failwith "TODO"
+    (* has a satisfiable assignement *)
+    let is_sat t = failwith "TODO"
+    (* has theory contradition *)
+    let has_theory_contradiction t = failwith "TODO"
 
-    let unsat_core dag = 
-      let (core, _, _) = unsat_core_with_info dag in
-        core
+    let rec solve t =
+      if is_consistent t then
+        begin
+          if is_sat t then
+            (* returns a clause that satisfies the boolean structure and is T-satisfiable *)
+            failwith "TODO"
+          else
+            match t.dpll#next with
+            | Affected lst -> (*TODO push to the theories *)
+              failwith "TODO"
+            | Affectation (lst1,lst2) -> (*TODO push to the theories is sat then return the assign *)
+              failwith "TODO"
+            | Backtracked howmany ->
+              let new_state = List.fold_left (fun _ -> pop t) (Utils.range 0 howmany) in
+                solve new_state
+            | Proof proof -> (*TODO return the proof, with the theory lemmas*)
+              failwith "TODO"
+        end
+      else
+        begin
+          if has_theory_contradiction t then
+            failwith "TODO"
+          else
+            (*contradiciton must come from the sat solver*)
+            failwith "TODO"
+        end
   end
 

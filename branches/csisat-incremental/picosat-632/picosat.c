@@ -4406,7 +4406,7 @@ write_trace (FILE * file, int fmt)
 }
 
 /**
- * method to access the zhains without pinting to a file
+ * method to access the zhains without printing to a file
  */
 
 static int* proof = NULL;
@@ -4417,7 +4417,7 @@ static void add_int_to_proof(int i)
 {
   if(cursor >= current_size){
     current_size += PROOF_BLOCK;
-    proof = realloc(proof, current_size);
+    proof = realloc(proof, current_size * sizeof(int));
   }
   proof[cursor] = i;
   cursor++;
