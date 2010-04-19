@@ -52,8 +52,8 @@ type var_assign = Open (** free choice (decision policy) *)
                 | Implied of int_res_proof (** unit resolution*)
                 | TImplied of int_res_proof (** implied by a theory (bool+T) TODO *)
 (* for partial solving *)
-type int_status = IAffected of int
-                | IAffectation of int list (*full affectation that satifies the system *)
+type int_status = IAffected of int list
+                | IAffectation of int list * int list (* newly affected + full affectation that satifies the system *)
                 | IBacktracked of int (*how many atoms where set to Unk*)
                 | IProof of int_res_proof option (* unsat: return resolution proof if asked *)
 
@@ -463,37 +463,80 @@ class system =
       | Some prf -> prf
       | None -> failwith "DPLL, no resolution proof"
 
-    method next =
-      if possibly_sat then
-        begin
-          Message.print Message.Debug (lazy("DPLL, system is possibly sat."));
-          if self#is_sat then IAffectation (self#get_assign)
-          else if self#has_contra then
-            begin
-              let cl = self#get_unsat_clause in
-                Message.print Message.Debug (lazy("DPLL, backtracking with: "^(cl#to_string)));
-                let old_decision_level = Stack.length choices in
+    method take i =
+      let s = Stack.copy choices in
+      let rec take i acc =
+        if i = 0 then []
+        else
+          begin
+            let (pivot,_,_) = Stack.pop s in
+              take (i - 1) (pivot :: acc)
+          end
+      in
+        take i []
+
+    method unit_propagate_and_backjump =
+      let old_decision_level = Stack.length choices in
+      let rec process () = 
+        if possibly_sat then
+          begin
+            Message.print Message.Debug (lazy("DPLL, system is possibly sat."));
+            if self#is_sat then
+              begin
+                let new_decision_level = Stack.length choices in
+                  assert(new_decision_level >= old_decision_level);
+                  IAffectation (self#take (new_decision_level - old_decision_level), self#get_assign)
+              end
+            else if self#has_contra then
+              begin
+                let cl = self#get_unsat_clause in
+                  Message.print Message.Debug (lazy("DPLL, backtracking with: "^(cl#to_string)));
                   self#backjump cl;
                   let new_decision_level = Stack.length choices in
-                    IBacktracked (old_decision_level - new_decision_level)
-            end
-          else
-            begin
-              Message.print Message.Debug (lazy("DPLL taking decision_policy branch"));
-              self#decision_policy;
-              let (pivot,_,_) = Stack.top choices in
-                IAffected pivot
-            end
+                    if new_decision_level < old_decision_level
+                    then IBacktracked (old_decision_level - new_decision_level)
+                    else process ()
+              end
+            else
+              begin
+                match self#find_unit_propagation with
+                | Some (lit,cl) ->
+                  begin
+                    let proof = self#proof_for_clause cl in
+                      self#affect (lit) (Implied proof);
+                      process ()
+                  end
+                | None ->
+                  begin
+                    let new_decision_level = Stack.length choices in
+                      assert(new_decision_level >= old_decision_level);
+                      IAffected (self#take (new_decision_level - old_decision_level))
+                  end
+              end
+          end
+        else
+          IProof resolution_proof
+      in
+        process ()
+      
+
+    method next =
+      match self#unit_propagate_and_backjump with
+      | IAffected [] ->
+        begin
+          Message.print Message.Debug (lazy("DPLL taking decision_policy branch"));
+          self#decision_policy;
+          let (pivot,_,_) = Stack.top choices in
+            IAffected [pivot] (*TODO better -> unit propagation again ... *)
         end
-      else
-        IProof resolution_proof
+      | rest -> rest
   end
 
 (*** Wrapper ***)
 
 (* for partial solving *)
-type status = Affected of predicate
-            | Affectation of predicate list (*full affectation that satifies the system *)
+type status = Affected of predicate list
+            | Affectation of predicate list * predicate list (* newly affected + full affectation that satifies the system *)
             | Backtracked of int (*how many atoms where set to Unk*)
             | Proof of res_proof option (* unsat: return resolution proof if asked *)
 
@@ -600,21 +643,23 @@ class csi_dpll =
       let proof = sys#get_proof_of_unsat in 
       let transformed = transform proof in
         (* output the satsolver proof *)
-        Message.print Message.Debug (lazy(string_of_proof transformed));
+        (*Message.print Message.Debug (lazy(string_of_proof transformed));*)
         Message.print Message.Debug (lazy(tracecheck_of_proof transformed));
         transformed
 
 
-    method next = match sys#next with
-      | IAffected lit -> Affected (self#get_atom lit)
-      | IAffectation lst -> Affectation (List.map self#get_atom lst)
-      | IBacktracked level -> Backtracked level
-      | IProof prf ->
-        begin
-          match prf with
-          | Some _ -> Proof (Some self#get_proof)
-          | None -> Proof None
-        end
+    method next =
+      let atoms = List.map self#get_atom in
+        match sys#next with
+        | IAffected lst -> Affected (atoms lst)
+        | IAffectation (lst1, lst2) -> Affectation (atoms lst1, atoms lst2)
+        | IBacktracked level -> Backtracked level
+        | IProof prf ->
+          begin
+            match prf with
+            | Some _ -> Proof (Some self#get_proof)
+            | None -> Proof None
+          end
 
   end
 
