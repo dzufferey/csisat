@@ -255,11 +255,11 @@ class system =
         (pivot,how)
 
     (** Is there a contradiction (clause impossible to satisfy) ? *)
-    method private has_contra =
+    method has_contra =
       IntSet.exists (fun i -> clauses.(i)#contradiction) unsat_clauses
 
     (** Does the current assignment satisfy the system ? *)
-    method private is_sat = IntSet.is_empty unsat_clauses
+    method is_sat = IntSet.is_empty unsat_clauses
 
     (** Get one of the clause with contradiction (for backtracking)*)
     method private get_unsat_clause =
@@ -660,6 +660,9 @@ class csi_dpll =
             | Some _ -> Proof (Some self#get_proof)
             | None -> Proof None
           end
+
+    method is_consitent = not sys#has_contra
+    method is_sat = sys#is_sat
 
   end
 
