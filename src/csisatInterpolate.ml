@@ -471,15 +471,21 @@ let interpolate_with_one_proof lst =
           assert(Global.is_off_assert() || List.exists (fun x -> x == False) scan);
           scan
       end
+    else if all == True then raise (SAT_FORMULA all)
     else if is_conj_only all then
       begin
         Message.print Message.Debug (lazy "Interpolate: formula is conj only");
-        let core_with_info = NelsonOppen.unsat_LIUIF all in (*TODO fails in NO what is a single predicate, not a And*)
-          List.map (fun (a,b) ->
-              let a_prop = get_proposition_set a in
-              let b_prop = get_proposition_set b in
-                partial_interpolant a a_prop b b_prop core_with_info
-            ) queries
+        match all with
+        | And _ ->
+          begin
+            let core_with_info = NelsonOppen.unsat_LIUIF all in
+              List.map (fun (a,b) ->
+                  let a_prop = get_proposition_set a in
+                  let b_prop = get_proposition_set b in
+                    partial_interpolant a a_prop b b_prop core_with_info
+                ) queries
+          end
+       | _ -> (*single term*) raise (SAT_FORMULA all)
       end
     else
       begin
