@@ -184,7 +184,7 @@ module CoreSolver =
     type t = {
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
-      mutable expr_to_node: Node.t ExprMap.t;(*TODO not really mutable*)
+      expr_to_node: Node.t ExprMap.t;(*TODO not really mutable*)
       stack: change Stack.t;
       mutable neqs: (int * int) list; (* neqs as pairs of node id *)
       mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t
@@ -206,25 +206,21 @@ module CoreSolver =
           ExprSet.empty
       in
       let id = ref 0 in
-      let graph = {
-          sat_solver = new Dpll.csi_dpll true;
-          nodes = Array.make
-            (ExprSet.cardinal set)
-            (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()));
-          expr_to_node = ExprMap.empty;
-          stack = Stack.create ();
-          neqs = [];
-          explanations = PredMap.empty
-        }
+      let sat_solver = new Dpll.csi_dpll true in
+      let nodes = Array.make
+        (ExprSet.cardinal set)
+        (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()))
       in
+      let expr_to_node = ref ExprMap.empty in
+      let stack = Stack.create () in
       let create_and_add expr fn args =
-        try ExprMap.find expr graph.expr_to_node
+        try ExprMap.find expr !expr_to_node
         with Not_found ->
           begin
-            let n = Node.create expr !id fn args graph.nodes graph.stack in
-              graph.nodes.(!id) <- n;
+            let n = Node.create expr !id fn args nodes stack in
+              nodes.(!id) <- n;
               id := !id + 1;
-              graph.expr_to_node <- ExprMap.add expr n graph.expr_to_node;
+              expr_to_node := ExprMap.add expr n !expr_to_node;
               n
           end
       in
@@ -245,7 +241,15 @@ module CoreSolver =
             new_node
       in
       let _ = ExprSet.iter (fun x -> ignore (convert_exp x)) set in
-        graph
+        sat_solver#init pred;
+        {
+          sat_solver = sat_solver;
+          nodes = nodes;
+          expr_to_node = !expr_to_node;
+          stack = stack;
+          neqs = [];
+          explanations = PredMap.empty
+        }
 
     let get dag i = dag.nodes.(i)
     let get_node dag expr = ExprMap.find expr dag.expr_to_node
