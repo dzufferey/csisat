@@ -661,8 +661,9 @@ class csi_dpll =
             | None -> Proof None
           end
 
-    method is_consitent = not sys#has_contra
+    method is_consistent = not sys#has_contra
     method is_sat = sys#is_sat
+    method pop = ignore(sys#forget)
 
   end
 

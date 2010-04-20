@@ -34,12 +34,15 @@ module Global  = CsisatGlobal
 module AstUtil = CsisatAstUtil
 module PredSet = CsisatAstUtil.PredSet
 module ExprSet = CsisatAstUtil.ExprSet
+module PredMap = CsisatAstUtil.PredMap
+module ExprMap = CsisatAstUtil.ExprMap
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module IntSet  = CsisatUtils.IntSet
 module OrdSet  = CsisatOrdSet
 module EqDag   = CsisatDag
 module Dpll    = CsisatDpllCore
+module DpllProof = CsisatDpllProof
 (**/**)
 
 (** The different changes that can happen in the system *)
@@ -47,7 +50,7 @@ type find_t =  int * (predicate list)
 type sat_changes = Equal of (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* 2 x (id,find,ccpar) *)
                  | ImplyNotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
                  | SentToTheory of theory * predicate (* what was sent to which solver *)
-type change = StackSat of predicate * (sat_changes list) (* predicate given by sat solver *)
+type change = StackSat of predicate * sat_changes (* predicate given by sat solver *)
             | StackTDeduction of predicate * theory * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* theory deduction (one equality) TODO how to extend this to non convex theories *)
             | StackInternal of int * find_t (* path compression: (id, old find) *)
 
@@ -60,7 +63,7 @@ module Node =
       arity: int;
       expr: expression;
       nodes: t array;
-      events: euf_change Stack.t;
+      events: change Stack.t;
       mutable find: find_t; (*the predicate list is used to construct the unsat core faster *)
       mutable ccpar: IntSet.t
     }
@@ -146,12 +149,12 @@ module Node =
     let merge this that =
       (* always report the first equality *)
       Stack.push
-        (StackEq (AstUtil.order_eq (Eq (this.expr, that.expr)), (this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar)))
+        (StackSat (AstUtil.order_eq (Eq (this.expr, that.expr)),  Equal ((this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar))))
         (this.events);
       let first_to_stack _ _ _ _ = () in
       let other_to_stack a b changed_a changed_b =
         Stack.push
-          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
+          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
       in
       let rec process to_stack this that =
@@ -176,24 +179,14 @@ module Node =
   end
 
 (*TODO firs make it work for EUF, then extend to EUF + T *)
-module CoreSolver: sig
-    type t
-    val create: predicate -> t
-    val get: t -> int -> Node.t
-    val get_node: t -> expression -> Node.t
-    val is_sat: t -> bool
-    val push: t -> predicate -> bool
-    val pop: t -> unit
-    val propagation: t -> predicate list (*propagates only on the variables known b the sat solver. *)
-  end
-  =
+module CoreSolver =
   struct
     type t = {
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
       mutable expr_to_node: Node.t ExprMap.t;(*TODO not really mutable*)
       stack: change Stack.t;
-      mutable neqs: (int * int) list (* neqs as pairs of node id *)
+      mutable neqs: (int * int) list; (* neqs as pairs of node id *)
       mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t
       (* TODO what is needed for the theory splitting and theory solvers *)
       (* a theory solver being a module, there are some problem
@@ -205,7 +198,7 @@ module CoreSolver: sig
 
     (*TODO split the theories and keep what belongs to what*)
     let create pred =
-      let pset = AstUtil.get_proposition_set pred in
+      let pset = CsisatAstUtil.get_proposition_set pred in
       let set =
         PredSet.fold
           (fun p acc -> ExprSet.union (CsisatAstUtil.get_expr_deep_set p) acc)
@@ -221,6 +214,7 @@ module CoreSolver: sig
           expr_to_node = ExprMap.empty;
           stack = Stack.create ();
           neqs = [];
+          explanations = PredMap.empty
         }
       in
       let create_and_add expr fn args =
@@ -262,10 +256,39 @@ module CoreSolver: sig
           (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
       )    
+    
+    let is_theory_consistent t = is_euf_sat t
+
+    (* has a satisfiable assignement *)
+    let is_sat t = t.sat_solver#is_sat && is_theory_consistent t
+
+    (* partially sat / no explicit contradiction *)
+    let is_consistent t = t.sat_solver#is_consistent && is_theory_consistent t
+
 
     let push dag pred =
-      if not (is_sat dag) then failwith "CoreSolver: push called on an already unsat system.";
-      failwith "TODO"
+      if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
+      else
+        begin
+          match pred with
+          | Eq(e1,e2) ->
+            begin
+              let n1 = get_node dag e1 in
+              let n2 = get_node dag e2 in
+                Node.merge n1 n2;
+                is_sat dag
+            end
+          | Not (Eq(e1,e2)) ->
+            begin
+              let n1 = get_node dag e1 in
+              let n2 = get_node dag e2 in
+                dag.neqs <- (n1.Node.id, n2.Node.id) :: dag.neqs;
+                Stack.push (StackSat (pred, (ImplyNotEqual (n1.Node.id, n2.Node.id)))) dag.stack;
+                (*is_sat dag*)
+                (Node.find n1).Node.id <> (Node.find n2).Node.id
+            end
+          | _ -> failwith "TODO: more theories"
+        end
 
     let pop dag =
       let undo (id, find, parent) =
@@ -285,35 +308,33 @@ module CoreSolver: sig
                   (get dag id).Node.find <- find;
                   process ()
                 end
-              | _ -> failwith ("CoreSolver: TODO")
+              | StackSat (pred, sat_change) -> (* predicate given by sat solver *)
+                failwith ("CoreSolver: TODO")
+              | StackTDeduction (pred, theory, old1, old2) ->
+                begin
+                  assert(theory = EUF);
+                  undo old1;
+                  undo old2
+                end
           end
       in
         process ()
 
-    (* Propagation on given variables ...
-     * the given expressions are assumed to be not kown equal
-     * TODO predicates ... *)
-    let propagation dag variables =
-      let var_nodes = List.map (get_node dag) variables in
-      let rec process_nodes acc lst = match lst with
-        | x::xs ->
+    let euf_t_deductions dag =
+      let rec inspect_stack () =
+        if Stack.is_empty dag.stack then []
+        else
           begin
-            let x_class = (Node.find x).Node.id in
-            let same,rest = List.partition (fun n -> (Node.find n).Node.id = x_class) xs in
-            let deductions = List.map (fun n -> AstUtil.order_eq (Eq (x.Node.expr, n.Node.expr))) same in
-              process_nodes (deductions @ acc) rest
+            let t = Stack.pop dag.stack in
+            let ans = match t with
+              | StackTDeduction (t_eq, EUF, _, _) -> t_eq :: (inspect_stack ())
+              | _ -> inspect_stack ()
+            in
+              Stack.push t dag.stack;
+              ans
           end
-        | [] -> acc
       in
-        process_nodes [] var_nodes
-    
-    let is_theory_consistent t = is_euf_sat t
-
-    (* has a satisfiable assignement *)
-    let is_sat t = t.dpll#is_sat && is_theory_consistent t
-
-    (* partially sat / no explicit contradiction *)
-    let is_consistent t = t.dpll#is_consistent && is_theory_consistent t
+        inspect_stack ()
 
     let euf_lemma_with_info dag =
       let (c1,c2) = try
@@ -324,7 +345,7 @@ module CoreSolver: sig
           failwith "EUF, unsat_core_with_info: system is sat!"
       in
       let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
-      let raw_congruences = congruences dag in
+      let raw_congruences = euf_t_deductions dag in
       let all_congruences = OrdSet.list_to_ordSet raw_congruences in
       let raw_core = OrdSet.list_to_ordSet ((snd (get dag c1).Node.find) @ (snd (get dag c2).Node.find)) in
       (* raw_core contains both given equalities and congruences.
@@ -335,42 +356,64 @@ module CoreSolver: sig
       let congruences = List.filter (fun x -> OrdSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
       let core = contradiction :: (OrdSet.subtract raw_core congruences) in
-        (And core, EUF, info)
+        (And core, contradiction, EUF, info)
 
     (* blocking clause *)
     let theory_lemma t = euf_lemma_with_info t
 
+    let rec to_theory_solver t lst = match lst with
+      | x::xs ->
+        begin
+          if push t x then to_theory_solver t xs
+          else
+            begin
+              List.iter (fun _ -> t.sat_solver#pop) xs;
+              false
+            end
+        end
+      | [] -> true
+
     type solved = Sat of predicate list
-                | Unsat of DpllCore.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
+                | Unsat of CsisatDpllProof.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
 
     let rec solve t =
+      let rec t_contradiction () =
+        let (new_clause, contradiction, th, explanation) = theory_lemma t in
+          assert (th = EUF);
+          t.explanations <- PredMap.add new_clause (contradiction, th, explanation) t.explanations;
+          t.sat_solver#add_clause new_clause;
+          sat_solve ()
+      and sat_solve () =
+        match t.sat_solver#next with
+        | Dpll.Affected lst ->
+          if to_theory_solver t lst
+          then sat_solve ()
+          else t_contradiction ()
+        | Dpll.Affectation (lst1,lst2) ->
+          if to_theory_solver t lst1
+          then Sat lst2
+          else t_contradiction();
+        | Dpll.Backtracked howmany ->
+          List.iter (fun _ -> pop t) (Utils.range 0 howmany);
+          sat_solve ()
+        | Dpll.Proof proof ->
+          begin
+            match proof with
+            | Some prf -> Unsat (prf, t.explanations)
+            | None -> failwith "expecting a proof"
+          end
+      in
       if is_consistent t then
         begin
-          if is_sat t then
-            Sat t.dpll#get_solution
-          else
-            match t.dpll#next with
-            | Affected lst -> (*TODO push to the theories *)
-              failwith "TODO"
-            | Affectation (lst1,lst2) -> (*TODO push to the theories is sat then return the assign *)
-              failwith "TODO"
-            | Backtracked howmany ->
-              let new_state = List.fold_left (fun _ -> pop t) (Utils.range 0 howmany) in
-                solve new_state
-            | Proof proof -> Unsat (proof, t.explanations)
+          if is_sat t
+          then Sat t.sat_solver#get_solution
+          else sat_solve ()
         end
       else
         begin
-          assert (has_theory_contradiction t);
-          let (new_clause, explanation) = theory_lemma t in
-            t.explanations <- PredMap.add new_clause explanation t.explanations;
-            t.dpll#add_clause new_clause;
-            match t.dpll#next with
-            | Backtracked howmany ->
-              let new_state = List.fold_left (fun _ -> pop t) (Utils.range 0 howmany) in
-                solve new_state
-            | Proof proof -> Unsat (proof, t.explanations)
-            | _ -> failwith "expecting Backtracked of Proof"
+          if is_theory_consistent t
+          then sat_solve ()
+          else t_contradiction ()
         end
   end
 
