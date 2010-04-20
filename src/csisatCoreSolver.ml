@@ -93,6 +93,18 @@ module Node =
       find = n.find;
       ccpar = n.ccpar;
     }
+
+    let to_string n =
+      "node "^(string_of_int n.id)^
+      " ("^(AstUtil.print_expr n.expr)^") "^
+      n.fn^"("^(String.concat ", "(List.map string_of_int n.args))^") "^
+      " ccpar = {"^(String.concat ", " (List.map string_of_int (IntSet.elements n.ccpar)))^"}"
+
+
+    let set_ccparent node set = node.ccpar <- set
+    let add_ccparent node n = node.ccpar <- (IntSet.add n node.ccpar)
+    let get_ccparent node = node.ccpar
+
     
     (*TODO is it right ?? (predicate update) *)
     (*val find: t -> t*)
@@ -148,11 +160,13 @@ module Node =
     (*val merge: t -> t -> unit*)
     let merge this that =
       (* always report the first equality *)
+      Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (AstUtil.print_pred (AstUtil.order_eq (Eq (this.expr, that.expr))))));
       Stack.push
         (StackSat (AstUtil.order_eq (Eq (this.expr, that.expr)),  Equal ((this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar))))
         (this.events);
       let first_to_stack _ _ _ _ = () in
       let other_to_stack a b changed_a changed_b =
+        Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (AstUtil.print_pred (AstUtil.order_eq (Eq (a.expr, b.expr))))));
         Stack.push
           (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
@@ -165,6 +179,12 @@ module Node =
             let (a,b) = union this that in
               to_stack this that a b; (* report changes *)
               let to_test = Utils.cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
+                Message.print Message.Debug (lazy(
+                  "CoreSolver: merge to_test " ^
+                  (String.concat ", "
+                    (List.map
+                      (fun (x,y) -> AstUtil.print_pred (AstUtil.order_eq (Eq (this.nodes.(x).expr, this.nodes.(y).expr))))
+                      to_test))));
                 List.iter
                   (fun (x,y) ->
                     let x = this.nodes.(x) in
@@ -196,6 +216,13 @@ module CoreSolver =
        *)
     }
 
+    let euf_to_string dag =
+      let buffer = Buffer.create 1000 in
+      let add = Buffer.add_string buffer in
+        add "EUF:\n";
+        Array.iter (fun x -> add (Node.to_string x); add "\n") dag.nodes;
+        Buffer.contents buffer
+
     (*TODO split the theories and keep what belongs to what*)
     let create pred =
       let pset = CsisatAstUtil.get_proposition_set pred in
@@ -217,10 +244,12 @@ module CoreSolver =
         try ExprMap.find expr !expr_to_node
         with Not_found ->
           begin
-            let n = Node.create expr !id fn args nodes stack in
+            let node_args = List.map (fun x -> x.Node.id) args in
+            let n = Node.create expr !id fn node_args nodes stack in
               nodes.(!id) <- n;
               id := !id + 1;
               expr_to_node := ExprMap.add expr n !expr_to_node;
+              List.iter (fun a -> Node.add_ccparent a n.Node.id) args;
               n
           end
       in
@@ -228,21 +257,20 @@ module CoreSolver =
         | Constant c as cst -> create_and_add cst (string_of_float c) []
         | Variable v as var -> create_and_add var v []
         | Application (f, args) as appl ->
-          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp args) in
+          let node_args = List.map convert_exp args in
           let new_node  = create_and_add appl f node_args in
             new_node
         | Sum lst as sum ->
-          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp lst) in
+          let node_args = List.map convert_exp lst in
           let new_node  = create_and_add sum "+" node_args in
             new_node
         | Coeff (c, e) as coeff ->
-          let node_args = List.map (fun x -> x.Node.id) (List.map convert_exp  [Constant c; e]) in
+          let node_args = List.map convert_exp  [Constant c; e] in
           let new_node  = create_and_add coeff "*" node_args in
             new_node
       in
       let _ = ExprSet.iter (fun x -> ignore (convert_exp x)) set in
-        sat_solver#init pred;
-        {
+      let graph = {
           sat_solver = sat_solver;
           nodes = nodes;
           expr_to_node = !expr_to_node;
@@ -250,6 +278,10 @@ module CoreSolver =
           neqs = [];
           explanations = PredMap.empty
         }
+      in
+        Message.print Message.Debug (lazy("CoreSolver: " ^ (euf_to_string graph)));
+        sat_solver#init (if not (AstUtil.is_cnf_strict pred) then AstUtil.cnf pred else pred);
+        graph
 
     let get dag i = dag.nodes.(i)
     let get_node dag expr = ExprMap.find expr dag.expr_to_node
@@ -271,6 +303,7 @@ module CoreSolver =
 
 
     let push dag pred =
+      Message.print Message.Debug (lazy("CoreSolver: push " ^ (AstUtil.print_pred pred)));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
       else
         begin
@@ -280,7 +313,7 @@ module CoreSolver =
               let n1 = get_node dag e1 in
               let n2 = get_node dag e2 in
                 Node.merge n1 n2;
-                is_sat dag
+                is_theory_consistent dag
             end
           | Not (Eq(e1,e2)) ->
             begin
@@ -309,13 +342,16 @@ module CoreSolver =
               match t with
               | StackInternal (id, find) ->
                 begin
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackInternal"));
                   (get dag id).Node.find <- find;
                   process ()
                 end
               | StackSat (pred, sat_change) -> (* predicate given by sat solver *)
+                Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (AstUtil.print_pred pred)));
                 failwith ("CoreSolver: TODO")
               | StackTDeduction (pred, theory, old1, old2) ->
                 begin
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackTDeduction " ^ (AstUtil.print_pred pred)));
                   assert(theory = EUF);
                   undo old1;
                   undo old2
@@ -340,13 +376,38 @@ module CoreSolver =
       in
         inspect_stack ()
 
+    (* TODO bug
+     -> the core contains congruences
+     -> the core is not unsat
+        CoreSolver: push c_0 = f3(c_0, c_1)
+        CoreSolver: push c_0 = f3(f2(c_0), c_0)
+        CoreSolver: push c_1 = f3(f2(c_1), c_1)
+        CoreSolver: push f1(c4) = f2(c5)
+        CoreSolver: push f1(c_0) = f2(f1(c_0))
+        CoreSolver: push f1(c_1) = f2(f1(c_1))
+        CoreSolver: push not f1(c_0) = f2(c_1)
+        CoreSolver: push c4 = c_0
+        CoreSolver: merge congruence f1(c4) = f1(c_0)
+        CoreSolver: push c5 = c_1
+        CoreSolver: merge congruence f2(c5) = f2(c_1)
+        CoreSolver: merge congruence f3(c4, c5) = f3(c_0, c_1)
+        CoreSolver: merge congruence f2(c_0) = f2(f3(c4, c5))
+        CoreSolver: merge congruence f3(c_1, c_0) = f3(c_1, f3(c4, c5))
+        DPLL, adding (f1(c_0) = f2(c_1) | not f1(c4) = f1(c_0) | not f1(c4) = f2(c5) | not f1(c_0) = f2(f1(c_0)))
+
+        f1(c_0) = f2(c_1)           given
+        not f1(c4) = f1(c_0)        congruence -> should be 'not c4 = c_0'
+        not f1(c4) = f2(c5)         given
+        not f1(c_0) = f2(f1(c_0))   given
+        we miss some other parts: c_5 = c_1 , ...
+    *)
     let euf_lemma_with_info dag =
       let (c1,c2) = try
           List.find
             (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
             dag.neqs
         with Not_found ->
-          failwith "EUF, unsat_core_with_info: system is sat!"
+          failwith "CoreSolver, euf_lemma_with_info: system is sat!"
       in
       let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
       let raw_congruences = euf_t_deductions dag in
@@ -377,17 +438,33 @@ module CoreSolver =
         end
       | [] -> true
 
+    (** Conjunction to blocking clause *)
+    let reverse formula = match formula with
+      | And lst -> Or (List.map AstUtil.contra lst)
+      | Or lst -> failwith ("satPL: reverse expect a conj, found"^(AstUtil.print (Or lst)))
+      | e -> Or [AstUtil.contra e] (*abstract can return atoms*)
+
     type solved = Sat of predicate list
                 | Unsat of CsisatDpllProof.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
 
     let rec solve t =
+      Message.print Message.Debug (lazy("CoreSolver: solving"));
       let rec t_contradiction () =
+        Message.print Message.Debug (lazy("CoreSolver: solving t_contradiction"));
         let (new_clause, contradiction, th, explanation) = theory_lemma t in
+        let new_clause = reverse new_clause in
+        let old_dl = t.sat_solver#get_decision_level in
           assert (th = EUF);
           t.explanations <- PredMap.add new_clause (contradiction, th, explanation) t.explanations;
           t.sat_solver#add_clause new_clause;
+          let new_dl = t.sat_solver#get_decision_level in
+            backjump (old_dl - new_dl)
+      and backjump howmany =
+          Message.print Message.Debug (lazy("CoreSolver: solving backjump "^(string_of_int howmany)));
+          List.iter (fun _ -> pop t) (Utils.range 0 howmany);
           sat_solve ()
       and sat_solve () =
+        Message.print Message.Debug (lazy("CoreSolver: solving sat_solve"));
         match t.sat_solver#next with
         | Dpll.Affected lst ->
           if to_theory_solver t lst
@@ -397,9 +474,7 @@ module CoreSolver =
           if to_theory_solver t lst1
           then Sat lst2
           else t_contradiction();
-        | Dpll.Backtracked howmany ->
-          List.iter (fun _ -> pop t) (Utils.range 0 howmany);
-          sat_solve ()
+        | Dpll.Backtracked howmany -> backjump howmany
         | Dpll.Proof proof ->
           begin
             match proof with

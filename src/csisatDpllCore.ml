@@ -68,6 +68,7 @@ class system =
     val mutable clauses = Array.make 0 (new clause 1 [1] true )
     val mutable assignment = Array.make 2 lUnk
     val choices = Stack.create ()
+    val mutable decision_level = 0
     val mutable unsat_clauses = IntSet.empty
     val mutable prop_to_clauses = Array.make 2 (IntSet.empty, IntSet.empty)
     val mutable learning_level = 1
@@ -80,6 +81,8 @@ class system =
           !affect
       end
     method get_assign = List.map (fun i -> i * assignment.(i)) self#get_assigned_props
+    
+    method get_decision_level = decision_level
 
     (** 0-: no learning,
      *  1+: learn clause that are less or equal than value.
@@ -164,6 +167,7 @@ class system =
       clauses <-  Array.make 0 (new clause 1 [1] true );
       assignment <- Array.make 1 lUnk;
       Stack.clear choices;
+      decision_level <- 0;
       learning_level <- 1;
       unsat_clauses <- IntSet.empty;
       prop_to_clauses <- Array.make 0 (IntSet.empty, IntSet.empty);
@@ -241,6 +245,7 @@ class system =
         IntSet.iter (fun i -> clauses.(i)#affect p) _false;
         IntSet.iter (fun i -> clauses.(i)#affect p) _true;
         unsat_clauses <- IntSet.diff unsat_clauses newly_sat;
+        decision_level <- decision_level+1;
         Stack.push (p,reason, newly_sat) choices
 
     method forget =
@@ -252,6 +257,7 @@ class system =
         IntSet.iter (fun i -> clauses.(i)#forget pivot) pos;
         IntSet.iter (fun i -> clauses.(i)#forget pivot) neg;
         unsat_clauses <- IntSet.union unsat_clauses satisfied;
+        decision_level <- decision_level-1;
         (pivot,how)
 
     (** Is there a contradiction (clause impossible to satisfy) ? *)
@@ -343,7 +349,7 @@ class system =
         let p = find_in_IntSet (fun i -> clauses.(i)#size = 1) unsat_clauses in
         let c = clauses.(p)#get_choice in
           Message.print Message.Debug (lazy("DPLL, unit propagation in "^(string_of_int p)^" with lit "^(string_of_int c)));
-          Message.print Message.Debug (lazy("DPLL, clause "^(string_of_int p)^" : "^(clauses.(p)#to_string_detailed)));
+          (*Message.print Message.Debug (lazy("DPLL, clause "^(string_of_int p)^" : "^(clauses.(p)#to_string_detailed)));*)
           Some (c,clauses.(p))
       with Not_found -> None
 
@@ -391,6 +397,7 @@ class system =
      * (as the learning last clause of not mandatory -> backjump has to make the first affect)
      *)
     method private backjump explanation =
+      Message.print Message.Debug (lazy("DPLL, backtracking with: "^(explanation#to_string)));
       let rec build_proof prf =
         try 
           let (pivot, how) = self#forget in
@@ -444,13 +451,11 @@ class system =
           else if self#has_contra then
             begin
               let cl = self#get_unsat_clause in
-                Message.print Message.Debug (lazy("DPLL, backtracking with: "^(cl#to_string)));
                 self#backjump cl;
                 self#solve
             end
           else
             begin
-              Message.print Message.Debug (lazy("DPLL taking decision_policy branch"));
               self#decision_policy;
               self#solve
             end
@@ -464,9 +469,10 @@ class system =
       | None -> failwith "DPLL, no resolution proof"
 
     method take i =
+      assert (Global.is_off_assert() || i <= decision_level);
       let s = Stack.copy choices in
       let rec take i acc =
-        if i = 0 then []
+        if i = 0 then acc
         else
           begin
             let (pivot,_,_) = Stack.pop s in
@@ -476,14 +482,14 @@ class system =
         take i []
 
     method unit_propagate_and_backjump =
-      let old_decision_level = Stack.length choices in
+      let old_decision_level = decision_level in
       let rec process () = 
         if possibly_sat then
           begin
             Message.print Message.Debug (lazy("DPLL, system is possibly sat."));
             if self#is_sat then
               begin
-                let new_decision_level = Stack.length choices in
+                let new_decision_level = decision_level in
                   assert(new_decision_level >= old_decision_level);
                   IAffectation (self#take (new_decision_level - old_decision_level), self#get_assign)
               end
@@ -492,7 +498,7 @@ class system =
                 let cl = self#get_unsat_clause in
                   Message.print Message.Debug (lazy("DPLL, backtracking with: "^(cl#to_string)));
                   self#backjump cl;
-                  let new_decision_level = Stack.length choices in
+                  let new_decision_level = decision_level in
                     if new_decision_level < old_decision_level
                     then IBacktracked (old_decision_level - new_decision_level)
                     else process ()
@@ -508,7 +514,7 @@ class system =
                   end
                 | None ->
                   begin
-                    let new_decision_level = Stack.length choices in
+                    let new_decision_level = decision_level in
                       assert(new_decision_level >= old_decision_level);
                       IAffected (self#take (new_decision_level - old_decision_level))
                   end
@@ -593,6 +599,7 @@ class csi_dpll =
       | err -> failwith ("DpllCore, init: expecting CNF, given: "^ print err)
     
     method add_clause formula =
+      Message.print Message.Debug (lazy("DPLL, adding "^(print_pred formula)));
       let old_index = counter in
       let lst = self#convert_clause formula in
         if old_index < counter then sys#resize counter;
@@ -664,6 +671,7 @@ class csi_dpll =
     method is_consistent = not sys#has_contra
     method is_sat = sys#is_sat
     method pop = ignore(sys#forget)
+    method get_decision_level = sys#get_decision_level
 
   end
 

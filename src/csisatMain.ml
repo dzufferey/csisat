@@ -206,6 +206,16 @@ let sat_only_ () =
     else
       Message.print Message.Normal (lazy "unsatisfiable")
 
+let sat_only_2 () =
+  let lst = read_input () in
+  let formula = AstUtil.simplify (And lst) in
+  let solver = CsisatCoreSolver.CoreSolver.create formula in
+    match CsisatCoreSolver.CoreSolver.solve solver with
+    | CsisatCoreSolver.CoreSolver.Sat _ ->
+      Message.print Message.Normal (lazy "satisfiable")
+    | CsisatCoreSolver.CoreSolver.Unsat _ ->
+      Message.print Message.Normal (lazy "unsatisfiable")
+
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
   Gc.print_stat stdout;
@@ -215,6 +225,6 @@ let stat () =
 let main =
   Random.self_init ();
   if !sat_only then
-    sat_only_ ()
+    sat_only_2 ()
   else
     interpolate_in ()
