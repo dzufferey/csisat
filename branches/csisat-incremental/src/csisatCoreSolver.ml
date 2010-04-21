@@ -46,13 +46,14 @@ module DpllProof = CsisatDpllProof
 (**/**)
 
 (** The different changes that can happen in the system *)
-type find_t =  int * (predicate list)
+type find_t =  Leader of PredSet.t * PredSet.t (*all given predicates, all congruences*)
+            |  Member of int (*representative is int*)
 type sat_changes = Equal of (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* 2 x (id,find,ccpar) *)
                  | ImplyNotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
                  | SentToTheory of theory * predicate (* what was sent to which solver *)
-type change = StackSat of predicate * sat_changes (* predicate given by sat solver *)
+type change = StackSat of predicate * sat_changes list (* predicate given by sat solver *)
             | StackTDeduction of predicate * theory * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* theory deduction (one equality) TODO how to extend this to non convex theories *)
-            | StackInternal of int * find_t (* path compression: (id, old find) *)
+            | StackInternal of int * find_t (* path compression: (id, old find) TODO all the changes at once *)
 
 module Node =
   struct
@@ -77,7 +78,7 @@ module Node =
       expr = expr;
       nodes = nodes;
       events = events;
-      find = (id, []);
+      find = Leader (PredSet.empty, PredSet.empty);
       ccpar = IntSet.empty;
     }
     
@@ -108,29 +109,32 @@ module Node =
     
     (*TODO is it right ?? (predicate update) *)
     (*val find: t -> t*)
-    let rec find this =
-      if (fst this.find) = this.id then this
-      else
+    let rec find this = match this.find with
+      | Leader _ -> this
+      | Member id ->
         begin
-          let p = this.nodes.(fst this.find) in
-          let top = find p in
+          let top = find (this.nodes.(id)) in
             Stack.push (StackInternal (this.id, this.find)) (this.events);
-            this.find <- (top.id, (snd p.find) @ (snd this.find));
+            this.find <- Member top.id;
             top
         end
 
+    let get_find_predicates n = match n.find with
+      | Leader (p1,p2) -> (p1,p2)
+      | Member _ -> failwith "get_find_predicates: only for leaders"
+
+
     (*TODO is it right ?? (predicate update) *)
     (*val union: t -> t -> (t * t)*)
-    let union this that = 
+    let union preds congruence this that = 
       let n1 = find this in
       let n2 = find that in
-      let on1 = copy n1 in
-      let on2 = copy n2 in
-      let eq = AstUtil.order_eq (Eq (this.expr, that.expr)) in
-        n1.find <- (n2.id, eq :: (snd this.find) @ (snd that.find));
+      let g1, c1 = get_find_predicates n1 in
+      let g2, c2 = get_find_predicates n2 in
+        n2.find <- Leader (PredSet.union preds (PredSet.union g1 g2), PredSet.union congruence (PredSet.union c1 c2));
+        n1.find <- Member n2.id;
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
-        n1.ccpar <- IntSet.empty;
-        (on1, on2)
+        n1.ccpar <- IntSet.empty
 
     (*val ccpar: t -> IntSet.t*)
     let ccpar node = (find node).ccpar
@@ -145,57 +149,70 @@ module Node =
           (fun (a,b) -> (find a).id = (find b).id)
           (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
 
-    (** return pairs of nodes whose equality may change the result of the 'congruent' method*)
-    (*val may_be_congruent: t -> t -> (t * t) list*)
-    let may_be_congruent this that =
-      if this.fn <> that.fn
-      || this.arity <> that.arity
-      || (find this).id = (find that).id then []
+    let small_justification (set, _) this that =
+      if this.id = that.id then PredSet.empty
       else
-        List.filter
-          (fun (a,b) -> (find a).id <> (find b).id)
-          (List.rev_map2 (fun x y -> (this.nodes.(x), this.nodes.(y))) (this.args) (that.args))
+        let eq = AstUtil.order_eq (Eq (this.expr, that.expr)) in
+          if PredSet.mem eq set then PredSet.singleton eq
+          else set (*TODO better -> shortest path (if no congruence)*)
+
+    let explain_congruence this that =
+      assert (Global.is_off_assert() || congruent this that);
+      List.fold_left2
+        (fun acc a b ->
+          let a = this.nodes.(a) in
+          let b = this.nodes.(b) in
+          let set = get_find_predicates (find a) in
+            PredSet.union acc (small_justification set a b)
+        )
+        PredSet.empty
+        this.args
+        that.args
 
     (** return pairs of nodes whose equality comes from congruence*)
     (*val merge: t -> t -> unit*)
     let merge this that =
       (* always report the first equality *)
-      Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (AstUtil.print_pred (AstUtil.order_eq (Eq (this.expr, that.expr))))));
+      let mk_eq a b = AstUtil.order_eq (Eq (a.expr, b.expr)) in
+      let mk_eq_set a b = PredSet.singleton (mk_eq a b) in
+      Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (AstUtil.print_pred (mk_eq this that))));
       Stack.push
-        (StackSat (AstUtil.order_eq (Eq (this.expr, that.expr)),  Equal ((this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar))))
+        (StackSat (mk_eq this that,  [Equal ((this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar))])) (*TODO move this to another part*)
         (this.events);
       let first_to_stack _ _ _ _ = () in
       let other_to_stack a b changed_a changed_b =
-        Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (AstUtil.print_pred (AstUtil.order_eq (Eq (a.expr, b.expr))))));
+        Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (AstUtil.print_pred (mk_eq a b))));
         Stack.push
-          (StackTDeduction (AstUtil.order_eq (Eq (a.expr, b.expr)), EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
+          (StackTDeduction (mk_eq a b, EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
       in
-      let rec process to_stack this that =
-        if (find this).id <> (find that).id then
-          begin
-            let p1 = ccpar this in
-            let p2 = ccpar that in
-            let (a,b) = union this that in
-              to_stack this that a b; (* report changes *)
-              let to_test = Utils.cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
-                Message.print Message.Debug (lazy(
-                  "CoreSolver: merge to_test " ^
-                  (String.concat ", "
-                    (List.map
-                      (fun (x,y) -> AstUtil.print_pred (AstUtil.order_eq (Eq (this.nodes.(x).expr, this.nodes.(y).expr))))
-                      to_test))));
-                List.iter
-                  (fun (x,y) ->
-                    let x = this.nodes.(x) in
-                    let y = this.nodes.(y) in
-                      if (find x).id <> (find y).id && congruent x y then
-                        process other_to_stack x y
-                  )
-                  to_test
+      let rec process to_stack pred congruence this that =
+        let n1 = find this in
+        let n2 = find that in
+          if n1.id <> n2.id then
+            begin
+              let p1 = ccpar n1 in
+              let p2 = ccpar n2 in
+                to_stack this that n1 n2; (* report changes *)
+                union pred congruence n1 n2;
+                let to_test = Utils.cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
+                  Message.print Message.Debug (lazy(
+                    "CoreSolver: merge to_test " ^
+                    (String.concat ", "
+                      (List.map
+                        (fun (x,y) -> AstUtil.print_pred (AstUtil.order_eq (Eq (this.nodes.(x).expr, this.nodes.(y).expr))))
+                        to_test))));
+                  List.iter
+                    (fun (x,y) ->
+                      let x = this.nodes.(x) in
+                      let y = this.nodes.(y) in
+                        if (find x).id <> (find y).id && congruent x y then
+                          process other_to_stack (explain_congruence x y) (mk_eq_set x y) x y
+                    )
+                    to_test
           end
       in
-        process first_to_stack this that 
+        process first_to_stack (mk_eq_set this that) PredSet.empty this that 
   end
 
 (*TODO firs make it work for EUF, then extend to EUF + T *)
@@ -223,7 +240,9 @@ module CoreSolver =
         Array.iter (fun x -> add (Node.to_string x); add "\n") dag.nodes;
         Buffer.contents buffer
 
-    (*TODO split the theories and keep what belongs to what*)
+    (*TODO split the theories and keep what belongs to what
+     *TODO equisat
+     *)
     let create pred =
       let pset = CsisatAstUtil.get_proposition_set pred in
       let set =
@@ -320,7 +339,7 @@ module CoreSolver =
               let n1 = get_node dag e1 in
               let n2 = get_node dag e2 in
                 dag.neqs <- (n1.Node.id, n2.Node.id) :: dag.neqs;
-                Stack.push (StackSat (pred, (ImplyNotEqual (n1.Node.id, n2.Node.id)))) dag.stack;
+                Stack.push (StackSat (pred, [ImplyNotEqual (n1.Node.id, n2.Node.id)])) dag.stack;
                 (*is_sat dag*)
                 (Node.find n1).Node.id <> (Node.find n2).Node.id
             end
@@ -332,6 +351,17 @@ module CoreSolver =
         let n = get dag id in
           n.Node.find <- find;
           n.Node.ccpar <- parent
+      in
+      let undo_change c = match c with
+        | Equal (old1,old2) ->
+          undo old1;
+          undo old2
+        | ImplyNotEqual (id1, id2) ->
+          let (id1', id2') = List.hd dag.neqs in
+          let t = List.tl dag.neqs in
+            assert (Global.is_off_assert() || (id1 = id1' && id2 = id2'));
+            dag.neqs <- t
+        | SentToTheory (th, pred) -> failwith "TODO"
       in
       let rec process () =
         if Stack.is_empty dag.stack then
@@ -346,15 +376,18 @@ module CoreSolver =
                   (get dag id).Node.find <- find;
                   process ()
                 end
-              | StackSat (pred, sat_change) -> (* predicate given by sat solver *)
-                Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (AstUtil.print_pred pred)));
-                failwith ("CoreSolver: TODO")
+              | StackSat (pred, sat_changes) -> (* predicate given by sat solver *)
+                begin
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (AstUtil.print_pred pred)));
+                  List.iter undo_change sat_changes
+                end
               | StackTDeduction (pred, theory, old1, old2) ->
                 begin
                   Message.print Message.Debug (lazy("CoreSolver: pop StackTDeduction " ^ (AstUtil.print_pred pred)));
-                  assert(theory = EUF);
+                  assert (Global.is_off_assert() || theory = EUF);
                   undo old1;
-                  undo old2
+                  undo old2;
+                  process ()
                 end
           end
       in
@@ -376,31 +409,6 @@ module CoreSolver =
       in
         inspect_stack ()
 
-    (* TODO bug
-     -> the core contains congruences
-     -> the core is not unsat
-        CoreSolver: push c_0 = f3(c_0, c_1)
-        CoreSolver: push c_0 = f3(f2(c_0), c_0)
-        CoreSolver: push c_1 = f3(f2(c_1), c_1)
-        CoreSolver: push f1(c4) = f2(c5)
-        CoreSolver: push f1(c_0) = f2(f1(c_0))
-        CoreSolver: push f1(c_1) = f2(f1(c_1))
-        CoreSolver: push not f1(c_0) = f2(c_1)
-        CoreSolver: push c4 = c_0
-        CoreSolver: merge congruence f1(c4) = f1(c_0)
-        CoreSolver: push c5 = c_1
-        CoreSolver: merge congruence f2(c5) = f2(c_1)
-        CoreSolver: merge congruence f3(c4, c5) = f3(c_0, c_1)
-        CoreSolver: merge congruence f2(c_0) = f2(f3(c4, c5))
-        CoreSolver: merge congruence f3(c_1, c_0) = f3(c_1, f3(c4, c5))
-        DPLL, adding (f1(c_0) = f2(c_1) | not f1(c4) = f1(c_0) | not f1(c4) = f2(c5) | not f1(c_0) = f2(f1(c_0)))
-
-        f1(c_0) = f2(c_1)           given
-        not f1(c4) = f1(c_0)        congruence -> should be 'not c4 = c_0'
-        not f1(c4) = f2(c5)         given
-        not f1(c_0) = f2(f1(c_0))   given
-        we miss some other parts: c_5 = c_1 , ...
-    *)
     let euf_lemma_with_info dag =
       let (c1,c2) = try
           List.find
@@ -409,18 +417,21 @@ module CoreSolver =
         with Not_found ->
           failwith "CoreSolver, euf_lemma_with_info: system is sat!"
       in
-      let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
-      let raw_congruences = euf_t_deductions dag in
-      let all_congruences = OrdSet.list_to_ordSet raw_congruences in
-      let raw_core = OrdSet.list_to_ordSet ((snd (get dag c1).Node.find) @ (snd (get dag c2).Node.find)) in
-      (* raw_core contains both given equalities and congruences.
+      (* raw_core contains only given equalities
        * it is an overapproximation ...
+       * find which congruences are needed
        * TODO improve -> do a search for eq paths that makes the contradiction possible
        *)
-      let needed_congruences = OrdSet.intersection all_congruences raw_core in
-      let congruences = List.filter (fun x -> OrdSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
+      let given1, congr1 = Node.get_find_predicates (Node.find (get dag c1)) in
+      let given2, congr2 = Node.get_find_predicates (Node.find (get dag c2)) in
+      let raw_congruences = euf_t_deductions dag in
+      let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
+      let needed_congruences = PredSet.inter all_congruences (PredSet.union congr1 congr2) in
+      let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
-      let core = contradiction :: (OrdSet.subtract raw_core congruences) in
+      let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+      let raw_core = PredSet.union given1 given2 in
+      let core = contradiction :: (PredSet.elements raw_core) in
         (And core, contradiction, EUF, info)
 
     (* blocking clause *)
@@ -454,7 +465,7 @@ module CoreSolver =
         let (new_clause, contradiction, th, explanation) = theory_lemma t in
         let new_clause = reverse new_clause in
         let old_dl = t.sat_solver#get_decision_level in
-          assert (th = EUF);
+          assert (Global.is_off_assert() || th = EUF);
           t.explanations <- PredMap.add new_clause (contradiction, th, explanation) t.explanations;
           t.sat_solver#add_clause new_clause;
           let new_dl = t.sat_solver#get_decision_level in

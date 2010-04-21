@@ -209,12 +209,18 @@ let sat_only_ () =
 let sat_only_2 () =
   let lst = read_input () in
   let formula = AstUtil.simplify (And lst) in
-  let solver = CsisatCoreSolver.CoreSolver.create formula in
-    match CsisatCoreSolver.CoreSolver.solve solver with
-    | CsisatCoreSolver.CoreSolver.Sat _ ->
-      Message.print Message.Normal (lazy "satisfiable")
-    | CsisatCoreSolver.CoreSolver.Unsat _ ->
-      Message.print Message.Normal (lazy "unsatisfiable")
+  let ans =
+    if formula = True then true
+    else if formula = False then false
+    else
+    let solver = CsisatCoreSolver.CoreSolver.create formula in
+      match CsisatCoreSolver.CoreSolver.solve solver with
+      | CsisatCoreSolver.CoreSolver.Sat _ -> true
+      | CsisatCoreSolver.CoreSolver.Unsat _ -> false
+  in
+    if ans
+    then Message.print Message.Normal (lazy "satisfiable")
+    else Message.print Message.Normal (lazy "unsatisfiable")
 
 let stat () =
   Message.print Message.Normal (lazy("total memory allocated: "^(string_of_float (Gc.allocated_bytes ()))));
