@@ -107,7 +107,6 @@ module Node =
     let get_ccparent node = node.ccpar
 
     
-    (*TODO is it right ?? (predicate update) *)
     (*val find: t -> t*)
     let rec find this = match this.find with
       | Leader _ -> this
@@ -124,7 +123,6 @@ module Node =
       | Member _ -> failwith "get_find_predicates: only for leaders"
 
 
-    (*TODO is it right ?? (predicate update) *)
     (*val union: t -> t -> (t * t)*)
     let union preds congruence this that = 
       let n1 = find this in
@@ -176,9 +174,6 @@ module Node =
       let mk_eq a b = AstUtil.order_eq (Eq (a.expr, b.expr)) in
       let mk_eq_set a b = PredSet.singleton (mk_eq a b) in
       Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (AstUtil.print_pred (mk_eq this that))));
-      Stack.push
-        (StackSat (mk_eq this that,  [Equal ((this.id, this.find, this.ccpar), (that.id, that.find, that.ccpar))])) (*TODO move this to another part*)
-        (this.events);
       let first_to_stack _ _ _ _ = () in
       let other_to_stack a b changed_a changed_b =
         Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (AstUtil.print_pred (mk_eq a b))));
@@ -298,8 +293,14 @@ module CoreSolver =
           explanations = PredMap.empty
         }
       in
+      let f =
+        if AstUtil.is_cnf pred then pred 
+        else match AstUtil.equisatisfiable pred with
+          | (_,_,f) -> f
+      in
+      let f = AstUtil.cnf (AstUtil.simplify f) in
+        sat_solver#init f;
         Message.print Message.Debug (lazy("CoreSolver: " ^ (euf_to_string graph)));
-        sat_solver#init (if not (AstUtil.is_cnf_strict pred) then AstUtil.cnf pred else pred);
         graph
 
     let get dag i = dag.nodes.(i)
@@ -331,6 +332,11 @@ module CoreSolver =
             begin
               let n1 = get_node dag e1 in
               let n2 = get_node dag e2 in
+              let n1' = Node.find n1 in
+              let n2' = Node.find n2 in
+                Stack.push
+                  (StackSat (pred,  [Equal ((n1'.Node.id, n1'.Node.find, n1'.Node.ccpar), (n2'.Node.id, n2'.Node.find, n2'.Node.ccpar))]))
+                  dag.stack;
                 Node.merge n1 n2;
                 is_theory_consistent dag
             end
@@ -342,6 +348,11 @@ module CoreSolver =
                 Stack.push (StackSat (pred, [ImplyNotEqual (n1.Node.id, n2.Node.id)])) dag.stack;
                 (*is_sat dag*)
                 (Node.find n1).Node.id <> (Node.find n2).Node.id
+            end
+          | Atom (Internal _) | Not (Atom (Internal _)) ->
+            begin
+              Stack.push (StackSat (pred, [])) dag.stack;
+              true
             end
           | _ -> failwith "TODO: more theories"
         end
@@ -478,13 +489,13 @@ module CoreSolver =
         Message.print Message.Debug (lazy("CoreSolver: solving sat_solve"));
         match t.sat_solver#next with
         | Dpll.Affected lst ->
-          if to_theory_solver t lst
-          then sat_solve ()
+            if to_theory_solver t lst
+            then sat_solve ()
           else t_contradiction ()
         | Dpll.Affectation (lst1,lst2) ->
-          if to_theory_solver t lst1
-          then Sat lst2
-          else t_contradiction();
+            if to_theory_solver t lst1
+            then Sat (List.filter (fun x -> x <> True) (List.map AstUtil.remove_equisat_atoms lst2))
+            else t_contradiction();
         | Dpll.Backtracked howmany -> backjump howmany
         | Dpll.Proof proof ->
           begin
