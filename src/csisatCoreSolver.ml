@@ -220,13 +220,13 @@ module Node =
         process first_to_stack (mk_eq_set this that) PredSet.empty this that 
   end
 
-(*TODO firs make it work for EUF, then extend to EUF + T *)
+(*TODO extend to EUF + T *)
 module CoreSolver =
   struct
     type t = {
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
-      expr_to_node: Node.t ExprMap.t;(*TODO not really mutable*)
+      expr_to_node: Node.t ExprMap.t;
       stack: change Stack.t;
       mutable neqs: (int * int) list; (* neqs as pairs of node id *)
       mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t
@@ -246,7 +246,6 @@ module CoreSolver =
         Buffer.contents buffer
 
     (*TODO split the theories and keep what belongs to what
-     *TODO equisat
      *)
     let create pred =
       let pset = CsisatAstUtil.get_proposition_set pred in
@@ -438,11 +437,6 @@ module CoreSolver =
         with Not_found ->
           failwith "CoreSolver, euf_lemma_with_info: system is sat!"
       in
-      (* raw_core contains only given equalities
-       * it is an overapproximation ...
-       * find which congruences are needed
-       * TODO improve -> do a search for eq paths that makes the contradiction possible
-       *)
       let given1, congr1 = Node.get_find_predicates (Node.find (get dag c1)) in
       let given2, congr2 = Node.get_find_predicates (Node.find (get dag c2)) in
       let raw_congruences = euf_t_deductions dag in
