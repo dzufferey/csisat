@@ -599,6 +599,7 @@ let unsat_LIUIF conj =
       end
     | _ -> failwith "NelsonOppen: not a conjunction"
 
+(* TODO now the core solver takes care of the Ts
 module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
   struct
 
@@ -615,14 +616,6 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
       var_to_expr: expression ExprMap.t;
       propagations: events Stack.t
     }
-
-    let theory = T1.theory @ T2.theory
-
-    (*
-    There is something wrong in the splitting as it is now.
-    -> I should keep a map from predicate to (t1_predicate opt, t2_predicate opt).
-    -> The definitions should be sent to the solver direclty at the initialisation.
-    *)
 
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation) *)
@@ -649,8 +642,6 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
           shared = shared;
           var_to_expr = var_to_expr;
           propagations = Stack.create () }
-
-    let is_sat t = T1.is_sat t.t1 && T2.is_sat t.t2
 
     let push t pred =
       (*TODO makes the predicate belongs to t1 and/or t2
@@ -736,20 +727,5 @@ module NOSolver(T1: TSolver.TheorySolver)(T2: TSolver.TheorySolver) =
           end
       in
         inspect_stack ()
-    
-    let propagation t variables =
-      (* delegates to the dag *)
-      SatUIF.Dag.propagation t.dag variables
-    
-    (** Returns:
-     *  -unsat_core
-     *  -the theory which has a contradiction
-     *  -list of deduced equalities + their respective theories. *)
-    let unsat_core_with_info t =
-      failwith "TODO"
-
-    (** Performs some conflict analysis and
-     * returns an unsatisfiable conjuntion composed
-     * of predicate from the current stack. *)
-    let unsat_core t = let (p,_,_) = unsat_core_with_info t in p
   end
+*)
