@@ -53,7 +53,7 @@ type sat_changes = Equal of (int * find_t * IntSet.t) * (int * find_t * IntSet.t
                  | SentToTheory of theory * predicate (* what was sent to which solver *)
 type change = StackSat of predicate * sat_changes list (* predicate given by sat solver *)
             | StackTDeduction of predicate * theory * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* theory deduction (one equality) TODO how to extend this to non convex theories *)
-            | StackInternal of int * find_t (* path compression: (id, old find) TODO all the changes at once *)
+            | StackInternal of (int * find_t) list (* path compression: (id, old find) list *)
 
 module Node =
   struct
@@ -108,15 +108,25 @@ module Node =
 
     
     (*val find: t -> t*)
-    let rec find this = match this.find with
-      | Leader _ -> this
-      | Member id ->
-        begin
-          let top = find (this.nodes.(id)) in
-            Stack.push (StackInternal (this.id, this.find)) (this.events);
-            this.find <- Member top.id;
-            top
-        end
+    let rec find this =
+      let path_compression = ref [] in
+      let rec process this = match this.find with
+        | Leader _ -> this
+        | Member id ->
+          begin
+            let top = find (this.nodes.(id)) in
+              if top.id <> id then
+                begin
+                  path_compression := (this.id, this.find) :: !path_compression;
+                  this.find <- Member top.id
+                end;
+              top
+          end
+      in
+      let result = process this in
+        if !path_compression <> [] then
+          Stack.push (StackInternal !path_compression) (this.events);
+        result
 
     let get_find_predicates n = match n.find with
       | Leader (p1,p2) -> (p1,p2)
@@ -381,10 +391,10 @@ module CoreSolver =
           begin
             let t = Stack.pop dag.stack in
               match t with
-              | StackInternal (id, find) ->
+              | StackInternal lst ->
                 begin
                   Message.print Message.Debug (lazy("CoreSolver: pop StackInternal"));
-                  (get dag id).Node.find <- find;
+                  List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
                   process ()
                 end
               | StackSat (pred, sat_changes) -> (* predicate given by sat solver *)
