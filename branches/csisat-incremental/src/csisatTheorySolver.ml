@@ -23,27 +23,26 @@
 
 (** Interface for stateful incremental theory solver. *)
 
-(**/**)
-module Ast     = CsisatAst
-(**/**)
+open    CsisatAst
+open    CsisatAstUtil
 
 module type TheorySolver =
   sig
     (** a mutable/stateful incremental theory solver *)
     type t
 
-    val theory: Ast.theory list
+    val theory: theory list
 
     (** Creates a new solver, initially without constraints.
      * @param list of all potential predicates (for T-propagation)
      *)
-    val create: CsisatAstUtil.PredSet.t -> t
+    val create: PredSet.t -> t
     
     (** tells if the system is satisfiable *)
     val is_sat: t -> bool
 
     (** Adds and test for satisfiability. *)
-    val push: t -> Ast.predicate -> bool
+    val push: t -> predicate -> bool
     
     (** Removes the predicate on top of the stacks. *)
     val pop: t -> unit
@@ -52,18 +51,18 @@ module type TheorySolver =
      * entailed by the current stack (report only changes from last addition).
      * Returns only predicate over the given list of expressions (variables)
      *)
-    val propagation: t -> Ast.expression list -> Ast.predicate list
+    val propagation: t -> expression list -> predicate list
     
     (** Returns:
      *  -unsat_core
      *  -the theory which has a contradiction
      *  -list of deduced equalities + their respective theories. 
      *)
-    val unsat_core_with_info: t -> (Ast.predicate * Ast.theory * (Ast.predicate * Ast.theory) list)
+    val unsat_core_with_info: t -> (predicate * theory * (predicate * theory) list)
 
     (** Performs some conflict analysis and
      * returns an unsatisfiable conjuntion composed
      * of predicate from the current stack. *)
-    val unsat_core: t -> Ast.predicate
+    val unsat_core: t -> predicate
     (* unsat_core t = let (p,_,_) = unsat_core_with_info t in p *)
   end

@@ -25,11 +25,9 @@
 (** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
 
 open   CsisatAst
+open   CsisatAstUtil
 (**/**)
 module Global  = CsisatGlobal
-module AstUtil = CsisatAstUtil
-module PredSet = CsisatAstUtil.PredSet
-module ExprSet = CsisatAstUtil.ExprSet
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module IntSet  = CsisatUtils.IntSet
@@ -177,13 +175,13 @@ class dag = fun expr ->
     method print =
       let buffer = Buffer.create 1000 in
       let print_node (n:node) =
-        Buffer.add_string buffer ("node: "^(AstUtil.print_expr (self#get_expr n)));
+        Buffer.add_string buffer ("node: "^(print_expr (self#get_expr n)));
         Buffer.add_char buffer '\n';
-        Buffer.add_string buffer ("  in class of:  "^(AstUtil.print_expr (self#get_expr n#find)));
+        Buffer.add_string buffer ("  in class of:  "^(print_expr (self#get_expr n#find)));
         Buffer.add_char buffer '\n';
-        Buffer.add_string buffer ("  ccparent are: "^(Utils.string_list_cat ", " (List.map (fun x -> AstUtil.print_expr (self#get_expr x)) n#get_ccparent)));
+        Buffer.add_string buffer ("  ccparent are: "^(Utils.string_list_cat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#get_ccparent)));
         Buffer.add_char buffer '\n';
-        Buffer.add_string buffer ("  ccpar    are: "^(Utils.string_list_cat ", " (List.map (fun x -> AstUtil.print_expr (self#get_expr x)) n#ccpar)));
+        Buffer.add_string buffer ("  ccpar    are: "^(Utils.string_list_cat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#ccpar)));
         Buffer.add_char buffer '\n';
       in
         Hashtbl.iter (fun _ n -> print_node n) nodes;
@@ -203,7 +201,7 @@ class dag = fun expr ->
         let n1 = self#get_node e1 in
         let n2 = self#get_node e2 in
           self#add_eq eq;
-          List.rev_map (fun (x,y) -> AstUtil.order_eq (Eq (self#get_expr x, self#get_expr y))) (n1#merge_with_applied n2)
+          List.rev_map (fun (x,y) -> order_eq (Eq (self#get_expr x, self#get_expr y))) (n1#merge_with_applied n2)
       | _ -> failwith "UIF: 'add_constr' only for Eq"
 
     (*get the congruence axioms used (OrdSet)*)
@@ -212,7 +210,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | err::_ -> failwith ("UIF(1): only for a conjunction of eq/ne "^(AstUtil.print err))
+        | err::_ -> failwith ("UIF(1): only for a conjunction of eq/ne "^(print err))
       in
       match conj with
         | And lst ->
@@ -230,7 +228,7 @@ class dag = fun expr ->
             self#add_neq neq;
             []
           end
-        | err -> failwith ("UIF(2): only for a conjunction of eq/ne "^(AstUtil.print err))
+        | err -> failwith ("UIF(2): only for a conjunction of eq/ne "^(print err))
 
    method create_and_add_constr eq = match eq with(*TODO buggy because of congruence parent*)
       | Eq (e1, e2) ->
@@ -261,7 +259,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | c -> failwith ("UIF: only for a conjunction of eq/ne, given: "^(Utils.string_list_cat ", " (List.map AstUtil.print c)))
+        | c -> failwith ("UIF: only for a conjunction of eq/ne, given: "^(Utils.string_list_cat ", " (List.map print c)))
       in
       match conj with
         | And lst ->
@@ -272,7 +270,7 @@ class dag = fun expr ->
               Message.print Message.Debug (lazy("EUF GRAPH after:\n"^self#print));
               not (List.exists self#neq_contradiction neq)
           end
-        | err -> failwith ("UIF: only for a conjunction of eq/ne"^(AstUtil.print err))
+        | err -> failwith ("UIF: only for a conjunction of eq/ne"^(print err))
 
     (** Tests if the '!=' are respected and return the failing cstrs*)
     method test_for_contradition =
@@ -320,7 +318,7 @@ class dag = fun expr ->
               (fun acc y ->
                 List.iter
                   (fun x ->
-                    let eq = AstUtil.order_eq (Eq(x,y)) in
+                    let eq = order_eq (Eq(x,y)) in
                       if not (self#was_given_eq eq)  then
                         begin
                           self#add_eq eq;
@@ -363,7 +361,7 @@ class dag = fun expr ->
                           fun (x,y) ->
                             List.iter (fun e1 ->
                               List.iter (fun e2 ->
-                                  eqs := PredSet.add (AstUtil.order_eq (Eq (e1, e2))) !eqs
+                                  eqs := PredSet.add (order_eq (Eq (e1, e2))) !eqs
                                 ) y
                               ) x
                           ) uniq_cc_pairs
@@ -382,7 +380,7 @@ class dag = fun expr ->
           let n2 = self#get_node e2 in
             n1 <> n2
         end
-      | err -> failwith ("satUIF, is_relevant_equality: found "^(AstUtil.print err))
+      | err -> failwith ("satUIF, is_relevant_equality: found "^(print err))
 
 
     (** Returns the 'projection' of the graph on a set of restricted variables.
@@ -404,7 +402,7 @@ class dag = fun expr ->
                 in
                   template := OrdSet.union !template [pair]
               end
-            | e -> failwith ("satUIF: given_neq contains something strange: "^(AstUtil.print e))
+            | e -> failwith ("satUIF: given_neq contains something strange: "^(print e))
           ) given_neq;
         (*fill one side of the template*)
         let half_instanciated: (expression * node) list ref  = ref [] in
@@ -431,7 +429,7 @@ class dag = fun expr ->
                     List.iter (
                       fun (e1,t2) ->
                         if n = t2 then
-                          instanciated:= PredSet.add (Not (AstUtil.order_eq (Eq (e1,v)))) !instanciated
+                          instanciated:= PredSet.add (Not (order_eq (Eq (e1,v)))) !instanciated
                       ) !half_instanciated
                 with Not_found ->
                   () (*new var ??*)
@@ -448,7 +446,7 @@ class dag = fun expr ->
                           try
                             let n2 = (self#get_node y)#find in
                               if n1 = n2 then
-                                instanciated := PredSet.add (AstUtil.order_eq (Eq(x,y))) !instanciated
+                                instanciated := PredSet.add (order_eq (Eq(x,y))) !instanciated
                           with Not_found -> ()
                       ) xs
                   with Not_found -> ()
@@ -501,25 +499,25 @@ class dag = fun expr ->
   end
 
 let is_uif_sat pred =
-  let expr = AstUtil.get_expr pred in
+  let expr = get_expr pred in
   let graph = new dag expr in
     graph#is_satisfiable pred
 
 
 let common_expression a b =
-  let common_var =  OrdSet.intersection (AstUtil.get_var a) (AstUtil.get_var b) in
-  let common_sym =  OrdSet.intersection (AstUtil.get_fct_sym a) (AstUtil.get_fct_sym b) in
-    Message.print Message.Debug (lazy("common variables are: " ^ (Utils.string_list_cat ", " (List.map AstUtil.print_expr common_var))));
+  let common_var =  OrdSet.intersection (get_var a) (get_var b) in
+  let common_sym =  OrdSet.intersection (get_fct_sym a) (get_fct_sym b) in
+    Message.print Message.Debug (lazy("common variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr common_var))));
     Message.print Message.Debug (lazy("common fct are: " ^ (Utils.string_list_cat ", " common_sym)));
     (common_sym, common_var)
 
 (*TODO refactore*)
 (** is only an over-approximation*)
 let unsat_core formula =
-  Message.print Message.Debug (lazy ("SatUIF, unsat core for "^(AstUtil.print formula)));
-  let expr = AstUtil.get_expr formula in
+  Message.print Message.Debug (lazy ("SatUIF, unsat core for "^(print formula)));
+  let expr = get_expr formula in
   let graph = new dag expr in
-  let f_parts = AstUtil.get_subterm_nnf formula in
+  let f_parts = get_subterm_nnf formula in
   let ded_with_order = List.filter (fun x -> not (List.mem x f_parts)) (graph#add_pred_with_applied formula) in (*avoid justifing given eq*)
   let previous_ded eq =
     let rec process acc lst = match lst with
@@ -548,7 +546,7 @@ let unsat_core formula =
               let rec justify_ded eq =
                 if OrdSet.mem eq !ded then
                   begin (*need a deduced eq*)
-                    Message.print Message.Debug (lazy((AstUtil.print eq )^" is deduced"));
+                    Message.print Message.Debug (lazy((print eq )^" is deduced"));
                     let prev = OrdSet.list_to_ordSet (previous_ded eq) in
                       match eq with
                       | Eq(Application(_,args1),Application(_,args2))
@@ -586,15 +584,15 @@ let unsat_core formula =
                             justified := eq::(!justified);
                             And justification
                         end
-                      | err -> failwith ("SatUIF: unsat_core (3), "^(AstUtil.print err))
+                      | err -> failwith ("SatUIF: unsat_core (3), "^(print err))
                     end
                 else
                   begin
-                    Message.print Message.Debug (lazy((AstUtil.print eq )^" is given"));
+                    Message.print Message.Debug (lazy((print eq )^" is given"));
                     if List.mem eq !justified then True else eq (*present in the original system*)
                   end
               in
-              let core = AstUtil.normalize_only (And (neq::(List.map justify_ded proof))) in
+              let core = normalize_only (And (neq::(List.map justify_ded proof))) in
                 core
             end
           | _ -> failwith "SatUIF: unsat_core (2)"
@@ -628,8 +626,8 @@ let find_common_expr a b ea eb common_var common_sym =
  * @param  b the B formula.
  *)
 let interpolate_euf a_side eq a b =
-  let a_expr = AstUtil.get_expr a in
-  let b_expr = AstUtil.get_expr b in
+  let a_expr = get_expr a in
+  let b_expr = get_expr b in
 
   let graph_a = new EqDag.dag a_expr in
   let graph_b = new EqDag.dag b_expr in
@@ -639,7 +637,7 @@ let interpolate_euf a_side eq a b =
       begin
         let args = List.map2
           (fun a b ->
-            let eq = AstUtil.order_eq (Eq(a,b)) in
+            let eq = order_eq (Eq(a,b)) in
               if a_side then
                 begin
                   graph_a#create_needed_nodes eq;
