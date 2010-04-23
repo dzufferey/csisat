@@ -31,6 +31,7 @@ module Int =
     let compare = compare
   end
 module IntSet = Set.Make(Int)
+module IntMap = Map.Make(Int)
 
 (** ugly method to search in an IntSet *)
 let find_in_IntSet query set =
