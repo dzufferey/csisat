@@ -235,6 +235,9 @@ let power base exponent =
   in
     pow 1 base exponent
 
+let is_integer n =
+  let (f,i) = modf n in f = 0.0
+
 let round n =
   let (f,i) = modf n in
     if f < (-0.5) then i -. 1.
