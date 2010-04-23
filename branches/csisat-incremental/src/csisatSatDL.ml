@@ -31,6 +31,7 @@ open   CsisatLIUtils
 module Global  = CsisatGlobal
 module Message = CsisatMessage
 module Utils   = CsisatUtils
+module IntMap  = CsisatUtils.IntMap
 module Matrix  = CsisatMatrix
 (**/**)
 
@@ -39,18 +40,41 @@ module Matrix  = CsisatMatrix
  * But we need to do it in an incremental way.
  * For the interpolation, projecting the path on common variable do the job (see MathSat)
  *
- * (1)
- * Floyd-Warshall: http://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
- * works well, and can be used to reconstruct the path (for unsat core).
- * needs also to keep track of the 'strictness of the path'.
- * a distance of 0 means that two nodes should be equal (modulo strictness)
- *
- * (2)
- * For sparse graph Johnson algorithm seems more efficient.
- * http://en.wikipedia.org/wiki/Johnson%27s_algorithm
- * it combines:
- *  http://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
- *  http://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
- *  needs Fibonacci heap in the implementation of Dijkstra
+ * let's try to follow:
+ * "fast and flexible difference constraints propagation for DPLL(T)"
+ * by Scott Cotton and Oded Maler
  *)
 
+(* TODO need something like a binary heap / fibbonaci heap / bordal queue
+ * a binary heap should be sufficient to start.
+ * In the mean time, it is possible o use a set of pairs (priority, id).
+ *)
+ 
+type potential_fct = (int * int) IntMap.t (*'satisfying' assignement, predecessor in the shortest path*)
+type status = Unassigned
+            | Assigned (* but not propagated *)
+            | Propagated
+            | Consequence (* a consequence of Propagated constraints *)
+            | Empty
+
+type t = {
+  expre_to_id: int ExprMap.t;
+  mutable assignement: potential_fct;
+  history: (predicate * potential_fct) Stack.t; (*TODO need something more ? labelling/consequences *)
+  edges: (int * status) array array;
+}
+
+let create preds = failwith "TODO"
+
+let push t pred = failwith "TODO"
+
+let pop pred = failwith "TODO"
+
+let is_sat t = failwith "TODO"
+
+(*propagating equalities for NO*)
+let propagations t exprs = failwith "TODO"
+
+let unsat_core_with_info t = failwith "TODO"
+
+let unsat_core t = let (p,_,_) = unsat_core_with_info t in p
