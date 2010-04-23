@@ -34,5 +34,23 @@ module Utils   = CsisatUtils
 module Matrix  = CsisatMatrix
 (**/**)
 
-(*TODO*)
+(*TODO 
+ * the classical algorithm for DL is to use difference bound matrix (i.e. shortest path algorithms).
+ * But we need to do it in an incremental way.
+ * For the interpolation, projecting the path on common variable do the job (see MathSat)
+ *
+ * (1)
+ * Floyd-Warshall: http://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
+ * works well, and can be used to reconstruct the path (for unsat core).
+ * needs also to keep track of the 'strictness of the path'.
+ * a distance of 0 means that two nodes should be equal (modulo strictness)
+ *
+ * (2)
+ * For sparse graph Johnson algorithm seems more efficient.
+ * http://en.wikipedia.org/wiki/Johnson%27s_algorithm
+ * it combines:
+ *  http://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
+ *  http://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
+ *  needs Fibonacci heap in the implementation of Dijkstra
+ *)
 
