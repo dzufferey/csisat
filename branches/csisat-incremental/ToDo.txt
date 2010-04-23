@@ -19,4 +19,4 @@ Sat Solver:
 General:
     -multiple interpolant from one query (path)
     -cleanup the code
-
+    -makefile: call ocamlbuild
