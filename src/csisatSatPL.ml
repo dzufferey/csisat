@@ -25,12 +25,11 @@
 (** Bool+T *)
 
 open   CsisatAst
+open   CsisatAstUtil
 open   CsisatPicoInterface
 open   CsisatDpllCore
 (**/**)
 module Global      = CsisatGlobal
-module AstUtil     = CsisatAstUtil
-module PredSet     = CsisatAstUtil.PredSet
 module Utils       = CsisatUtils
 module NelsonOppen = CsisatNelsonOppen
 module DpllClause  = CsisatDpllClause
@@ -121,18 +120,18 @@ let unabstract_bool dico assign =
 
 (** Conjunction to blocking clause *)
 let reverse formula = match formula with
-  | And lst -> Or (List.map AstUtil.contra lst)
-  | Or lst -> failwith ("satPL: reverse expect a conj, found"^(AstUtil.print (Or lst)))
-  | e -> Or [AstUtil.contra e] (*abstract can return atoms*)
+  | And lst -> Or (List.map contra lst)
+  | Or lst -> failwith ("satPL: reverse expect a conj, found"^(print (Or lst)))
+  | e -> Or [contra e] (*abstract can return atoms*)
 
 (** Is the propositional formula satisfiable ? *)
 let is_pl_sat formula =
   let f =
-    if AstUtil.is_cnf formula then formula
-    else match AstUtil.equisatisfiable formula with
+    if is_cnf formula then formula
+    else match equisatisfiable formula with
       | (_,_,f) -> f
   in
-  let f = AstUtil.cnf (AstUtil.simplify f) in
+  let f = cnf (simplify f) in
   let solver = get_solver false in
     solver#init f;
     solver#solve
@@ -143,7 +142,7 @@ let check_trivial_case f = match f with
   | _ -> ()
 
 let is_sat formula =
-  Message.print Message.Debug (lazy("is_sat for"^(AstUtil.print formula)));
+  Message.print Message.Debug (lazy("is_sat for"^(print formula)));
   match formula with
   | True -> true
   | False -> false
@@ -152,39 +151,39 @@ let is_sat formula =
       let solver = get_solver false in (* TODO true to test the satsolver *)
       let (_, _, f) =
         (*if is already in cnf ...*)
-        if AstUtil.is_cnf formula then
+        if is_cnf formula then
           begin
             Message.print Message.Debug (lazy("already in CNF"));
-            (Hashtbl.create 0, Hashtbl.create 0, AstUtil.cnf formula)
+            (Hashtbl.create 0, Hashtbl.create 0, cnf formula)
           end
         else 
           begin
             Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-            AstUtil.equisatisfiable formula
+            equisatisfiable formula
           end
       in
-      let f = AstUtil.cnf (AstUtil.simplify f) in (*TODO is needed ??*)
-        Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
+      let f = cnf (simplify f) in (*TODO is needed ??*)
+        Message.print Message.Debug (lazy("abstracted formula is "^(print f)));
         solver#init f;
         let rec test_and_refine () =
           if solver#solve then
             begin
               Message.print Message.Debug (lazy "found potentially SAT assign");
               let solution = solver#get_solution in
-              let externals = AstUtil.get_external_atoms (And solution) in
-              let assign = AstUtil.remove_atoms (And solution) in
+              let externals = get_external_atoms (And solution) in
+              let assign = remove_atoms (And solution) in
               try
                 (*TODO config can force a theory*)
                 check_trivial_case assign;
                 let unsat_core = NelsonOppen.unsat_core assign in
-                  Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
+                  Message.print Message.Debug (lazy("unsat core is: "^(print unsat_core)));
                 let clause = unsat_core in
                 let contra = reverse clause in
                   solver#add_clause contra;
                   test_and_refine ()
               with SAT | SAT_FORMULA _ ->
                 begin 
-                  Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print (And [assign; And externals]) )));
+                  Message.print Message.Debug (lazy("assignment is SAT: "^(print (And [assign; And externals]) )));
                   true
                 end
             end
@@ -206,32 +205,32 @@ let unsat_cores_LIUIF formula =
   let cores = ref [] in
   let (atom_to_pred, pred_to_atom, f) =
     (*if is already in cnf ...*)
-    if AstUtil.is_cnf formula then
+    if is_cnf formula then
       begin
         Message.print Message.Debug (lazy("already in CNF"));
-        to_atoms (AstUtil.cnf formula)
+        to_atoms (cnf formula)
       end
     else 
       begin
         Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-        AstUtil.equisatisfiable formula
+        equisatisfiable formula
       end
   in
-  let f = AstUtil.cnf (AstUtil.simplify f) in
-    Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
+  let f = cnf (simplify f) in
+    Message.print Message.Debug (lazy("abstracted formula is "^(print f)));
     solver#init f;
     let rec test_and_refine () =
       if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
           let solution = solver#get_solution in
-          let externals = AstUtil.get_external_atoms (And solution) in
-          let assign = AstUtil.remove_atoms (And solution) in
+          let externals = get_external_atoms (And solution) in
+          let assign = remove_atoms (And solution) in
           (*TODO config can force a theory*)
           try
             check_trivial_case assign;
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
-              Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
+              Message.print Message.Debug (lazy("unsat core is: "^(print unsat_core)));
               cores := core_with_info::!cores;
               let clause = abstract pred_to_atom unsat_core in
               let contra = reverse clause in
@@ -245,11 +244,11 @@ let unsat_cores_LIUIF formula =
           (*in the "boolean" core, the contradiction should be direct if any ...*)
           (*is in CNF -> DNF -> remove element that are covered by existing unsat cores*)
           (* TODO when proof is available, skip this step avoid DNF*)
-          let bool_core = match AstUtil.dnf formula with
+          let bool_core = match dnf formula with
             | Or lst -> lst
             | _ -> failwith "SatPL: DNF does not returned a Or ?!"
           in
-            List.iter (fun c -> Message.print Message.Debug (lazy("possible core: "^(AstUtil.print c)))) bool_core;
+            List.iter (fun c -> Message.print Message.Debug (lazy("possible core: "^(print c)))) bool_core;
             (*remove the clauses covered by the already found unsat cores*)
             List.iter
               (fun x ->
@@ -298,20 +297,20 @@ let unsat_cores_LIUIF formula =
 let unsat_cores_with_proof formula =
   let solver = get_solver true in
   let cores = ref [] in
-  let f = AstUtil.cnf (AstUtil.simplify formula) in
-    Message.print Message.Debug (lazy("cnf formula is "^(AstUtil.print f)));
+  let f = cnf (simplify formula) in
+    Message.print Message.Debug (lazy("cnf formula is "^(print f)));
     solver#init f;
     let rec test_and_refine () =
       if solver#solve then
         begin
           Message.print Message.Debug (lazy "found potentially SAT assign");
           let solution =  solver#get_solution in
-          let externals = AstUtil.get_external_atoms (And solution) in
-          let assign = AstUtil.remove_atoms (And solution) in
+          let externals = get_external_atoms (And solution) in
+          let assign = remove_atoms (And solution) in
           try
             check_trivial_case assign;
             let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
-              Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
+              Message.print Message.Debug (lazy("unsat core is: "^(print unsat_core)));
               cores := core_with_info::!cores;
               let contra = reverse unsat_core in
                 solver#add_clause contra;
@@ -328,7 +327,7 @@ let unsat_cores_with_proof formula =
 
 let make_proof_with_solver formula cores =
   let solver = get_solver true in
-  let f = AstUtil.cnf (AstUtil.simplify formula) in
+  let f = cnf (simplify formula) in
     solver#init f;
     List.iter (fun x -> solver#add_clause (reverse x)) cores;
     if solver#solve then
@@ -359,7 +358,7 @@ let make_proof_without_solver formula core =
           begin
             let clause = PredSet.singleton x in
             let to_resolv = PredSet.remove x to_resolv in
-            let prf = DpllProof.RPNode (AstUtil.proposition_of_lit x, proof, DpllProof.RPLeaf clause, to_resolv) in
+            let prf = DpllProof.RPNode (proposition_of_lit x, proof, DpllProof.RPLeaf clause, to_resolv) in
               if PredSet.is_empty to_resolv then
                 prf
               else

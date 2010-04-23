@@ -29,13 +29,9 @@
  *)
 
 open   CsisatAst
+open   CsisatAstUtil
 (**/**)
 module Global  = CsisatGlobal
-module AstUtil = CsisatAstUtil
-module PredSet = CsisatAstUtil.PredSet
-module ExprSet = CsisatAstUtil.ExprSet
-module PredMap = CsisatAstUtil.PredMap
-module ExprMap = CsisatAstUtil.ExprMap
 module Message = CsisatMessage
 module Utils   = CsisatUtils
 module IntSet  = CsisatUtils.IntSet
@@ -97,7 +93,7 @@ module Node =
 
     let to_string n =
       "node "^(string_of_int n.id)^
-      " ("^(AstUtil.print_expr n.expr)^") "^
+      " ("^(print_expr n.expr)^") "^
       n.fn^"("^(String.concat ", "(List.map string_of_int n.args))^") "^
       " ccpar = {"^(String.concat ", " (List.map string_of_int (IntSet.elements n.ccpar)))^"}"
 
@@ -160,7 +156,7 @@ module Node =
     let small_justification (set, _) this that =
       if this.id = that.id then PredSet.empty
       else
-        let eq = AstUtil.order_eq (Eq (this.expr, that.expr)) in
+        let eq = order_eq (Eq (this.expr, that.expr)) in
           if PredSet.mem eq set then PredSet.singleton eq
           else set (*TODO better -> shortest path (if no congruence)*)
 
@@ -181,12 +177,12 @@ module Node =
     (*val merge: t -> t -> unit*)
     let merge this that =
       (* always report the first equality *)
-      let mk_eq a b = AstUtil.order_eq (Eq (a.expr, b.expr)) in
+      let mk_eq a b = order_eq (Eq (a.expr, b.expr)) in
       let mk_eq_set a b = PredSet.singleton (mk_eq a b) in
-      Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (AstUtil.print_pred (mk_eq this that))));
+      Message.print Message.Debug (lazy("CoreSolver: merge given " ^ (print_pred (mk_eq this that))));
       let first_to_stack _ _ _ _ = () in
       let other_to_stack a b changed_a changed_b =
-        Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (AstUtil.print_pred (mk_eq a b))));
+        Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (print_pred (mk_eq a b))));
         Stack.push
           (StackTDeduction (mk_eq a b, EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
@@ -205,7 +201,7 @@ module Node =
                     "CoreSolver: merge to_test " ^
                     (String.concat ", "
                       (List.map
-                        (fun (x,y) -> AstUtil.print_pred (AstUtil.order_eq (Eq (this.nodes.(x).expr, this.nodes.(y).expr))))
+                        (fun (x,y) -> print_pred (order_eq (Eq (this.nodes.(x).expr, this.nodes.(y).expr))))
                         to_test))));
                   List.iter
                     (fun (x,y) ->
@@ -248,10 +244,10 @@ module CoreSolver =
     (*TODO split the theories and keep what belongs to what
      *)
     let create pred =
-      let pset = CsisatAstUtil.get_proposition_set pred in
+      let pset = get_proposition_set pred in
       let set =
         PredSet.fold
-          (fun p acc -> ExprSet.union (CsisatAstUtil.get_expr_deep_set p) acc)
+          (fun p acc -> ExprSet.union (get_expr_deep_set p) acc)
           pset
           ExprSet.empty
       in
@@ -303,11 +299,11 @@ module CoreSolver =
         }
       in
       let f =
-        if AstUtil.is_cnf pred then pred 
-        else match AstUtil.equisatisfiable pred with
+        if is_cnf pred then pred 
+        else match equisatisfiable pred with
           | (_,_,f) -> f
       in
-      let f = AstUtil.cnf (AstUtil.simplify f) in
+      let f = cnf (simplify f) in
         sat_solver#init f;
         Message.print Message.Debug (lazy("CoreSolver: " ^ (euf_to_string graph)));
         graph
@@ -332,7 +328,7 @@ module CoreSolver =
 
 
     let push dag pred =
-      Message.print Message.Debug (lazy("CoreSolver: push " ^ (AstUtil.print_pred pred)));
+      Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred)));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
       else
         begin
@@ -398,12 +394,12 @@ module CoreSolver =
                 end
               | StackSat (pred, sat_changes) -> (* predicate given by sat solver *)
                 begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (AstUtil.print_pred pred)));
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (print_pred pred)));
                   List.iter undo_change sat_changes
                 end
               | StackTDeduction (pred, theory, old1, old2) ->
                 begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackTDeduction " ^ (AstUtil.print_pred pred)));
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackTDeduction " ^ (print_pred pred)));
                   assert (Global.is_off_assert() || theory = EUF);
                   undo old1;
                   undo old2;
@@ -444,7 +440,7 @@ module CoreSolver =
       let needed_congruences = PredSet.inter all_congruences (PredSet.union congr1 congr2) in
       let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
-      let contradiction = AstUtil.order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+      let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
       let raw_core = PredSet.union given1 given2 in
       let core = contradiction :: (PredSet.elements raw_core) in
         (And core, contradiction, EUF, info)
@@ -466,9 +462,9 @@ module CoreSolver =
 
     (** Conjunction to blocking clause *)
     let reverse formula = match formula with
-      | And lst -> Or (List.map AstUtil.contra lst)
-      | Or lst -> failwith ("satPL: reverse expect a conj, found"^(AstUtil.print (Or lst)))
-      | e -> Or [AstUtil.contra e] (*abstract can return atoms*)
+      | And lst -> Or (List.map contra lst)
+      | Or lst -> failwith ("satPL: reverse expect a conj, found"^(print (Or lst)))
+      | e -> Or [contra e] (*abstract can return atoms*)
 
     type solved = Sat of predicate list
                 | Unsat of CsisatDpllProof.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
@@ -498,7 +494,7 @@ module CoreSolver =
           else t_contradiction ()
         | Dpll.Affectation (lst1,lst2) ->
             if to_theory_solver t lst1
-            then Sat (List.filter (fun x -> x <> True) (List.map AstUtil.remove_equisat_atoms lst2))
+            then Sat (List.filter (fun x -> x <> True) (List.map remove_equisat_atoms lst2))
             else t_contradiction();
         | Dpll.Backtracked howmany -> backjump howmany
         | Dpll.Proof proof ->
