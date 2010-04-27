@@ -49,6 +49,29 @@ module Matrix  = CsisatMatrix
  * a binary heap should be sufficient to start.
  * In the mean time, it is possible o use a set of pairs (priority, id).
  *)
+module PQueue =
+  struct
+    module Elt =
+      struct
+        type t = int * int
+        let compare = compare
+      end
+    module PSet = Set.Make(Elt)
+
+    type t = PSet.t ref
+
+    let get pq =
+      let elt = PSet.min_elt !pq in
+        pq := PSet.remove elt !pq;
+        elt
+
+    let add pq elt =
+      pq := PSet.add elt !pq
+
+    let is_empty pq =
+      PSet.is_empty !pq
+      
+  end
  
 type potential_fct = (int * int) IntMap.t (*'satisfying' assignement, predecessor in the shortest path*)
 type status = Unassigned
@@ -106,6 +129,13 @@ let create preds =
   let history = Stack.create () in
   let edges = Array.make_matrix n n (0, Empty) in
     (*TODO fill edges *)
+    PredSet.iter
+      (fun p -> match normalize_dl p with
+        | (Equal, v1, v2, c) ->
+        | (LessEq, v1, v2, c) ->
+        | (LessStrict, v1, v2, c) ->
+      )
+      (get_literal_set preds);
     (*TODO initial assignement *)
     failwith "TODO"
 

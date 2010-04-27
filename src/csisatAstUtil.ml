@@ -661,23 +661,6 @@ let proposition_of_lit x = match x with
   | err -> failwith ("AstUtil, proposition_of_lit: not a literal "^(print err))
 
 (** Gets the propositions of a formula.
- * @return an OrdSet.
- *)
-let get_proposition pred =
-  let rec process pred = match pred with
-    | False -> []
-    | True -> []
-    | And lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
-    | Or lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
-    | Not p -> process p
-    | Eq _ as eq -> [eq]
-    | Lt _ as lt -> [lt]
-    | Leq (e1,e2)  -> [Lt(e2,e1)]
-    | Atom _ as a -> [a]
-  in
-    process pred
-
-(** Gets the propositions of a formula.
  * @return a Set.
  *)
 let get_proposition_set pred =
@@ -693,6 +676,30 @@ let get_proposition_set pred =
     | Atom _ as a -> PredSet.singleton a
   in
     process pred
+
+(** Gets the propositions of a formula.
+ * @return an OrdSet.
+ *)
+let get_proposition pred = predSet_to_ordSet (get_proposition_set pred)
+
+(** Gets the literals of a formula.
+ * Assumes NNF.
+ * @return a Set.
+ *)
+let get_literal_set pred =
+  let rec process pred = match pred with
+    | False -> PredSet.empty
+    | True -> PredSet.empty
+    | And lst -> List.fold_left (fun acc x -> PredSet.union acc (process x)) PredSet.empty lst
+    | Or lst -> List.fold_left (fun acc x -> PredSet.union acc (process x)) PredSet.empty lst
+    | Not _ | Eq _ | Lt _ | Leq _ | Atom _ -> PredSet.singleton pred
+  in
+    process pred
+
+(** Gets the literals of a formula.
+ * @return an OrdSet.
+ *)
+let get_literal pred = predSet_to_ordSet (get_literal_set pred)
 
 (** Returns the variables of a predicate.
  * @return an OrdSet.
