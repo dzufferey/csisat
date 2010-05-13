@@ -83,15 +83,17 @@ module PQueue =
       
   end
  
-type potential_fct = (int * int) IntMap.t (*'satisfying' assignement, predecessor in the shortest path*)
+type potential_fct = (float * int list) Array (*'-satisfying' assignement, predecessor in the shortest path*)
 type status = Unassigned
             | Assigned (* but not propagated *)
             | Propagated
             | Consequence (* a consequence of Propagated constraints *)
 type kind = Equal | LessEq | LessStrict
 type strictness = Strict | NonStrict
+type domain = Integer | Real
 
 type t = {
+  domain: domain;
   var_to_id: int ExprMap.t;
   mutable assignement: potential_fct;
   history: (predicate * potential_fct) Stack.t; (*TODO need something more ? labelling/consequences *)
@@ -100,6 +102,7 @@ type t = {
 
 let z_0 = Variable "__ZERO__"
 
+(*TODO if use integers then no need for strict constraint.*)
 (*
  natively support:
    x <= y + c and x < y + c
@@ -107,8 +110,12 @@ let z_0 = Variable "__ZERO__"
    x = y + c  -->  x <= y + c /\ y <= x - c
 *)
 
+let adapt_domain domain (kind, v1, v2, c) = match domain with
+  | Integer when kind = LessStrict -> (LessEq, v1, v2, c -. 1.0)
+  | _ -> (kind, v1, v2, c)
+
 (* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
-let rec normalize_dl map pred =
+let rec normalize_dl domain map pred =
   let (kind, e1, e2) = match pred with
     | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
     | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
@@ -119,18 +126,16 @@ let rec normalize_dl map pred =
   in
   let decompose_expr e = match w with
     | Variable x -> (x, 0)
-    | Constant c -> assert (Utils.is_integer c); (z_0, int_of_float c)
-    | Sum[Variable x, Constant c] | Sum[Constant c, Variable x] ->
-      assert (Global.is_off_assert() || Utils.is_integer c);
-      (x, int_of_float c)
+    | Constant c -> (z_0, c)
+    | Sum[Variable x, Constant c] | Sum[Constant c, Variable x] -> (x, c)
     | err -> failwith ("SatDL, expected DL expression: "^(print_expr err))
   in
   let (v1,c1) = decompose_expr e1 in
   let (v2,c2) = decompose_expr e2 in
-    (kind, ExprMap.find v1 map, ExprMap.find v2 map, c2 - c1)
+    adapt_domain domain (kind, ExprMap.find v1 map, ExprMap.find v2 map, c2 -. c1)
 
 (*assume purified formula*)
-let create preds =
+let create domain preds =
   let vars = get_var (And preds) in
   let (n, var_to_id) = (*n is #vars + 1*)
     List.fold_left
@@ -140,12 +145,7 @@ let create preds =
   in
   let history = Stack.create () in
   (*initial assignement: 0 to everybody (is it right)*)
-  let first_assign =
-    List.fold_left
-      (fun acc i -> IntMap.add i (0,-1) acc)
-      IntMap.empty
-      (Utils.range 0 n)
-  in
+  let first_assign = Array.make n (0.0, []) in
   let edges = Array.make_matrix n n [] in
     (* fill edges *)
     PredSet.iter
@@ -162,8 +162,10 @@ let create preds =
           edges.(v2).(v1) <- (-c, NonStrict, Unassigned) :: edges.(v2).(v1) (*negation*)
       )
       (get_literal_set preds);
+    (*TODO push z_0 = 0 *)
     {
-      var_to_id= var_to_id;
+      domain = domain;
+      var_to_id = var_to_id;
       assignement = first_assign;
       history = history;
       edges = edges
@@ -176,39 +178,83 @@ let get_successors edges x =
     Array.iteri
       (fun y lst ->
         let new_succ = List.filter active_constraint lst in
+        let new_succ = List.map (fun c -> (y,c)) new_succ in
           succ := new_succ @ !succ
       )
       edges.(x);
     !succ
 
-let eval potential_fct x =
-  fst (ExprMap.find x potential_fct)
+let eval potential_fct x = fst potential_fct.(x)
 
 let is_sat t =
-  valid t.assignement t.edges
+  let assign = t.assignement in
+  let edges = t.edges in
+    failwith "TODO"
 
 let push t pred =
-  let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
-  (* check if it is already an active constraint *)
-  let set_true v1 v2 c strictness =
-    (*TODO set the constraint status (and weaker constraints as consequences)*)
-    (*TODO propagate the consequences, store changes in stack, return satisfiability *)
-    failwith "TODO"
+  let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
+  let set_true old_assign v1 v2 c strictness =
+    (* check if it is already an active constraint *)
+    let already = List.exists (fun (c',s,_) as cstr -> c = c' && s = strictness && active_constraint cstr) edges.(v1).(v2) in
+      if already then (true, t.assignement, [])
+      else
+        begin
+          let new_assign = Array.copy old_assign in
+          let pi = eval old_assign in
+          let pi' = eval new_assign in
+          let pq = PQueue.add PQueue.empty v2 (pi v1 +. c -. pi v2) in
+          (* set the constraint status (and weaker constraints as consequences (trivial propagation))*)
+          let changes, new_edges =
+            List.fold_left
+              (fun (acc_c, acc_e) ((c', strictness', status) as cstr) ->
+                if c = c' && strictness = strictness' then
+                  begin
+                    let cstr' = (c', strictness', Assigned) in
+                      (cstr :: acc_c, cstr' :: acc_e)
+                  end
+                else if status = Unassigned && (c < c' || (c = c' && strictness = Strict)) then
+                  begin
+                    let cstr' = (c', strictness', Consequence) in
+                      (cstr :: acc_c, cstr' :: acc_e)
+                  end
+                else (acc_c, cstr :: acc_e)
+              )
+              ([], [])
+              edges.(v1).(v2)
+          in
+            edges.(v1).(v2) <- new_edges;
+            while fst (PQueue.get_min pq) < 0.0 && PQueue.get_priority pq v1 = 0.0 do
+              let (gamma_s, s) = snd (PQueue.get_min pq) in
+                new_assign.(s) <- (pi s +. gamma_s, [](*TODO shortest path source*));
+                PQ.add pq s 0.0;
+                List.iter
+                  (fun (t,(c,status)) ->
+                    if status <> Unassigned && pi t = pi' t then
+                      let gamma' = pi' s +. c -. pi t in
+                        if gamma' < (PQueue.get_priority pq t) then
+                          PQueue.add pq t gamma'
+                  )
+                  (get_successors t.edges s)
+            done;
+              if PQueue.get_priority pq v1 = 0.0 then (true, new_assign, changes)
+              else (false, new_assign, changes)
+        end
   in
-  let fct, changes = match kind with
+  let sat, fct, changes = match kind with
     | Equal ->
-      let v1_v2 = edges.(v1).(v2) in
-      let v2_v1 = edges.(v2).(v1) in
-        List.exists (fun (c',s,_) as cstr -> c = c' && s = NonStrict && active_constraint cstr) v1_v2 &&
-        List.exists (fun (c',s,_) as cstr -> c = -1. *. c' && s = NonStrict && active_constraint cstr) v2_v1
-    | LessEq ->
-      let v1_v2 = edges.(v1).(v2) in
-        List.exists (fun (c',s,_) as cstr -> c = c' && s = NonStrict && active_constraint cstr) v1_v2
-    | LessStrict ->
-      let v1_v2 = edges.(v1).(v2) in
-        List.exists (fun (c',s,_) as cstr -> c = c' && s = Strict && active_constraint cstr) v1_v2
+      begin
+        let (sat, fct, changes) = set_true t.assignement v1 v2 c NonStrict in
+          if sat then
+            let (sat', fct', changes') = set_true fct v2 v1 (-1. *. c) NonStrict in
+              (sat', fct', changes' @ changes)
+          else
+            (sat, fct, changes)
+      end
+    | LessEq -> set_true v1 v2 c NonStrict
+    | LessStrict -> set_true v1 v2 c Strict
   in
-    Stack.push t.history (pred, fct, changes);
+    (*TODO check that the strict constraint are OK *)
+    Stack.push t.history (pred, t.assignement, changes);
     t.assignement <- fct;
     is_sat t
 
