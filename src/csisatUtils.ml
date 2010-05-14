@@ -33,6 +33,9 @@ module Int =
 module IntSet = Set.Make(Int)
 module IntMap = Map.Make(Int)
 
+module StringSet = Set.Make(String)
+module StringMap = Map.Make(String)
+
 (** ugly method to search in an IntSet *)
 let find_in_IntSet query set =
   let elt = ref None in

@@ -9,14 +9,17 @@ LA:
 EUF:
 	-improve the unsat core (over-approximation)
 
-DL:
-	-add difference logic
+Theories:
+    -array theory
+	-add difference logic (and later utvpi ?)
+    -Linear Diophantine (Dis)Equations and Linear Modular Equations
+
 
 Sat Solver:
     -bug for trivial boolean formula in 'sat' mode
     -sat solver decision policy.
 
 General:
-    -multiple interpolant from one query (path)
+    -multiple interpolant from one query (path): do not go each time through the proof.
     -cleanup the code
     -makefile: call ocamlbuild

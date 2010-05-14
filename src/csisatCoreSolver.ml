@@ -39,6 +39,7 @@ module OrdSet  = CsisatOrdSet
 module EqDag   = CsisatDag
 module Dpll    = CsisatDpllCore
 module DpllProof = CsisatDpllProof
+module DL       = CsisatSatDL
 (**/**)
 
 (** The different changes that can happen in the system *)
