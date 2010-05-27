@@ -37,6 +37,7 @@ module Matrix  = CsisatMatrix
 
 (*TODO 
  * For the interpolation, projecting the path on common variable do the job (see MathSat)
+ * a proof of unsat is a shortest path that leads to a contradiction.
  *
  * let's try to follow:
  * "fast and flexible difference constraints propagation for DPLL(T)"
@@ -210,7 +211,11 @@ let push t pred =
   let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
   let set_true old_assign v1 v2 c strictness =
     (* check if it is already an active constraint *)
-    let already = List.exists (fun ((c',s,_) as cstr) -> c = c' && s = strictness && active_constraint cstr) t.edges.(v1).(v2) in
+    let already =
+      List.exists
+        (fun ((c',s,_) as cstr) -> c = c' && s = strictness && active_constraint cstr)
+        t.edges.(v1).(v2)
+    in
       if already then (true, t.assignement, [])
       else
         begin
@@ -331,6 +336,13 @@ let propagations t exprs =
   (*TODO build the successors function for sssp using lazy elements*)
   (*TODO since there are all the predicates, is should be possible to do some T-propagation (for the sat solver)*)
   (*TODO store changes in stack*)
+  failwith "TODO"
+
+let propagations t =
+  (*TODO double shortest path forward/backward
+   * if need to propagate constraint, one call per unassigned constraint
+   *)
+  (* similar to propagations for NO *)
   failwith "TODO"
 
 (*info: but for the contradiction, cannot do much.*)
