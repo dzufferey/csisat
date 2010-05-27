@@ -224,6 +224,7 @@ module CoreSolver =
       sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
       expr_to_node: Node.t ExprMap.t;
+      propositions: PredSet.t;
       stack: change Stack.t;
       mutable neqs: (int * int) list; (* neqs as pairs of node id *)
       mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t
@@ -294,6 +295,7 @@ module CoreSolver =
           sat_solver = sat_solver;
           nodes = nodes;
           expr_to_node = !expr_to_node;
+          propositions = pset;
           stack = stack;
           neqs = [];
           explanations = PredMap.empty
@@ -460,6 +462,23 @@ module CoreSolver =
             end
         end
       | [] -> true
+
+    (* propagate T deduction to the sat solver *)
+    let t_propagation t =
+      let assigned =
+        let p = ref PredSet.empty in
+          Stack.iter
+            (fun c -> match c with
+              | StackSat (lit, _) ->
+                p := PredSet.union (get_proposition_set lit) !p
+              | _ -> ()
+            )
+            t.stack;
+          !p
+      in
+      let unassigned = PredSet.diff t.propositions assigned in
+        (*TODO find which are implied *)
+        failwith "TODO"
 
     (** Conjunction to blocking clause *)
     let reverse formula = match formula with

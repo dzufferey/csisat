@@ -50,7 +50,7 @@ let int_get_result proof = match proof with
 (** To store the decision level. *)
 type var_assign = Open (** free choice (decision policy) *)
                 | Implied of int_res_proof (** unit resolution*)
-                | TImplied of int_res_proof (** implied by a theory (bool+T) TODO *)
+                | TImplied of clause (** implied by a theory (bool+T): (/\ antecedent => var)*)
 (* for partial solving *)
 type int_status = IAffected of int list
                 | IAffectation of int list * int list (* newly affected + full affectation that satifies the system *)
@@ -211,6 +211,13 @@ class system =
       let cl = new clause size lst false in
       let res = self#new_clause cl in
         if not res then self#backjump cl
+
+    method theory_implied pred antecedent =
+      let size = (Array.length assignment) -1 in
+      let cl = new clause size (pred :: antecedent) false in
+      let res = self#new_clause cl in
+        assert(res);
+        self#affect pred (TImplied cl)
     
     (*TODO
      * -is subset of an existing clause ?
@@ -432,8 +439,16 @@ class system =
                 end
               else
                 build_proof prf
-            | TImplied proof -> (*continue proof further*)
-              failwith "DpllCore, backjump: theory deduction not supported for the moment."
+            | TImplied clause -> (*continue proof further*)
+              begin
+                let resolved_clause = (int_get_result prf)#resolve pivot clause in
+                let new_prf =
+                  if keep_proof then IRPNode (index_of_literal pivot, prf, IRPLeaf clause, resolved_clause)
+                  else IRPLeaf resolved_clause
+                in
+                  self#choose_to_learn_clause resolved_clause new_prf;
+                  build_proof new_prf
+              end
         with Stack.Empty ->
           begin (*now we have a proof of unsat*)
             assert (Global.is_off_assert() || (int_get_result prf)#size = 0);
@@ -604,6 +619,13 @@ class csi_dpll =
       let lst = self#convert_clause formula in
         if old_index < counter then sys#resize counter;
         sys#add_clause lst
+    
+    method theory_implied pred antecedent =
+      Message.print Message.Debug (lazy("DPLL, T propagation "^(print_pred pred)));
+      let cantecedent = self#convert_clause antecedent in
+      let cpred = self#get_index pred in
+        sys#theory_implied cpred cantecedent
+
     
     val mutable last_solution: predicate list option = None
     method solve = match sys#solve with
