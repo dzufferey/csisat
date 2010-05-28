@@ -428,14 +428,7 @@ module CoreSolver =
       in
         inspect_stack ()
 
-    let euf_lemma_with_info dag =
-      let (c1,c2) = try
-          List.find
-            (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
-            dag.neqs
-        with Not_found ->
-          failwith "CoreSolver, euf_lemma_with_info: system is sat!"
-      in
+    let euf_lemma_with_info_for dag (c1, c2) =
       let given1, congr1 = Node.get_find_predicates (Node.find (get dag c1)) in
       let given2, congr2 = Node.get_find_predicates (Node.find (get dag c2)) in
       let raw_congruences = euf_t_deductions dag in
@@ -444,9 +437,20 @@ module CoreSolver =
       let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
       let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+      (*TODO improve raw core, not everything is needed*)
       let raw_core = PredSet.union given1 given2 in
       let core = contradiction :: (PredSet.elements raw_core) in
         (And core, contradiction, EUF, info)
+
+    let euf_lemma_with_info dag =
+      let (c1,c2) = try
+          List.find
+            (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
+            dag.neqs
+        with Not_found ->
+          failwith "CoreSolver, euf_lemma_with_info: system is sat!"
+      in
+        euf_lemma_with_info_for dag (c1,c2)
 
     (* blocking clause *)
     let theory_lemma t = euf_lemma_with_info t
@@ -476,7 +480,52 @@ module CoreSolver =
             t.stack;
           !p
       in
+      let classes =
+        List.map
+          (fun (id1,id2) -> ((Node.find (get t id1)).Node.id, (Node.find (get t id2)).Node.id))
+          t.neqs
+      in
       let unassigned = PredSet.diff t.propositions assigned in
+      let implied =
+        Utils.map_filter 
+          (fun p -> match p with
+            | Eq(e1,e2) ->
+              begin
+                let n1 = get_node t e1 in
+                let n2 = get_node t e2 in
+                  if (Node.find n1).Node.id = (Node.find n2).Node.id then
+                    begin
+                      let (core, _, _, _) = euf_lemma_with_info_for t (n1.Node.id, n2.Node.id) in
+                      let core' = match core with
+                        | And lst -> And (List.tl lst) (*Assumes 'contradiction' is the first element*)
+                        | _ -> failwith "..."
+                      in
+                        Some (Eq(e1,e2), core')
+                    end
+                  else
+                    None
+              end
+            | Not (Eq(e1,e2)) ->
+              begin
+                let n1 = get_node t e1 in
+                let n2 = get_node t e2 in
+                  if List.mem ((Node.find n1).Node.id, (Node.find n2).Node.id) (classes) then
+                    begin
+                      Message.print Message.Error (lazy ("TODO: neq"));
+                      failwith "TODO"
+                    end
+                  else None
+              end
+            | Atom (Internal _)
+            | Not (Atom (Internal _)) -> None
+            | other ->
+              begin
+                Message.print Message.Error (lazy ("TODO: more theories -> "^(print other)));
+                None
+              end
+          )
+          (PredSet.elements unassigned)
+      in
         (*TODO find which are implied *)
         failwith "TODO"
 
