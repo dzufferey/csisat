@@ -50,7 +50,7 @@ let int_get_result proof = match proof with
 (** To store the decision level. *)
 type var_assign = Open (** free choice (decision policy) *)
                 | Implied of int_res_proof (** unit resolution*)
-                | TImplied of clause (** implied by a theory (bool+T): (/\ antecedent => var)*)
+                (*| TImplied of clause (** implied by a theory (bool+T): (/\ antecedent => var)*)*)
 (* for partial solving *)
 type int_status = IAffected of int list
                 | IAffectation of int list * int list (* newly affected + full affectation that satifies the system *)
@@ -212,12 +212,14 @@ class system =
       let res = self#new_clause cl in
         if not res then self#backjump cl
 
+    (*
     method theory_implied pred antecedent =
       let size = (Array.length assignment) -1 in
       let cl = new clause size (pred :: antecedent) false in
       let res = self#new_clause cl in
         assert(res);
         self#affect pred (TImplied cl)
+    *)
     
     (*TODO
      * -is subset of an existing clause ?
@@ -439,6 +441,7 @@ class system =
                 end
               else
                 build_proof prf
+            (*
             | TImplied clause -> (*continue proof further*)
               begin
                 let resolved_clause = (int_get_result prf)#resolve pivot clause in
@@ -449,6 +452,7 @@ class system =
                   self#choose_to_learn_clause resolved_clause new_prf;
                   build_proof new_prf
               end
+            *)
         with Stack.Empty ->
           begin (*now we have a proof of unsat*)
             assert (Global.is_off_assert() || (int_get_result prf)#size = 0);
@@ -620,11 +624,19 @@ class csi_dpll =
         if old_index < counter then sys#resize counter;
         sys#add_clause lst
     
+    (* do not change the decision level, unit propagation will take care of it.
+     * TODO will adding clause clog the satsolver ?
+     *)
     method theory_implied pred antecedent =
       Message.print Message.Debug (lazy("DPLL, T propagation "^(print_pred pred)));
+      match antecedent with
+      | And lst -> self#add_clause (normalize_only (Or (pred :: (List.map contra lst))))
+      | err -> failwith ("DpllCore, theory_implied: expecting And, given: "^ print err)
+      (*
       let cantecedent = self#convert_clause antecedent in
       let cpred = self#get_index pred in
         sys#theory_implied cpred cantecedent
+      *)
 
     
     val mutable last_solution: predicate list option = None
