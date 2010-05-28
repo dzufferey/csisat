@@ -511,8 +511,11 @@ module CoreSolver =
                 let n2 = get_node t e2 in
                   if List.mem ((Node.find n1).Node.id, (Node.find n2).Node.id) (classes) then
                     begin
-                      Message.print Message.Error (lazy ("TODO: neq"));
-                      failwith "TODO"
+                      let given1, _ = Node.get_find_predicates (Node.find n1) in
+                      let given2, _ = Node.get_find_predicates (Node.find n2) in
+                      (*TODO improve raw core, not everything is needed*)
+                      let raw_core = PredSet.elements (PredSet.union given1 given2) in
+                        Some (Not (Eq(e1,e2)), And raw_core)
                     end
                   else None
               end
@@ -526,8 +529,8 @@ module CoreSolver =
           )
           (PredSet.elements unassigned)
       in
-        (*TODO find which are implied *)
-        failwith "TODO"
+        (*TODO adding clauses should ne lead to contradictions *)
+        implied
 
     (** Conjunction to blocking clause *)
     let reverse formula = match formula with
