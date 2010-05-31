@@ -89,7 +89,7 @@ module PQueue =
       
   end
  
-type potential_fct = float array (*'-satisfying' assignement*)
+type potential_fct = float array (*'-satisfying' assignment*)
 type status = Unassigned
             | Assigned (* but not propagated *)
             | Propagated
@@ -103,7 +103,8 @@ type edge = int * int * edge_content
 type t = {
   domain: domain;
   var_to_id: int StringMap.t;
-  mutable assignement: potential_fct;
+  id_to_expr: expression IntMap.t;
+  mutable assignment: potential_fct;
   history: (predicate * potential_fct * (edge list)) Stack.t;
   edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
 }
@@ -154,14 +155,14 @@ let create domain preds =
         | _ -> failwith "SatDL: get_vars returned smth else")
       vars
   in
-  let (n, var_to_id) = (*n is #vars + 1*)
+  let (n, var_to_id, id_to_expr) = (*n is #vars + 1*)
     List.fold_left
-      (fun (i, acc) v -> (i+1, StringMap.add v i acc))
-      (1, StringMap.add _z_0 0 StringMap.empty)
+      (fun (i, acc, acc2) v -> (i+1, StringMap.add v i acc, IntMap.add i (Variable v) acc2))
+      (1, StringMap.add _z_0 0 StringMap.empty, IntMap.add 0 z_0 IntMap.empty)
       vars
   in
   let history = Stack.create () in
-  (*initial assignement: 0 to everybody (is it right)*)
+  (*initial assignment: 0 to everybody (is it right)*)
   let first_assign = Array.make n 0.0 in
   let edges = Array.make_matrix n n [] in
     (* fill edges *)
@@ -183,7 +184,8 @@ let create domain preds =
     {
       domain = domain;
       var_to_id = var_to_id;
-      assignement = first_assign;
+      id_to_expr = id_to_expr;
+      assignment = first_assign;
       history = history;
       edges = edges
     }
@@ -216,7 +218,7 @@ let push t pred =
         (fun ((c',s,_) as cstr) -> c = c' && s = strictness && active_constraint cstr)
         t.edges.(v1).(v2)
     in
-      if already then (true, t.assignement, [])
+      if already then (true, t.assignment, [])
       else
         begin
           let new_assign = Array.copy old_assign in
@@ -265,25 +267,25 @@ let push t pred =
   let sat, fct, changes = match kind with
     | Equal ->
       begin
-        let (sat, fct, changes) = set_true t.assignement v1 v2 c NonStrict in
+        let (sat, fct, changes) = set_true t.assignment v1 v2 c NonStrict in
           if sat then
             let (sat', fct', changes') = set_true fct v2 v1 (-1. *. c) NonStrict in
               (sat', fct', changes' @ changes)
           else
             (sat, fct, changes)
       end
-    | LessEq -> set_true t.assignement v1 v2 c NonStrict
-    | LessStrict -> set_true t.assignement v1 v2 c Strict
+    | LessEq -> set_true t.assignment v1 v2 c NonStrict
+    | LessStrict -> set_true t.assignment v1 v2 c Strict
   in
     (*TODO check that the strict constraint are OK (and do the propagation) *)
-    Stack.push (pred, t.assignement, changes) t.history;
-    t.assignement <- fct;
+    Stack.push (pred, t.assignment, changes) t.history;
+    t.assignment <- fct;
     sat
 
 (*undo changes (stored in stack)*)
 let pop t =
   let (_, assign, changes) = Stack.pop t.history in 
-    t.assignement <- assign;
+    t.assignment <- assign;
     List.iter
       (fun (v1, v2, (c, strict, status)) ->
         let current = t.edges.(v1).(v2) in
@@ -296,10 +298,10 @@ let pop t =
       )
       changes
 
-(*single source shortest path (default = dijkstra) (returns all the sortes path in pred)*)
+(*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
 let sssp size successors source =
-  let dist = Array.make (Array.length size) max_float in
-  let pred = Array.make (Array.length size) [] in
+  let dist = Array.make size max_float in
+  let pred = Array.make size [] in
   let pq = PQueue.empty max_float in
     PQueue.add pq source 0.0 ;
     dist.(source) <- 0.0;
@@ -330,18 +332,75 @@ let sssp size successors source =
 let propagations t exprs =
   (*TODO double shortest path forward/backward
    * if need to propagate constraint, one call per unassigned constraint
-   * to test for equality: |var|*(|var|-1)/2 call at most (assignment different should be a sufficient condition to reject)
+   * to test for equality: |var| calls at most (assignment different should be a sufficient condition to reject)
    *)
-  (*TODO use assign to speed-up the process (like Johnson algorithm): new weight are for x -c-> y is pi(x) + c - pi(y) *)
-  (*TODO build the successors function for sssp using lazy elements*)
-  (*TODO since there are all the predicates, is should be possible to do some T-propagation (for the sat solver)*)
-  (*TODO store changes in stack*)
-  failwith "TODO"
+  let size = Array.length t.assignment in
+  let strongest lst =
+    let is_stronger (d1, _, _) d2 = min d1 d2 in
+    let dist (d, _, _) = d in
+      List.fold_left
+        (fun acc x -> match acc with
+          | Some y -> Some (is_stronger x y)
+          | None -> Some (dist x)
+        )
+        None
+        (List.filter active_constraint lst)
+  in
+  (*build the successors function for sssp using lazy elements*)
+  let successors_lists =
+    Array.init
+      size
+      (fun idx ->
+        lazy (
+          snd (Array.fold_left
+            (fun (idx', acc) lst ->
+              ( idx' + 1,
+                Utils.maybe
+                  (* use assign to speed-up the process (like Johnson algorithm):
+                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
+                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
+                  (lazy acc)
+                  (strongest lst)
+              )
+            )
+            (0, [])
+            (t.edges.(idx)))
+        )
+      )
+  in
+  let successors x = Lazy.force successors_lists.(x) in
+  let shortest_path =
+    List.fold_left
+      (fun acc exp ->
+        match exp with
+        | Variable var ->
+          let idx = StringMap.find var t.var_to_id in
+            IntMap.add idx (sssp size successors idx) acc
+        | _ -> failwith "SatDL, propagations: expeted variables")
+      IntMap.empty
+      exprs 
+  in
+  (*TODO check if there is a contradiction *)
+  let at_distance_0 =
+    IntMap.fold
+      (fun idx (dist, _) acc ->
+        let zeros = ref [] in
+          (*TODO check preds for contradiction*)
+          Array.iteri (fun i x -> if x = 0.0 && i <> idx then zeros := i :: !zeros) dist;
+          (List.map (fun x -> (idx, x) )!zeros) @ acc
+      )
+      shortest_path
+      []
+  in
+  (*check which are equals (dist = 0 both direction) *)
+  let implied_equalities = List.filter (fun (a,b) -> (a < b) && List.mem (b,a) at_distance_0) at_distance_0 in
+    List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)) ) implied_equalities
 
-let propagations t =
+let t_propagations t =
   (*TODO double shortest path forward/backward
    * if need to propagate constraint, one call per unassigned constraint
    *)
+  (*TODO store changes in stack*)
   (* similar to propagations for NO *)
   failwith "TODO"
 
