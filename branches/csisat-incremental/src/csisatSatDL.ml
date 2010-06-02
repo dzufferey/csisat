@@ -44,6 +44,10 @@ module Matrix  = CsisatMatrix
  * by Scott Cotton and Oded Maler
  *)
 
+(* fin an elegant way of getting ride of the strict constraints.
+ * see: A Schrijver, Theory of Linear and Integer Programming, John Wiley and Sons, NY, 1987
+ *)
+
 (* TODO need something like a binary heap / fibbonaci heap / bordal queue
  * a binary heap should be sufficient to start.
  * In the mean time, it is possible o use a set of pairs (priority, id).
@@ -92,8 +96,7 @@ module PQueue =
 type potential_fct = float array (*'-satisfying' assignment*)
 type status = Unassigned
             | Assigned (* but not propagated *)
-            | Propagated
-            | Consequence (* a consequence of Propagated constraints *)
+            | Consequence (* a consequence of an Assigned constraints *)
 type kind = Equal | LessEq | LessStrict
 type strictness = Strict | NonStrict
 type domain = Integer | Real
@@ -208,6 +211,167 @@ let eval potential_fct x = potential_fct.(x)
 let is_sat t =
   failwith "TODO"
 
+(*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
+let sssp size successors source =
+  let dist = Array.make size max_float in
+  let pred = Array.make size [] in
+  let pq = PQueue.empty max_float in
+    PQueue.add pq source 0.0 ;
+    dist.(source) <- 0.0;
+    while not (PQueue.is_empty pq) do
+      let (d, idx) = PQueue.get_min pq in
+        PQueue.remove pq idx;
+        List.iter
+          (fun (c, idx') ->
+            let d' = d +. c in
+              if d' < dist.(idx') then
+                begin
+                  dist.(idx') <- d';
+                  pred.(idx') <- [idx];
+                  PQueue.add pq idx' d'
+                end
+              else if d' = dist.(idx') then
+                begin
+                  pred.(idx') <- idx :: pred.(idx');
+                end
+
+          )
+          (successors idx)
+    done;
+    (dist, pred)
+
+let strongest lst =
+  (* TODO if strict && domain = Real then put some small k *)
+  let is_stronger (d1, _, _) d2 = min d1 d2 in
+  let dist (d, _, _) = d in
+    List.fold_left
+      (fun acc x -> match acc with
+        | Some y -> Some (is_stronger x y)
+        | None -> Some (dist x)
+      )
+      None
+      (List.filter active_constraint lst)
+
+(*build the successors function for sssp using lazy elements*)
+let lazy_successors t =
+  let size = Array.length t.assignment in
+  let successors_lists =
+    Array.init
+      size
+      (fun idx ->
+        lazy (
+          snd (Array.fold_left
+            (fun (idx', acc) lst ->
+              ( idx' + 1,
+                Utils.maybe
+                  (* use assign to speed-up the process (Johnson algorithm):
+                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
+                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
+                  (lazy acc)
+                  (strongest lst)
+              )
+            )
+            (0, [])
+            (t.edges.(idx)))
+        )
+      )
+  in
+    (fun x -> Lazy.force successors_lists.(x))
+
+(*build the predecessor function for sssp using lazy elements*)
+let lazy_predecessors t =
+  let size = Array.length t.assignment in
+  let preds_lists =
+    Array.init
+      size
+      (fun idx ->
+        lazy (
+          snd (Array.fold_left
+            (fun (idx', acc) lst ->
+              ( idx' + 1,
+                Utils.maybe
+                  (* use assign to speed-up the process (Johnson algorithm):
+                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
+                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
+                  (lazy acc)
+                  (strongest lst.(idx))
+              )
+            )
+            (0, [])
+            (t.edges))
+        )
+      )
+  in
+    (fun x -> Lazy.force preds_lists.(x))
+
+(*propagating equalities for NO*)
+let propagations t exprs =
+  (*TODO double shortest path forward/backward (TODO only double!!!)
+   * if need to propagate constraint, one call per unassigned constraint
+   * to test for equality: |var| calls at most (assignment different should be a sufficient condition to reject)
+   *)
+  let size = Array.length t.assignment in
+  let successors = lazy_successors t in
+  let shortest_path =
+    List.fold_left
+      (fun acc exp ->
+        match exp with
+        | Variable var ->
+          let idx = StringMap.find var t.var_to_id in
+            IntMap.add idx (sssp size successors idx) acc
+        | _ -> failwith "SatDL, propagations: expceted variables")
+      IntMap.empty
+      exprs 
+  in
+  (*TODO check if there is a contradiction *)
+  let at_distance_0 =
+    IntMap.fold
+      (fun idx (dist, _) acc ->
+        let zeros = ref [] in
+          (*TODO check preds for contradiction if domain = Real *)
+          Array.iteri (fun i x -> if x = 0.0 && i <> idx then zeros := i :: !zeros) dist;
+          (List.map (fun x -> (idx, x) )!zeros) @ acc
+      )
+      shortest_path
+      []
+  in
+  (*check which are equals (dist = 0 both direction) *)
+  let implied_equalities = List.filter (fun (a,b) -> (a < b) && List.mem (b,a) at_distance_0) at_distance_0 in
+    List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)) ) implied_equalities
+
+let t_propagations t (x, y, c) =
+  (*TODO much better: only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
+  let size = Array.length t.assignment in
+  let successors = lazy_successors t in
+  let predecessors = lazy_predecessors t in
+  let shortest_x, _ = sssp size predecessors x in
+  let shortest_y, _ = sssp size successors y in
+  (*TODO test for each unassigned constraints test*)
+  let changed = ref [] in
+    Array.iteri
+      (fun i row ->
+        Array.iteri
+          (fun j lst ->
+            let modif = ref false in
+            let lst' =
+              List.map
+                (fun ((d, strict, status) as cstr) ->
+                  if status = Unassigned && strict = Strict && shortest_x.(i) +. c +. shortest_y.(j) <= d then
+                    begin
+                      changed := (i, j, cstr) :: !changed;
+                      (d, strict, Consequence)
+                    end
+                  else
+                     cstr
+                )
+                lst
+            in
+              if !modif then t.edges.(i).(j) <- lst'
+          )
+          row)
+      t.edges;
+    !changed
+
 (** Assume only push on a sat system *)
 let push t pred =
   let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
@@ -252,6 +416,7 @@ let push t pred =
                 PQueue.add pq s 0.0;
                 List.iter
                   (fun (t,(c,strict,status)) ->
+                    (* TODO if strict && domain = Real then put some small k *)
                     if status <> Unassigned && pi t = pi' t then
                       let gamma' = pi' s +. c -. pi t in
                         if gamma' < (PQueue.get_priority pq t) then
@@ -277,10 +442,12 @@ let push t pred =
     | LessEq -> set_true t.assignment v1 v2 c NonStrict
     | LessStrict -> set_true t.assignment v1 v2 c Strict
   in
-    (*TODO check that the strict constraint are OK (and do the propagation) *)
-    Stack.push (pred, t.assignment, changes) t.history;
+  (*TODO check that the strict constraint are OK (and do the propagation) *)
+  let old_assign = t.assignment in
     t.assignment <- fct;
-    sat
+    let changes' = t_propagations t (v1, v2, c) in
+      Stack.push (pred, old_assign, changes @ changes') t.history;
+      sat
 
 (*undo changes (stored in stack)*)
 let pop t =
@@ -297,112 +464,6 @@ let pop t =
           t.edges.(v1).(v2) <- old
       )
       changes
-
-(*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
-let sssp size successors source =
-  let dist = Array.make size max_float in
-  let pred = Array.make size [] in
-  let pq = PQueue.empty max_float in
-    PQueue.add pq source 0.0 ;
-    dist.(source) <- 0.0;
-    while not (PQueue.is_empty pq) do
-      let (d, idx) = PQueue.get_min pq in
-        PQueue.remove pq idx;
-        List.iter
-          (fun (c, idx') ->
-            let d' = d +. c in
-              if d' < dist.(idx') then
-                begin
-                  dist.(idx') <- d';
-                  pred.(idx') <- [idx];
-                  PQueue.add pq idx' d'
-                end
-              else if d' = dist.(idx') then
-                begin
-                  pred.(idx') <- idx :: pred.(idx');
-                end
-
-          )
-          (successors idx)
-    done;
-    (dist, pred)
-  
-
-(*propagating equalities for NO*)
-let propagations t exprs =
-  (*TODO double shortest path forward/backward
-   * if need to propagate constraint, one call per unassigned constraint
-   * to test for equality: |var| calls at most (assignment different should be a sufficient condition to reject)
-   *)
-  let size = Array.length t.assignment in
-  let strongest lst =
-    let is_stronger (d1, _, _) d2 = min d1 d2 in
-    let dist (d, _, _) = d in
-      List.fold_left
-        (fun acc x -> match acc with
-          | Some y -> Some (is_stronger x y)
-          | None -> Some (dist x)
-        )
-        None
-        (List.filter active_constraint lst)
-  in
-  (*build the successors function for sssp using lazy elements*)
-  let successors_lists =
-    Array.init
-      size
-      (fun idx ->
-        lazy (
-          snd (Array.fold_left
-            (fun (idx', acc) lst ->
-              ( idx' + 1,
-                Utils.maybe
-                  (* use assign to speed-up the process (like Johnson algorithm):
-                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
-                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
-                  (lazy acc)
-                  (strongest lst)
-              )
-            )
-            (0, [])
-            (t.edges.(idx)))
-        )
-      )
-  in
-  let successors x = Lazy.force successors_lists.(x) in
-  let shortest_path =
-    List.fold_left
-      (fun acc exp ->
-        match exp with
-        | Variable var ->
-          let idx = StringMap.find var t.var_to_id in
-            IntMap.add idx (sssp size successors idx) acc
-        | _ -> failwith "SatDL, propagations: expeted variables")
-      IntMap.empty
-      exprs 
-  in
-  (*TODO check if there is a contradiction *)
-  let at_distance_0 =
-    IntMap.fold
-      (fun idx (dist, _) acc ->
-        let zeros = ref [] in
-          (*TODO check preds for contradiction*)
-          Array.iteri (fun i x -> if x = 0.0 && i <> idx then zeros := i :: !zeros) dist;
-          (List.map (fun x -> (idx, x) )!zeros) @ acc
-      )
-      shortest_path
-      []
-  in
-  (*check which are equals (dist = 0 both direction) *)
-  let implied_equalities = List.filter (fun (a,b) -> (a < b) && List.mem (b,a) at_distance_0) at_distance_0 in
-    List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)) ) implied_equalities
-
-let t_propagations t =
-  (*TODO double shortest path forward/backward
-   * if need to propagate constraint, one call per unassigned constraint
-   *)
-  (*TODO store changes in stack*)
-  (* similar to propagations for NO *)
-  failwith "TODO"
 
 (*info: but for the contradiction, cannot do much.*)
 let unsat_core_with_info t = failwith "TODO"
