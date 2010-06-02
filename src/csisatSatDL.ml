@@ -340,13 +340,13 @@ let propagations t exprs =
     List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)) ) implied_equalities
 
 let t_propagations t (x, y, c) =
-  (*TODO much better: only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
+  (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
   let size = Array.length t.assignment in
   let successors = lazy_successors t in
   let predecessors = lazy_predecessors t in
   let shortest_x, _ = sssp size predecessors x in
   let shortest_y, _ = sssp size successors y in
-  (*TODO test for each unassigned constraints test*)
+  (*test for each unassigned constraints test*)
   let changed = ref [] in
     Array.iteri
       (fun i row ->
@@ -445,7 +445,10 @@ let push t pred =
   (*TODO check that the strict constraint are OK (and do the propagation) *)
   let old_assign = t.assignment in
     t.assignment <- fct;
-    let changes' = t_propagations t (v1, v2, c) in
+    let changes' = match kind with
+      | Equal -> (t_propagations t (v1, v2, c)) @ (t_propagations t (v2, v1, -1. *.c))
+      | _ -> t_propagations t (v1, v2, c)
+   in
       Stack.push (pred, old_assign, changes @ changes') t.history;
       sat
 
