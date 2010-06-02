@@ -804,31 +804,35 @@ let keep_EUF pred = match pred with
   | Leq _ -> false
   | err -> failwith ("keep_EUF: unexpected "^(print_pred err))
 
+(*TODO DL*)
 let keep theories pred =
   let test t = match t with
     | EUF -> keep_EUF pred
-    | LA -> keep_LA pred
+    | LA | DL -> keep_LA pred
   in
     List.exists test theories
 
+(*TODO DL*)
 let is_pred_root_symbol_only theories pred =
   let test t = match t with
     | EUF -> is_pred_UIF pred
-    | LA -> is_pred_LI pred
+    | LA | DL -> is_pred_LI pred
   in
     List.exists test theories
 
+(*TODO DL*)
 let is_expr_root_symbol_only theories expr =
   let test t = match t with
     | EUF -> is_expr_UIF_only expr
-    | LA -> is_expr_LI_only expr
+    | LA | DL -> is_expr_LI_only expr
   in
     List.exists test theories
 
+(*TODO DL*)
 let has_only theories pred =
   let test t = match t with
     | EUF -> has_UIF_only pred
-    | LA -> has_LI_only pred
+    | LA | DL -> has_LI_only pred
   in
     List.exists test theories
 
@@ -843,6 +847,12 @@ let put_theory_split_variables rev_defs pred =
   let fct_expr x = if ExprMap.mem x rev_defs then ExprMap.find x rev_defs else x in
   let fct_pred x = x in
     map_all_bottom_up fct_pred fct_expr pred
+
+let theory_split_prefix = "fresh_split_var"
+
+let it_theory_split_variable v = match v with
+  | Variable str -> Str.string_match (Str.regexp ("^"^theory_split_prefix)) str 0
+  | _ -> false
 
 (** Splits a formula into separate theories.
  *  This methods works only for the conjunctive fragment.
@@ -867,7 +877,7 @@ let split_formula_t1_t2 t1 t2 pred =
     with Not_found ->
       begin
         split_counter := 1 + !split_counter;
-        let v = Variable ("fresh_split_var"^(string_of_int !split_counter)) in
+        let v = Variable (theory_split_prefix^(string_of_int !split_counter)) in
           Hashtbl.add expr_to_var expr v;
           defs := (order_eq (Eq(expr, v)))::!defs;
           assoc := ExprMap.add v expr !assoc;

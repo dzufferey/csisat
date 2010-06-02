@@ -96,17 +96,19 @@ module PQueue =
 type potential_fct = float array (*'-satisfying' assignment*)
 type status = Unassigned
             | Assigned (* but not propagated *)
-            | Consequence (* a consequence of an Assigned constraints *)
+            | Consequence of predicate list (* a consequence of an Assigned constraints *)
 type kind = Equal | LessEq | LessStrict
 type strictness = Strict | NonStrict
 type domain = Integer | Real
-type edge_content = float * strictness * status
+type edge_content = float * strictness * status * predicate
 type edge = int * int * edge_content
+type sat = Sat | UnSat of predicate * predicate list * predicate list (* contradiction, predicate, theory deduction that are required to derive Not contradiction *)
 
 type t = {
   domain: domain;
   var_to_id: int StringMap.t;
   id_to_expr: expression IntMap.t;
+  mutable status: sat;
   mutable assignment: potential_fct;
   history: (predicate * potential_fct * (edge list)) Stack.t;
   edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
@@ -172,15 +174,15 @@ let create domain preds =
     PredSet.iter
       (fun p -> match normalize_dl domain var_to_id p with
         | (Equal, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, NonStrict, Unassigned) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned) :: edges.(v2).(v1)
+          edges.(v1).(v2) <- (  c, NonStrict, Unassigned, p) :: edges.(v1).(v2);
+          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned, p) :: edges.(v2).(v1)
           (*No negation for =*)
         | (LessEq, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, NonStrict, Unassigned) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, Strict, Unassigned) :: edges.(v2).(v1) (*negation*)
+          edges.(v1).(v2) <- (  c, NonStrict, Unassigned, p) :: edges.(v1).(v2);
+          edges.(v2).(v1) <- (-.c, Strict, Unassigned, p) :: edges.(v2).(v1) (*negation*)
         | (LessStrict, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, Strict, Unassigned) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned) :: edges.(v2).(v1) (*negation*)
+          edges.(v1).(v2) <- (  c, Strict, Unassigned, p) :: edges.(v1).(v2);
+          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned, p) :: edges.(v2).(v1) (*negation*)
       )
       (get_literal_set (And preds));
     (* z_0 = 0 ? *)
@@ -188,12 +190,13 @@ let create domain preds =
       domain = domain;
       var_to_id = var_to_id;
       id_to_expr = id_to_expr;
+      status = Sat;
       assignment = first_assign;
       history = history;
       edges = edges
     }
 
-let active_constraint (_,_,status) = match status with Unassigned -> false | _ -> true
+let active_constraint (_,_,status,_) = match status with Unassigned -> false | _ -> true
 
 let get_successors edges x =
   let succ = ref [] in
@@ -208,13 +211,12 @@ let get_successors edges x =
 
 let eval potential_fct x = potential_fct.(x)
 
-let is_sat t =
-  failwith "TODO"
+let is_sat t = match t.status with Sat -> true | _ -> false
 
 (*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
 let sssp size successors source =
   let dist = Array.make size max_float in
-  let pred = Array.make size [] in
+  let pred = Array.make size (-1) in
   let pq = PQueue.empty max_float in
     PQueue.add pq source 0.0 ;
     dist.(source) <- 0.0;
@@ -227,13 +229,15 @@ let sssp size successors source =
               if d' < dist.(idx') then
                 begin
                   dist.(idx') <- d';
-                  pred.(idx') <- [idx];
+                  pred.(idx') <- idx;
                   PQueue.add pq idx' d'
                 end
-              else if d' = dist.(idx') then
+              (*
+              else if d' < dist.(idx') then
                 begin
                   pred.(idx') <- idx :: pred.(idx');
                 end
+              *)
 
           )
           (successors idx)
@@ -242,8 +246,8 @@ let sssp size successors source =
 
 let strongest lst =
   (* TODO if strict && domain = Real then put some small k *)
-  let is_stronger (d1, _, _) d2 = min d1 d2 in
-  let dist (d, _, _) = d in
+  let is_stronger (d1, _, _, _) d2 = min d1 d2 in
+  let dist (d, _, _, _) = d in
     List.fold_left
       (fun acc x -> match acc with
         | Some y -> Some (is_stronger x y)
@@ -292,7 +296,7 @@ let lazy_predecessors t =
                 Utils.maybe
                   (* use assign to speed-up the process (Johnson algorithm):
                    * new weight are for x -c-> y is pi(x) + c - pi(y) *)
-                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
+                  (fun x -> (-1. *. (t.assignment.(idx) +. x -. t.assignment.(idx')), idx')::acc)
                   (lazy acc)
                   (strongest lst.(idx))
               )
@@ -319,7 +323,7 @@ let propagations t exprs =
         | Variable var ->
           let idx = StringMap.find var t.var_to_id in
             IntMap.add idx (sssp size successors idx) acc
-        | _ -> failwith "SatDL, propagations: expceted variables")
+        | _ -> failwith "SatDL, propagations: expected variables")
       IntMap.empty
       exprs 
   in
@@ -339,13 +343,33 @@ let propagations t exprs =
   let implied_equalities = List.filter (fun (a,b) -> (a < b) && List.mem (b,a) at_distance_0) at_distance_0 in
     List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)) ) implied_equalities
 
-let t_propagations t (x, y, c) =
+let t_propagations t (x, y, c) pred =
   (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
   let size = Array.length t.assignment in
   let successors = lazy_successors t in
   let predecessors = lazy_predecessors t in
-  let shortest_x, _ = sssp size predecessors x in
-  let shortest_y, _ = sssp size successors y in
+  let shortest_x, pred_x = sssp size predecessors x in
+  let shortest_y, pred_y = sssp size successors y in
+  let rec path_from_to pred source target =
+    if pred.(target) <> -1
+    then pred.(target) :: (path_from_to pred source (pred.(target)))
+    else [source]
+  in
+  let rec path_to_pairs lst = match lst with
+    | x :: y :: xs -> (x,y) :: path_to_pairs (y::xs)
+    | _ -> []
+  in
+  let strongest_for_pair (x,y) =
+    let lst = List.filter active_constraint t.edges.(x).(y) in
+      assert(lst <> []);
+      let (_,_,_,p) =
+        List.fold_left
+          (fun ((c,_,_,_) as c1) ((c',_,_,_) as c2) -> if c' < c then c2 else c1)
+          (List.hd lst)
+          (List.tl lst)
+      in
+        p
+  in
   (*test for each unassigned constraints test*)
   let changed = ref [] in
     Array.iteri
@@ -355,11 +379,16 @@ let t_propagations t (x, y, c) =
             let modif = ref false in
             let lst' =
               List.map
-                (fun ((d, strict, status) as cstr) ->
+                (fun ((d, strict, status, p) as cstr) ->
                   if status = Unassigned && strict = Strict && shortest_x.(i) +. c +. shortest_y.(j) <= d then
                     begin
-                      changed := (i, j, cstr) :: !changed;
-                      (d, strict, Consequence)
+                      (*x -> i, j -> y, pred*)
+                      let x_to_i = List.map strongest_for_pair (path_to_pairs (List.rev (path_from_to pred_x x i))) in
+                      let j_to_y = List.map strongest_for_pair (path_to_pairs (path_from_to pred_y y j)) in
+                      (*TODO check that path implies the constraint *)
+                      let path = pred :: (x_to_i @ j_to_y) in
+                        changed := (i, j, cstr) :: !changed;
+                        (d, strict, Consequence path, p)
                     end
                   else
                      cstr
@@ -379,7 +408,7 @@ let push t pred =
     (* check if it is already an active constraint *)
     let already =
       List.exists
-        (fun ((c',s,_) as cstr) -> c = c' && s = strictness && active_constraint cstr)
+        (fun ((c',s,_,p) as cstr) -> c = c' && s = strictness && active_constraint cstr)
         t.edges.(v1).(v2)
     in
       if already then (true, t.assignment, [])
@@ -392,15 +421,15 @@ let push t pred =
           (* set the constraint status (and weaker constraints as consequences (trivial propagation))*)
           let changes, new_edges =
             List.fold_left
-              (fun (acc_c, acc_e) ((c', strictness', status) as cstr) ->
+              (fun (acc_c, acc_e) ((c', strictness', status, p) as cstr) ->
                 if c = c' && strictness = strictness' then
                   begin
-                    let cstr' = (c', strictness', Assigned) in
+                    let cstr' = (c', strictness', Assigned, p) in
                       ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
                   end
                 else if status = Unassigned && (c < c' || (c = c' && strictness = Strict)) then
                   begin
-                    let cstr' = (c', strictness', Consequence) in
+                    let cstr' = (c', strictness', Consequence [pred], p) in
                       ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
                   end
                 else (acc_c, cstr :: acc_e)
@@ -415,7 +444,7 @@ let push t pred =
                 new_assign.(s) <- pi s +. gamma_s;
                 PQueue.add pq s 0.0;
                 List.iter
-                  (fun (t,(c,strict,status)) ->
+                  (fun (t,(c,strict,status,_)) ->
                     (* TODO if strict && domain = Real then put some small k *)
                     if status <> Unassigned && pi t = pi' t then
                       let gamma' = pi' s +. c -. pi t in
@@ -445,11 +474,26 @@ let push t pred =
   (*TODO check that the strict constraint are OK (and do the propagation) *)
   let old_assign = t.assignment in
     t.assignment <- fct;
-    let changes' = match kind with
-      | Equal -> (t_propagations t (v1, v2, c)) @ (t_propagations t (v2, v1, -1. *.c))
-      | _ -> t_propagations t (v1, v2, c)
-   in
+    (* Do the propagation *)
+    let changes' =
+      if sat then
+        match kind with
+        | Equal -> (t_propagations t (v1, v2, c) pred) @ (t_propagations t (v2, v1, -1. *.c) pred)
+        | _ -> t_propagations t (v1, v2, c) pred
+      else []
+    in
+      (* if unsat then find a small explanation *)
+      if not sat then
+        begin
+          (*TODO 
+           * if there is a contradiction when adding x -c-> y then
+           * there must be an negative cycle that goes comprise the x -c-> y edge.
+           * We need to find that cycle.
+           *)
+          failwith "TODO"
+        end;
       Stack.push (pred, old_assign, changes @ changes') t.history;
+      (*TODO changes' can be returned to the core solver for propagation to the sat solver (but need short explanation) *)
       sat
 
 (*undo changes (stored in stack)*)
@@ -457,18 +501,22 @@ let pop t =
   let (_, assign, changes) = Stack.pop t.history in 
     t.assignment <- assign;
     List.iter
-      (fun (v1, v2, (c, strict, status)) ->
+      (fun (v1, v2, (c, strict, status, p)) ->
         let current = t.edges.(v1).(v2) in
         let old =
           List.map
-            (fun (c', strict', status') -> if c = c' && strict = strict' then (c, strict, status) else (c', strict', status') )
+            (fun (c', strict', status', p') -> if c = c' && strict = strict' && p = p' then (c, strict, status, p) else (c', strict', status', p') )
             current
         in
           t.edges.(v1).(v2) <- old
       )
-      changes
+      changes;
+    t.status <- Sat
 
 (*info: but for the contradiction, cannot do much.*)
-let unsat_core_with_info t = failwith "TODO"
+let unsat_core_with_info t =
+  match t.status with
+  | Sat -> failwith "SatDL: unsat_core_with_info on a SAT system"
+  | UnSat (pred, given, deduced) -> (And(pred :: given), DL, deduced)
 
 let unsat_core t = let (p,_,_) = unsat_core_with_info t in p
