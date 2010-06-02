@@ -26,6 +26,8 @@
 (** Ordered sets represented as lists.
  * This module is inspired from the Sicstus/SWI prolog library with the same name.
  *)
+
+type 'a t = 'a list
   
 let remove_duplicates lst =
   let rec process last acc lst = match lst with

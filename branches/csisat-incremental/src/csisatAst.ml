@@ -35,6 +35,7 @@
 type theory =
   | EUF (** equality with uninterpreted function symbols (also referred as UIF)*)
   | LA  (** linear arithmetic (also referred as LI)*)
+  | DL  (** difference logic *)
 
 (** variable or uninterpreted fct*)
 type symbol = string

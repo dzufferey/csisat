@@ -31,6 +31,8 @@ COMPILE_FLAG = -inline 10
 #COMPILE_FLAG = -inline 10 -unsafe -noassert
 #COMPILE_FLAG = -p
 OCAML_LD_FLAGS = 
+OCAML_LD_LIB = str.cma
+OCAML_OPT_LD_LIB = str.cmxa
 
 
 FILES = \
@@ -72,7 +74,7 @@ OCAML_LIB = libcsisat
 
 
 all: glpk pico picosat server $(FILES) $(MAIN) lib
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(FILES) $(MAIN)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat-632/libpicosat.a $(OCAML_OPT_LD_LIB) $(FILES) $(MAIN)
 	$(shell sed -i 's/Version .*\\n\\n/Version 1.2 (Rev REV, Build DATE)\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svnversion)
@@ -146,11 +148,12 @@ lib: $(LIB)/$(OCAML_LIB).cma $(LIB)/$(OCAML_LIB).cmxa
 $(LIB)/$(OCAML_LIB).cma: $(OCAML_LIB_OBJ:%=%.cmo)
 	@echo Creating OCAML \(byte code\) library $@
 	@mkdir -p $(LIB)
-	$(OCAML_LD) $(OCAML_LD_FLAGS) -a -o $@ $(patsubst %.cmx, %.cmo, $(FILES))
+	$(OCAML_LD) $(OCAML_LD_FLAGS) -a -o $@ $(OCAML_LD_LIB) $(patsubst %.cmx, %.cmo, $(FILES))
 
 $(LIB)/$(OCAML_LIB).cmxa $(LIB)/$(OCAML_LIB).a: $(OCAML_LIB_OBJ:%=%.cmx)
 	@echo Creating OCAML \(native code\) library $@
 	@mkdir -p $(LIB)
+	#$(OCAML_OPT_LD) $(OCAML_LD_FLAGS) -a -o $@ $(OCAML_OPT_LD_LIB) $(FILES)
 	$(OCAML_OPT_LD) $(OCAML_LD_FLAGS) -a -o $@ $(FILES)
 
 .PHONY: doc server
