@@ -854,6 +854,10 @@ let it_theory_split_variable v = match v with
   | Variable str -> Str.string_match (Str.regexp ("^"^theory_split_prefix)) str 0
   | _ -> false
 
+let to_conjunctive_list p = match p with
+  | And lst -> lst
+  | elt -> [elt]
+
 (** Splits a formula into separate theories.
  *  This methods works only for the conjunctive fragment.
  * @return a formula in t1, in t2, and a set of shared variable:
@@ -969,10 +973,6 @@ let split_formula_t1_t2 t1 t2 pred =
   let p_lst = OrdSet.list_to_ordSet (match (process_p pred) with
     | And lst -> lst @ !defs
     | e -> e::!defs)
-  in
-  let to_conjunctive_list p = match p with
-    | And lst -> lst
-    | elt -> [elt]
   in
   match (List.exists (has_only t1) p_lst, List.exists (has_only t2) p_lst) with
   | (true, true) ->
