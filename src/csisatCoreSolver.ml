@@ -256,7 +256,7 @@ module CoreSolver =
         List.exists
           (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
-      )    
+      )
 
     let euf_t_deductions dag =
       let rec inspect_stack () =
@@ -297,9 +297,41 @@ module CoreSolver =
           failwith "CoreSolver, euf_lemma_with_info: system is sat!"
       in
         euf_lemma_with_info_for dag (c1,c2)
-    (* end of EUF *)
     
-    let is_theory_consistent t = is_euf_sat t (*TODO DL*)
+    (*TODO for NO EQ propagation *)
+    let euf_propagations dag shared =
+      let rec inspect_stack () =
+        if Stack.is_empty dag.stack then []
+        else
+          begin
+            let t = Stack.pop dag.stack in
+            let ans = match t with
+              | StackTDeduction (_, EUF, old1, old2) -> (old1, old2) :: (inspect_stack ())
+              | StackInternal _ -> inspect_stack ()
+              | _ -> []
+            in
+              Stack.push t dag.stack;
+              ans
+          end
+      in
+      let candidates = inspect_stack () in
+      (*TODO determine which thing are equal now because of the congruence. *)
+        failwith "TODO"
+    (* end of EUF *)
+
+    (* DL *)
+    let dl_lemma_with_info_for t pred =
+      SatDL.justify t.dl pred
+
+    let dl_lemma_with_info_for t =
+      SatDL.unsat_core_with_info t.dl
+
+    let is_dl_ sat t = SatDL.is_sat t.dl
+    (* end of DL *)
+
+    let is_theory_consistent t =
+          is_euf_sat t
+      &&  is_euf_sat t
 
     (* has a satisfiable assignement *)
     let is_sat t = t.sat_solver#is_sat && is_theory_consistent t
@@ -308,9 +340,12 @@ module CoreSolver =
     let is_consistent t = t.sat_solver#is_consistent && is_theory_consistent t
 
     let rec propagate t =
+      (* TODO make equvalence classes of shared var, pick one representative per class *)
+      (* ask EUF for new EQ *)
+      let euf_deductions = euf_propagations t t.shared in
+      (* ask DL for new EQ *)
+      let dl_deductions = SatDL.propagations t.dl t.shared in
       (*TODO Nelson Oppen:
-       * ask EUF for new EQ
-       * ask DL for new EQ
        * ...
        *)
       failwith "TODO"
@@ -564,7 +599,7 @@ module CoreSolver =
           )
           (PredSet.elements unassigned)
       in
-        (*TODO adding clauses should ne lead to contradictions *)
+        (*TODO adding clauses should not lead to contradictions *)
         implied
 
     (** Conjunction to blocking clause *)
@@ -678,7 +713,15 @@ module CoreSolver =
       (* end of EUF *)
       (* DL *)
       (*TODO check that it really is only DL*)
-      let dl_solver = SatDL.create SatDL.Integer la_formula in
+      (* add the equalities among shared variables => cheaper T-propagation checking *)
+      let possible_deduction =
+        OrdSet.list_to_ordSet (
+          Utils.map_filter 
+            ( fun (x, y) -> if x <> y then Some (order_eq (Eq (x,y))) else None)
+            (Utils.cartesian_product shared shared))
+      in
+      let extended_la_formula = to_conjunctive_list (normalize (And (possible_deduction @ la_formula))) in
+      let dl_solver = SatDL.create SatDL.Integer extended_la_formula in
       (* end of DL *)
 
       let graph = {
