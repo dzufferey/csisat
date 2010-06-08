@@ -45,11 +45,12 @@ module SatDL   = CsisatSatDL
 (** The different changes that can happen in the system *)
 type find_t =  Leader of PredSet.t * PredSet.t (*all given predicates, all congruences*)
             |  Member of int (*representative is int*)
-type sat_changes = Equal of (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* 2 x (id,find,ccpar) *)
+type node_info = int * find_t * IntSet.t (* (id, find, ccpar) *)
+type sat_changes = Equal of node_info * node_info (* information to restore previous state *)
                  | ImplyNotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
                  | SentToTheory of theory * predicate (* what was sent to which solver *)
 type change = StackSat of predicate * sat_changes list (* predicate given by sat solver *)
-            | StackTDeduction of predicate * theory * (int * find_t * IntSet.t) * (int * find_t * IntSet.t) (* theory deduction (one equality) TODO how to extend this to non convex theories *)
+            | StackTDeduction of predicate * theory * node_info * node_info (* theory deduction (one equality) TODO how to extend this to non convex theories*)
             | StackInternal of (int * find_t) list (* path compression: (id, old find) list *)
 
 module Node =
@@ -250,6 +251,15 @@ module CoreSolver =
 
     let get dag i = dag.nodes.(i)
     let get_node dag expr = ExprMap.find expr dag.expr_to_node
+    let get_node_info dag i =
+      let n = get dag i in
+        (n.Node.id, n.Node.find, n.Node.ccpar)
+
+    (* restore some node_info *)
+    let undo dag (id, find, parent) =
+      let n = get dag id in
+        n.Node.find <- find;
+        n.Node.ccpar <- parent
 
     let is_euf_sat dag =
       not (
@@ -300,6 +310,8 @@ module CoreSolver =
     
     (*TODO for NO EQ propagation *)
     let euf_propagations dag shared =
+      (* TODO needs an undo/redo system *)
+      (*
       let rec inspect_stack () =
         if Stack.is_empty dag.stack then []
         else
@@ -314,9 +326,55 @@ module CoreSolver =
               ans
           end
       in
-      let candidates = inspect_stack () in
-      (*TODO determine which thing are equal now because of the congruence. *)
-        failwith "TODO"
+      *)
+      let rec to_last_deduction () = match Stack.pop dag.stack with
+        | StackTDeduction (_, EUF, (id1, f1, c1), (id2, f2, c2)) ->
+          begin
+            let old1 = (id1, f1, c1) in
+            let old2 = (id2, f2, c2) in
+            let current1 = get_node_info dag id1 in
+            let current2 = get_node_info dag id2 in
+              undo dag old1;
+              undo dag old2;
+              Some (current1, current2)
+          end
+        | StackInternal lst ->
+          begin
+            List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
+            to_last_deduction ()
+          end
+        | _ -> None
+      in
+      let are_equal exprs_pairs =
+        List.filter
+          (fun (a,b) ->
+            (Node.find (get dag a)).Node.id = (Node.find (get dag b)).Node.id
+          )
+          exprs_pairs
+      in
+      let all_equals =
+        let to_test = Utils.cartesian_product dag.shared dag.shared in
+        let as_nodes = List.map (fun (a, b) -> ((get_node dag a).Node.id, (get_node dag b).Node.id)) to_test in
+        let equals = List.filter (fun (a,b) -> a < b ) as_nodes in
+          are_equal equals
+      in
+      (*determines which thing are equal now because of the new congruences (newer to older)*)
+      let rec new_equalities equals =
+        match to_last_deduction () with
+        | Some (restore1, restore2) ->
+          begin
+            let old_equals = are_equal equals in
+            let new_equals = List.filter (fun x -> not (List.mem x old_equals)) equals in
+            let recurse = new_equalities old_equals in
+            (*TODO prune using cc from old_equals*)
+              undo dag restore1;
+              undo dag restore2;
+              new_equals :: recurse
+          end
+        | None -> []
+      in
+      let deductions = List.flatten (new_equalities all_equals) in
+        List.map (fun (a,b) -> order_eq (Eq ((get dag a).Node.expr, (get dag b).Node.expr))) deductions
     (* end of EUF *)
 
     (* DL *)
@@ -375,7 +433,7 @@ module CoreSolver =
         let n2 = get_node t e2 in
         let n1' = Node.find n1 in
         let n2' = Node.find n2 in
-        let euf_change = Equal ((n1'.Node.id, n1'.Node.find, n1'.Node.ccpar), (n2'.Node.id, n2'.Node.find, n2'.Node.ccpar)) in
+        let euf_change = Equal (get_node_info t n1'.Node.id, get_node_info t n2'.Node.id) in
           Node.merge n1 n2;
           Some (is_euf_sat t, euf_change)
       with Not_found -> None
@@ -467,15 +525,10 @@ module CoreSolver =
         end
 
     let pop dag =
-      let undo (id, find, parent) =
-        let n = get dag id in
-          n.Node.find <- find;
-          n.Node.ccpar <- parent
-      in
       let undo_change c = match c with
         | Equal (old1,old2) ->
-          undo old1;
-          undo old2
+          undo dag old1;
+          undo dag old2
         | ImplyNotEqual (id1, id2) ->
           let (id1', id2') = List.hd dag.neqs in
           let t = List.tl dag.neqs in
@@ -515,8 +568,8 @@ module CoreSolver =
                   | DL -> SatDL.pop dag.dl
                   | LA -> failwith "CoreSolver, StackTDeduction: LA"
                 end;
-              undo old1;
-              undo old2;
+              undo dag old1;
+              undo dag old2;
               process ()
           end
       in
