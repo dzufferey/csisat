@@ -167,6 +167,10 @@ let edges_to_graph_not_directed edges =
       ) edges;
     graph
 
+let get_scc_undirected_graph edges =
+  let graph = edges_to_graph_not_directed edges in
+    failwith "TODO"
+
 (* build the list of primes *)
 let prime_list n =
   let rec is_prime lst_prime x =
