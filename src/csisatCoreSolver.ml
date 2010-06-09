@@ -406,6 +406,7 @@ module CoreSolver =
     let is_consistent t = t.sat_solver#is_consistent && is_theory_consistent t
 
     let add_and_test_neq t e1 e2 =
+      Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf_neq " ^ (print_expr e1) ^ ", " ^ (print_expr e2)));
       try
         let n1 = get_node t e1 in
         let n2 = get_node t e2 in
@@ -414,6 +415,7 @@ module CoreSolver =
       with Not_found -> None
 
     let add_and_test_dl t pred =
+      Message.print Message.Debug (lazy("CoreSolver: add_and_test_dl " ^ (print_pred pred)));
       try
         let dl_consistent = SatDL.push t.dl pred in
           Some (dl_consistent, SentToTheory (DL, pred))
@@ -425,6 +427,7 @@ module CoreSolver =
         end
 
     let add_and_test_euf_eq t e1 e2 =
+      Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf_eq " ^ (print_expr e1) ^ ", " ^ (print_expr e2)));
       try
         let n1 = get_node t e1 in
         let n2 = get_node t e2 in
@@ -435,7 +438,9 @@ module CoreSolver =
           Some (is_euf_sat t, euf_change)
       with Not_found -> None
     
-    let add_and_test_euf t pred = match pred with
+    let add_and_test_euf t pred =
+      Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf " ^ (print_pred pred)));
+      match pred with
       | Eq (e1, e2) -> add_and_test_euf_eq t e1 e2
       | Not (Eq (e1, e2)) -> add_and_test_neq t e1 e2
       | _ -> failwith "CoreSolver: add_and_test_euf"
@@ -510,7 +515,7 @@ module CoreSolver =
       (* abstract pred since it did not get through the theory split *)
       let pred' = put_theory_split_variables dag.rev_definitions pred in
       (*TODO other theories and NO*)
-      Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred) ^ " == " ^ (print_pred pred')));
+      Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred)));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
       else
         begin
