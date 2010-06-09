@@ -148,10 +148,13 @@ let rec normalize_dl domain map pred =
   in
   let (v1,c1) = decompose_expr e1 in
   let (v2,c2) = decompose_expr e2 in
-    adapt_domain domain (kind, StringMap.find v1 map, StringMap.find v2 map, c2 -. c1)
+  let id1 = StringMap.find v1 map in
+  let id2 = StringMap.find v2 map in
+    adapt_domain domain (kind, id1, id2, c2 -. c1)
 
 (*assume purified formula*)
 let create domain preds =
+  Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (print_pred (And preds))));
   let vars = get_var (And preds) in
   let vars =
     List.map
@@ -329,6 +332,7 @@ let lazy_predecessors t =
 
 (*propagating equalities for NO*)
 let propagations t shared =
+  Message.print Message.Debug (lazy("SatDL: propagations on " ^ (String.concat "," (List.map print_expr shared))));
   (* Assume the equalities are given at the beginning, just need to check if they are marked as Consequence
    * which means no sssp. *)
   (*look at the stack, get the changes from the last assignments *)
@@ -357,6 +361,7 @@ let propagations t shared =
     PredSet.elements (List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty equalities)
 
 let t_propagations t (x, y, c) pred =
+  Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (print_pred pred)));
   (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
   let size = Array.length t.assignment in
   let successors = lazy_successors t in
@@ -396,6 +401,7 @@ let t_propagations t (x, y, c) pred =
 
 (*undo changes (stored in stack)*)
 let pop t =
+  Message.print Message.Debug (lazy("SatDL: pop"));
   let (_, assign, changes) = Stack.pop t.history in 
     t.assignment <- assign;
     List.iter
@@ -413,8 +419,10 @@ let pop t =
 
 (** Assume only push on a sat system *)
 let push t pred =
+  Message.print Message.Debug (lazy("SatDL: pushing " ^ (print_pred pred)));
   let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
   let set_true old_assign v1 v2 c strictness =
+    Message.print Message.Debug (lazy("SatDL: set_true '" ^ (string_of_int v1) ^ "' - '" ^ (string_of_int v2) ^ "' <= " ^(string_of_float c)));
     (* check if it is already an active constraint *)
     let already =
       List.exists
@@ -447,6 +455,7 @@ let push t pred =
               ([], [])
               t.edges.(v1).(v2)
           in
+            (*TODO there is a Not_found somewhere around*)
             t.edges.(v1).(v2) <- new_edges;
             PQueue.add pq v2 (pi v1 +. c -. pi v2);
             while fst (PQueue.get_min pq) < 0.0 && PQueue.get_priority pq v1 = 0.0 do
