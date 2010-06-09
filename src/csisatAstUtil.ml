@@ -32,6 +32,11 @@ module Utils   = CsisatUtils
 module OrdSet  = CsisatOrdSet
 (**/**)
 
+let string_of_theory th = match th with
+  | EUF -> "EUF"
+  | LA  -> "LA"
+  | DL  -> "DL"
+
 let rec print_expr expr = match expr with
   | Constant cst -> Utils.my_string_of_float cst
   | Variable v -> v
