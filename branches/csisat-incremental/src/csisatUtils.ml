@@ -22,8 +22,12 @@
  *    http://www.cs.sfu.ca/~dbeyer/CSIsat/
  *)
 
-(** General methods that are independent from other parts.
+(** General methods that are mostly independent from other parts.
  *)
+
+(**/**)
+module OrdSet = CsisatOrdSet
+(**/**)
 
 module Int =
   struct
@@ -169,7 +173,19 @@ let edges_to_graph_not_directed edges =
 
 let get_scc_undirected_graph edges =
   let graph = edges_to_graph_not_directed edges in
-    failwith "TODO"
+  let rec get_class_of x =
+    if Hashtbl.mem graph x then
+      begin
+        let neighbours = OrdSet.list_to_ordSet (Hashtbl.find graph x) in
+          Hashtbl.remove graph x;
+          List.fold_left (fun acc x -> OrdSet.union acc (get_class_of x)) [x] neighbours
+      end
+    else
+      []
+  in
+  let keys = Hashtbl.fold (fun k _ acc -> k::acc) graph [] in
+  let ccs = List.map get_class_of keys in
+    List.filter (fun lst -> lst <> []) ccs
 
 (* build the list of primes *)
 let prime_list n =

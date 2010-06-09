@@ -49,9 +49,11 @@ type node_info = int * find_t * IntSet.t (* (id, find, ccpar) *)
 type sat_changes = Equal of node_info * node_info (* information to restore previous state *)
                  | ImplyNotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
                  | SentToTheory of theory * predicate (* what was sent to which solver *)
-type change = StackSat of predicate * sat_changes list (* predicate given by sat solver *)
-            | StackTDeduction of predicate * theory * node_info * node_info (* theory deduction (one equality) TODO how to extend this to non convex theories*)
+type change = StackSat of predicate (* predicate given by sat solver *)
+            | StackEUFDeduction of predicate * node_info * node_info (* theory deduction (one equality) TODO how to extend this to non convex theories*)
             | StackInternal of (int * find_t) list (* path compression: (id, old find) list *)
+            | StackNO of predicate * theory
+            | StackChanges of sat_changes list
 
 module Node =
   struct
@@ -186,7 +188,7 @@ module Node =
       let other_to_stack a b changed_a changed_b =
         Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (print_pred (mk_eq a b))));
         Stack.push
-          (StackTDeduction (mk_eq a b, EUF, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
+          (StackEUFDeduction (mk_eq a b, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
       in
       let rec process to_stack pred congruence this that =
@@ -275,7 +277,7 @@ module CoreSolver =
           begin
             let t = Stack.pop dag.stack in
             let ans = match t with
-              | StackTDeduction (t_eq, EUF, _, _) -> t_eq :: (inspect_stack ())
+              | StackEUFDeduction (t_eq, _, _) -> t_eq :: (inspect_stack ())
               | _ -> inspect_stack ()
             in
               Stack.push t dag.stack;
@@ -308,27 +310,10 @@ module CoreSolver =
       in
         euf_lemma_with_info_for dag (c1,c2)
     
-    (*TODO for NO EQ propagation *)
+    (*for NO EQ propagation, use an undo/redo system *)
     let euf_propagations dag shared =
-      (* TODO needs an undo/redo system *)
-      (*
-      let rec inspect_stack () =
-        if Stack.is_empty dag.stack then []
-        else
-          begin
-            let t = Stack.pop dag.stack in
-            let ans = match t with
-              | StackTDeduction (_, EUF, old1, old2) -> (old1, old2) :: (inspect_stack ())
-              | StackInternal _ -> inspect_stack ()
-              | _ -> []
-            in
-              Stack.push t dag.stack;
-              ans
-          end
-      in
-      *)
       let rec to_last_deduction () = match Stack.pop dag.stack with
-        | StackTDeduction (_, EUF, (id1, f1, c1), (id2, f2, c2)) ->
+        | (StackEUFDeduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
           begin
             let old1 = (id1, f1, c1) in
             let old2 = (id2, f2, c2) in
@@ -336,7 +321,7 @@ module CoreSolver =
             let current2 = get_node_info dag id2 in
               undo dag old1;
               undo dag old2;
-              Some (current1, current2)
+              Some (top, current1, current2)
           end
         | StackInternal lst ->
           begin
@@ -361,15 +346,38 @@ module CoreSolver =
       (*determines which thing are equal now because of the new congruences (newer to older)*)
       let rec new_equalities equals =
         match to_last_deduction () with
-        | Some (restore1, restore2) ->
+        | Some (top, restore1, restore2) ->
           begin
             let old_equals = are_equal equals in
             let new_equals = List.filter (fun x -> not (List.mem x old_equals)) equals in
-            let recurse = new_equalities old_equals in
-            (*TODO prune using cc from old_equals*)
-              undo dag restore1;
-              undo dag restore2;
-              new_equals :: recurse
+            (*prune using cc from old_equals*)
+            let old_cc = Utils.get_scc_undirected_graph old_equals in
+            let node_to_cc = Hashtbl.create (List.length dag.shared) in
+              List.iter
+                (fun cc ->
+                  let representative = List.hd cc in
+                    List.iter (fun x -> Hashtbl.add node_to_cc x representative) cc
+                )
+                old_cc;
+              let get_representative = Hashtbl.find node_to_cc in
+              let new_equals_pruned =
+                let replaced =
+                  List.map
+                    (fun (a,b) ->
+                      let rep_a = get_representative a in
+                      let rep_b = get_representative b in
+                        if rep_a <= rep_b then (rep_a, rep_b) else (rep_b, rep_a)
+                    )
+                    new_equals
+                in
+                  OrdSet.list_to_ordSet replaced
+              in
+              let recurse = new_equalities old_equals in
+                (* restore previous status *)
+                undo dag restore1;
+                undo dag restore2;
+                Stack.push top dag.stack;
+                new_equals_pruned :: recurse
           end
         | None -> []
       in
@@ -384,29 +392,18 @@ module CoreSolver =
     let dl_lemma_with_info_for t =
       SatDL.unsat_core_with_info t.dl
 
-    let is_dl_ sat t = SatDL.is_sat t.dl
+    let is_dl_sat t = SatDL.is_sat t.dl
     (* end of DL *)
 
     let is_theory_consistent t =
           is_euf_sat t
-      &&  is_euf_sat t
+      &&  is_dl_sat t
 
     (* has a satisfiable assignement *)
     let is_sat t = t.sat_solver#is_sat && is_theory_consistent t
 
     (* partially sat / no explicit contradiction *)
     let is_consistent t = t.sat_solver#is_consistent && is_theory_consistent t
-
-    let rec propagate t =
-      (* TODO make equvalence classes of shared var, pick one representative per class *)
-      (* ask EUF for new EQ *)
-      let euf_deductions = euf_propagations t t.shared in
-      (* ask DL for new EQ *)
-      let dl_deductions = SatDL.propagations t.dl t.shared in
-      (*TODO Nelson Oppen:
-       * ...
-       *)
-      failwith "TODO"
 
     let add_and_test_neq t e1 e2 =
       try
@@ -437,16 +434,88 @@ module CoreSolver =
           Node.merge n1 n2;
           Some (is_euf_sat t, euf_change)
       with Not_found -> None
+    
+    let add_and_test_euf t pred = match pred with
+      | Eq (e1, e2) -> add_and_test_euf_eq t e1 e2
+      | Not (Eq (e1, e2)) -> add_and_test_neq t e1 e2
+      | _ -> failwith "CoreSolver: add_and_test_euf"
+
+    let undo_change dag c = match c with
+      | Equal (old1,old2) ->
+        undo dag old1;
+        undo dag old2
+      | ImplyNotEqual (id1, id2) ->
+        let (id1', id2') = List.hd dag.neqs in
+        let t = List.tl dag.neqs in
+          assert (Global.is_off_assert() || (id1 = id1' && id2 = id2'));
+          dag.neqs <- t
+      | SentToTheory (th, pred) ->
+        begin
+          match th with
+          | DL -> SatDL.pop dag.dl
+          | LA -> failwith "CoreSolver: SentToTheory LA"
+          | EUF -> failwith "CoreSolver: SentToTheory EUF"
+        end
+    let undo_changes dag lst = List.iter (undo_change dag) lst
+    
+    (* this is shady business with the order of events (StackInternal) and the pop/undo *)
+    let rec insert_changes dag changes = match Stack.top dag.stack with
+      | StackNO _ | StackSat _ -> Stack.push changes dag.stack
+      | _ ->
+        begin
+          let t = Stack.pop dag.stack in
+            insert_changes dag changes;
+            Stack.push t dag.stack
+        end
+
+
+    let rec propagate t sat =
+      (* ask EUF for new EQ *)
+      let euf_deductions = euf_propagations t t.shared in
+      (* ask DL for new EQ *)
+      let dl_deductions = SatDL.propagations t.dl t.shared in
+      (* Nelson Oppen: *)
+      let t1_to_t2 th1 fct2 lst acc =
+        List.fold_left
+          (fun sat pred ->
+            if sat then
+              begin
+                (*push on stack first *)
+                Stack.push (StackNO (pred, th1)) t.stack;
+                match fct2 pred with
+                | Some (sat, change) ->
+                  begin
+                    insert_changes t (StackChanges [change]);
+                    sat
+                  end
+                | None -> failwith "CoreSolver: shared variables not shared ?!"
+              end
+            else
+              false
+          )
+          acc
+          lst
+      in
+      (* first DL -> EUF *)
+      let dl_to_euf = t1_to_t2 DL (add_and_test_euf t) dl_deductions sat in
+      (* then EUF -> DL *)
+      let euf_to_dl = t1_to_t2 EUF (add_and_test_dl t) euf_deductions dl_to_euf in
+        (* if there was some propagation -> rec call *)
+        if euf_to_dl && (dl_deductions <> [] || euf_deductions <> [])
+        then propagate t euf_to_dl
+        else euf_to_dl
 
     (*TODO make code cleaner with 'maybe' *)
     let push dag pred =
-      (*TODO should abstract pred since it did not get through the theory split *)
+      (* abstract pred since it did not get through the theory split *)
       let pred' = put_theory_split_variables dag.rev_definitions pred in
       (*TODO other theories and NO*)
       Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred) ^ " == " ^ (print_pred pred')));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
       else
         begin
+          (*push on stack first *)
+          Stack.push (StackSat pred) dag.stack;
           match pred' with
           | Eq(e1,e2) ->
             begin
@@ -465,25 +534,19 @@ module CoreSolver =
                   res, changes
               in
                 assert(changes' <> []);
-                Stack.push
-                  (StackSat (pred,  changes'))
-                  dag.stack;
-                res'
-                (*TODO NO*)
+                insert_changes dag (StackChanges changes');
+                (*NO*)
+                propagate dag res'
             end
           | Not (Eq(e1,e2)) ->
             begin
               match add_and_test_neq dag e1 e2 with
               | Some (status, changed) ->
-                Stack.push (StackSat (pred, [changed])) dag.stack;
+                insert_changes dag (StackChanges [changed]);
                 status
               | None -> failwith "CoreSolver: NEQ not found"
             end
-          | Atom (Internal _) | Not (Atom (Internal _)) ->
-            begin
-              Stack.push (StackSat (pred, [])) dag.stack;
-              true
-            end
+          | Atom (Internal _) | Not (Atom (Internal _)) -> true
           | Leq (_, _) ->
             begin
               let dl_consistent, dl_change =
@@ -491,11 +554,9 @@ module CoreSolver =
                 | Some (res, chg) -> (res, chg)
                 | None -> failwith "CoreSolver: Leq not in DL ??"
               in
-                (*TODO NO*)
-                Stack.push
-                  (StackSat (pred,  [dl_change]))
-                  dag.stack;
-                dl_consistent
+                insert_changes dag (StackChanges [dl_change]);
+                (*NO*)
+                propagate dag dl_consistent
             end
           | Lt (e1, e2) ->
             begin
@@ -515,33 +576,14 @@ module CoreSolver =
                 else
                   (res, changes)
               in
-                (*TODO NO*)
-                Stack.push
-                  (StackSat (pred, changes'))
-                  dag.stack;
-                res;
+                insert_changes dag (StackChanges changes');
+                (*NO*)
+                propagate dag res
             end
           | _ -> failwith "TODO: more theories"
         end
 
     let pop dag =
-      let undo_change c = match c with
-        | Equal (old1,old2) ->
-          undo dag old1;
-          undo dag old2
-        | ImplyNotEqual (id1, id2) ->
-          let (id1', id2') = List.hd dag.neqs in
-          let t = List.tl dag.neqs in
-            assert (Global.is_off_assert() || (id1 = id1' && id2 = id2'));
-            dag.neqs <- t
-        | SentToTheory (th, pred) ->
-          begin
-            match th with
-            | DL -> SatDL.pop dag.dl
-            | LA -> failwith "CoreSolver: SentToTheory LA"
-            | EUF -> failwith "CoreSolver: SentToTheory EUF"
-          end
-      in
       let rec process () =
         if Stack.is_empty dag.stack then
           failwith "CoreSolver: pop called on an empty stack"
@@ -549,28 +591,34 @@ module CoreSolver =
           begin
             let t = Stack.pop dag.stack in
               match t with
+              | StackSat pred -> (* predicate given by sat solver *)
+                begin
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (print_pred pred)))
+                end
               | StackInternal lst ->
                 begin
                   Message.print Message.Debug (lazy("CoreSolver: pop StackInternal"));
                   List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
                   process ()
                 end
-              | StackSat (pred, sat_changes) -> (* predicate given by sat solver *)
+              | StackChanges sat_changes ->
                 begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (print_pred pred)));
-                  List.iter undo_change sat_changes
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackChanges"));
+                  undo_changes dag sat_changes;
+                  process ()
                 end
-              | StackTDeduction (pred, theory, old1, old2) ->
+              | StackEUFDeduction (pred, old1, old2) ->
                 begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackTDeduction " ^ (print_pred pred)));
-                  match theory with
-                  | EUF -> () (*nothing more to do*)
-                  | DL -> SatDL.pop dag.dl
-                  | LA -> failwith "CoreSolver, StackTDeduction: LA"
-                end;
-              undo dag old1;
-              undo dag old2;
-              process ()
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackEUFDeduction " ^ (print_pred pred)));
+                  undo dag old1;
+                  undo dag old2;
+                  process ()
+                end
+              | StackNO (pred, th) ->
+                begin
+                  Message.print Message.Debug (lazy("CoreSolver: pop StackNO " ^ (print_pred pred) ^ " from " ^(string_of_theory th)));
+                  process ()
+                end
           end
       in
         process ()
@@ -596,7 +644,7 @@ module CoreSolver =
         let p = ref PredSet.empty in
           Stack.iter
             (fun c -> match c with
-              | StackSat (lit, _) ->
+              | StackSat lit ->
                 p := PredSet.union (get_proposition_set lit) !p
               | _ -> ()
             )

@@ -69,6 +69,8 @@ let union a b =
   in
     process [] a b
 
+let add a b = union [a] b
+
 let intersection a b =
   let rec process acc a b = match (a,b) with
     | (_,[]) -> (List.rev acc)
