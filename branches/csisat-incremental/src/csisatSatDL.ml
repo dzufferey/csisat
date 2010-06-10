@@ -124,6 +124,54 @@ type t = {
 
 let _z_0 = "__ZERO__"
 let z_0 = Variable _z_0
+let z_0_c = Constant 0.0
+
+let to_string t =
+  let buffer = Buffer.create 1000 in
+  let add = Buffer.add_string buffer in
+    add ("DL solver over "^(if t.domain = Real then "R" else "Z")^" :\n");
+    add "  variables: ";
+    StringMap.iter (fun k v -> add (k^"("^(string_of_int v)^"),")) t.var_to_id;
+    add "\n";
+    begin
+      match t.status with
+      | Sat ->
+        begin
+          add "  status: sat\n";
+          add "  assignment: sat\n";
+          Array.iteri
+            (fun i v ->
+              add ((print_expr (IntMap.find i t.id_to_expr))^"="^(string_of_float (v -. t.assignment.(0)))^",")
+            )
+            t.assignment;
+          add "\n";
+        end
+      | UnSat (ctr, core) ->
+        begin
+          add "  status: unsat\n";
+          add ("    contradiction: "^(print_pred ctr)^"\n");
+          add ("    reason: "^(String.concat ", " (List.map print_pred core))^"\n")
+        end
+    end;
+    add "  constraints:  ";
+    Array.iteri
+      (fun x row ->
+        Array.iteri
+          (fun y lst ->
+            let xs = print_expr (IntMap.find x t.id_to_expr) in
+            let ys = print_expr (IntMap.find y t.id_to_expr) in
+            let print (c,str,status,pred) = match status with
+              | Unassigned -> ()
+              | Assigned -> add ("(Given)"^xs^" - "^ys^" <="^(string_of_float c)^", ")
+              | Consequence _ -> add ("(Conseq.)"^xs^" - "^ys^" <="^(string_of_float c)^", ")
+            in
+              List.iter print lst
+          )
+          row
+      )
+      t.edges;
+    add "\n";
+    Buffer.contents buffer
 
 (*TODO if use integers then no need for strict constraint.*)
 (*
@@ -174,7 +222,7 @@ let create domain preds =
   let (n, var_to_id, id_to_expr) = (*n is #vars + 1*)
     List.fold_left
       (fun (i, acc, acc2) v -> (i+1, StringMap.add v i acc, IntMap.add i (Variable v) acc2))
-      (1, StringMap.add _z_0 0 StringMap.empty, IntMap.add 0 z_0 IntMap.empty)
+      (1, StringMap.add _z_0 0 StringMap.empty, IntMap.add 0 z_0_c IntMap.empty)
       vars
   in
   let history = Stack.create () in
