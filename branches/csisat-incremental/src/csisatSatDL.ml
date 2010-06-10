@@ -73,10 +73,16 @@ module PQueue =
       priorities = IntMap.empty
     }
 
-    let get_min pq = PSet.min_elt pq.queue
-    let get_priority pq idx = try IntMap.find idx pq.priorities with Not_found -> pq.cutoff
+    let get_min pq =
+      (*Message.print Message.Debug (lazy("SatDL, PQueue: get_min"));*)
+      PSet.min_elt pq.queue (*this raise Not_found if the set is empty*)
+
+    let get_priority pq idx =
+      (*Message.print Message.Debug (lazy("SatDL, PQueue: get_priority of " ^ (string_of_int idx)));*)
+      try IntMap.find idx pq.priorities with Not_found -> pq.cutoff
 
     let add pq idx priority =
+      (*Message.print Message.Debug (lazy("SatDL, PQueue: add "^(string_of_int idx)^" -> " ^ (string_of_float priority)));*)
       let old_p = try IntMap.find idx pq.priorities with Not_found -> pq.cutoff in
       let q'  = if old_p < pq.cutoff then PSet.remove (old_p, idx) pq.queue else pq.queue in
       let q'' = if priority < pq.cutoff then PSet.add (priority, idx) q' else q' in
@@ -84,11 +90,13 @@ module PQueue =
         pq.priorities <- IntMap.add idx priority pq.priorities
 
     let remove pq idx =
+      (*Message.print Message.Debug (lazy("SatDL, PQueue: remove " ^ (string_of_int idx)));*)
       try pq.queue <- PSet.remove (IntMap.find idx pq.priorities, idx) pq.queue
       with Not_found -> ();
       pq.priorities <- IntMap.remove idx pq.priorities
 
     let is_empty pq =
+      (*Message.print Message.Debug (lazy("SatDL, PQueue: is_empty"));*)
       PSet.is_empty pq.queue
       
   end
@@ -218,6 +226,7 @@ let is_sat t = match t.status with Sat -> true | _ -> false
 
 (*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
 let sssp size successors source =
+  Message.print Message.Debug (lazy("SatDL: sssp from " ^ (string_of_int source)));
   let dist = Array.make size max_float in
   let pred = Array.make size (-1) in
   let pq = PQueue.empty max_float in
@@ -260,8 +269,9 @@ let strongest lst =
       (List.filter active_constraint lst)
 
 let rec path_from_to pred source target =
+  Message.print Message.Debug (lazy("SatDL: path from '" ^ (string_of_int source) ^ "' to '" ^ (string_of_int target)^"'"));
   if pred.(target) <> -1
-  then pred.(target) :: (path_from_to pred source (pred.(target)))
+  then target :: (path_from_to pred source (pred.(target)))
   else [source]
         
 let rec path_to_pairs lst = match lst with
@@ -269,6 +279,7 @@ let rec path_to_pairs lst = match lst with
   | _ -> []
 
 let strongest_for_pair t (x,y) =
+  Message.print Message.Debug (lazy("SatDL: strongest_for_pair '" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y)^"'"));
   let lst = List.filter active_constraint t.edges.(x).(y) in
   let (_,_,_,p) =
     List.fold_left
@@ -455,10 +466,9 @@ let push t pred =
               ([], [])
               t.edges.(v1).(v2)
           in
-            (*TODO there is a Not_found somewhere around*)
             t.edges.(v1).(v2) <- new_edges;
             PQueue.add pq v2 (pi v1 +. c -. pi v2);
-            while fst (PQueue.get_min pq) < 0.0 && PQueue.get_priority pq v1 = 0.0 do
+            while not (PQueue.is_empty pq) && PQueue.get_priority pq v1 = 0.0 do
               let (gamma_s, s) = PQueue.get_min pq in
                 new_assign.(s) <- pi s +. gamma_s;
                 PQueue.add pq s 0.0;
@@ -519,7 +529,9 @@ let push t pred =
           let successors = lazy_successors t in
           let size = Array.length t.assignment in
           let shortest_y, pred_y = sssp size successors v2 in
-          let y_to_x = List.map (strongest_for_pair t) (path_to_pairs (List.rev (path_from_to pred_y v2 v1))) in
+          let path = List.rev (path_from_to pred_y v2 v1) in
+          Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
+          let y_to_x = List.map (strongest_for_pair t) (path_to_pairs path) in
           (*redo the changes (but no propagation)*)
           let sat, fct, changes = process_pred () in
           let old_assign = t.assignment in
