@@ -598,7 +598,7 @@ let push t pred =
 
 let rec get_given t p =
   let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in
-  let (c, strict, status, p) = List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2)) in
+  let process_edge (c, strict, status, p) = 
     match status with
     | Unassigned -> failwith "SatDL, unsat_core_with_info: Unassigned"
     | Assigned -> (PredSet.empty, PredSet.singleton p)
@@ -608,6 +608,19 @@ let rec get_given t p =
         let d' = PredSet.add p d in
           (d', g)
       end
+  in
+  let edges = match k with
+    | Equal ->
+      [ List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2)) ;
+        List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v2).(v1)) ]
+    | _ -> [List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2))]
+  in
+  let processed_edges = List.map process_edge edges in
+    List.fold_left
+      (fun (a1, a2) (b1, b2) -> (PredSet.union a1 b1, PredSet.union a2 b2))
+      (PredSet.empty, PredSet.empty)
+      processed_edges
+
 and get_given_lst t lst =
   List.fold_left
     (fun (acc1, acc2) p ->
@@ -627,10 +640,29 @@ let order_deductions t set =
   let inspect (_, _, lst) =
     List.iter inspect_edge lst
   in
+  (*when there are equalities, only keep the last*)
+  let rec eq_both_direction acc lst = match lst with
+    | ((Eq (e1,e2)) as x)::xs ->
+      begin
+        let (ys, seen) = eq_both_direction (PredSet.add x acc) xs in
+        let zs =
+          if PredSet.mem x seen
+          then (assert(not (PredSet.mem x acc)); x::ys)
+          else ys
+        in
+          (zs, PredSet.add x seen)
+      end
+    | x::xs ->
+      begin
+        let (ys, seen) = eq_both_direction acc xs in
+          (x::ys, seen)
+      end
+    | [] -> ([], PredSet.empty)
+  in
     Stack.iter inspect t.history;
-    (*TODO when there are equalities, only keep the last*)
-    assert(List.length !ordered = PredSet.cardinal set);
-    !ordered
+    let single, _ = eq_both_direction PredSet.empty !ordered in
+    assert(List.length single = PredSet.cardinal set);
+    single
 
 let justify t pred =
   let deductions, given = get_given t pred in

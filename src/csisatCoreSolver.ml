@@ -128,9 +128,10 @@ module Node =
           Stack.push (StackInternal !path_compression) (this.events);
         result
 
-    let get_find_predicates n = match n.find with
+    let get_find_predicates_find f = match f with
       | Leader (p1,p2) -> (p1,p2)
       | Member _ -> failwith "get_find_predicates: only for leaders"
+    let get_find_predicates n = get_find_predicates_find n.find
 
 
     (*val union: t -> t -> (t * t)*)
@@ -270,14 +271,16 @@ module CoreSolver =
           dag.neqs
       )
 
-    let euf_t_deductions dag =
+    let euf_t_deductions dag below =
+      let l = ref (Stack.length dag.stack) in
       let rec inspect_stack () =
         if Stack.is_empty dag.stack then []
         else
           begin
+            l := !l - 1;
             let t = Stack.pop dag.stack in
             let ans = match t with
-              | StackEUFDeduction (t_eq, _, _) -> t_eq :: (inspect_stack ())
+              | StackEUFDeduction (t_eq, _, _) when !l < below -> t_eq :: (inspect_stack ())
               | _ -> inspect_stack ()
             in
               Stack.push t dag.stack;
@@ -286,19 +289,22 @@ module CoreSolver =
       in
         inspect_stack ()
 
-    let euf_lemma_with_info_for dag (c1, c2) =
-      let given1, congr1 = Node.get_find_predicates (Node.find (get dag c1)) in
-      let given2, congr2 = Node.get_find_predicates (Node.find (get dag c2)) in
-      let raw_congruences = euf_t_deductions dag in
+    let euf_mk_lemma dag contradiction (given1, congr1) (given2, congr2) decision_level =
+      let raw_congruences = euf_t_deductions dag decision_level in
       let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
       let needed_congruences = PredSet.inter all_congruences (PredSet.union congr1 congr2) in
       let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
       let info = List.map (fun x -> (x,EUF)) congruences in
-      let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
       (*TODO improve raw core, not everything is needed*)
       let raw_core = PredSet.union given1 given2 in
       let core = contradiction :: (PredSet.elements raw_core) in
         (And core, contradiction, EUF, info)
+
+    let euf_lemma_with_info_for dag (c1, c2) =
+      let find1 = Node.get_find_predicates (Node.find (get dag c1)) in
+      let find2 = Node.get_find_predicates (Node.find (get dag c2)) in
+      let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
+       euf_mk_lemma dag contradiction find1 find2 (Stack.length dag.stack)
 
     let euf_lemma_with_info dag =
       let (c1,c2) = try
@@ -309,8 +315,29 @@ module CoreSolver =
           failwith "CoreSolver, euf_lemma_with_info: system is sat!"
       in
         euf_lemma_with_info_for dag (c1,c2)
+
+    (* justify a congruence *)
+    let euf_justify t pred =
+      let rec find () =
+        if Stack.is_empty t.stack then
+          failwith ("CoreSolver, euf_justify: not a congruence " ^ (print_pred pred))
+        else
+          begin
+            let top = Stack.pop t.stack in
+            let ans = match top with
+              | StackEUFDeduction (t_eq, o1, o2) when t_eq = pred -> (Stack.length t.stack, o1, o2)
+              | _ -> find ()
+            in
+              Stack.push top t.stack;
+              ans
+          end
+      in
+      let (decision_level, (_, f1, _), (_, f2, _)) = find () in
+        (*find the right propagation (and below, then get reason)*)
+        euf_mk_lemma t (Not pred) (Node.get_find_predicates_find f1) (Node.get_find_predicates_find f2) decision_level
     
-    (*for NO EQ propagation, use an undo/redo system *)
+    (* for NO EQ propagation, use an undo/redo system
+     * TODO needs to remember which congruence is responsible for an eq *)
     let euf_propagations dag shared =
       let rec to_last_deduction () = match Stack.pop dag.stack with
         | (StackEUFDeduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
@@ -514,7 +541,7 @@ module CoreSolver =
     let push dag pred =
       (* abstract pred since it did not get through the theory split *)
       let pred' = put_theory_split_variables dag.rev_definitions pred in
-      (*TODO other theories and NO*)
+      (*TODO other theories *)
       Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred)));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
       else
@@ -636,8 +663,10 @@ module CoreSolver =
        * 3) for each NO that appears in the core -> justify (recursively)
        *)
       (*TODO justify from last to oldest *)
-      let justify pred =
-        failwith "TODO"
+      let justify (pred, th) = match th with
+        | EUF -> euf_justify t pred
+        | DL -> SatDL.justify t.dl pred
+        | _ -> failwith "CoreSolver, theory_lemma: more theory"
       in
       let (core, pred, th, deductions) = 
         match (is_euf_sat t, is_dl_sat t) with
