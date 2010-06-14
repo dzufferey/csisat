@@ -327,7 +327,6 @@ let rec path_to_pairs lst = match lst with
   | _ -> []
 
 let strongest_for_pair t (x,y) =
-  Message.print Message.Debug (lazy("SatDL: strongest_for_pair '" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y)^"'"));
   let lst = List.filter active_constraint t.edges.(x).(y) in
   let (_,_,_,p) =
     List.fold_left
@@ -335,6 +334,7 @@ let strongest_for_pair t (x,y) =
       (List.hd lst)
       (List.tl lst)
   in
+    Message.print Message.Debug (lazy("SatDL: strongest_for_pair '" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y)^"' is "^(print_pred p)));
     p
 
 (*build the successors function for sssp using lazy elements*)
@@ -578,13 +578,18 @@ let push t pred =
           let size = Array.length t.assignment in
           let shortest_y, pred_y = sssp size successors v2 in
           let path = List.rev (path_from_to pred_y v2 v1) in
-          Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
           let y_to_x = List.map (strongest_for_pair t) (path_to_pairs path) in
           (*redo the changes (but no propagation)*)
           let sat, fct, changes = process_pred () in
           let old_assign = t.assignment in
             (* check that the distance y to x is less then x to y. *)
-            assert(shortest_y.(v1) +. c < 0.0);
+            (*
+            Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
+            Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
+            Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
+            Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
+            *)
+            assert(old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c < 0.0);
             t.assignment <- fct;
             Stack.push (pred, old_assign, changes) t.history;
             t.status <- UnSat (pred, y_to_x)
@@ -612,10 +617,25 @@ and get_given_lst t lst =
     (PredSet.empty, PredSet.empty)
     lst
 
+(* order the deductions by looking into the stack *)
+let order_deductions t set =
+  let ordered = ref [] in
+  let inspect_edge (_,_,(_,_,status,pred)) =
+    if status = Unassigned && PredSet.mem pred set then
+      ordered := pred :: !ordered
+  in
+  let inspect (_, _, lst) =
+    List.iter inspect_edge lst
+  in
+    Stack.iter inspect t.history;
+    (*TODO when there are equalities, only keep the last*)
+    assert(List.length !ordered = PredSet.cardinal set);
+    !ordered
+
 let justify t pred =
   let deductions, given = get_given t pred in
-    (*TODO order the deductions ?? *)
-    (And(pred :: (PredSet.elements given)), pred, DL, PredSet.elements deductions)
+  let odeductions = order_deductions t deductions in
+    (And(pred :: (PredSet.elements given)), pred, DL, List.map (fun x -> (x,DL)) odeductions)
 
 (*info: but for the contradiction, cannot do much.*)
 let unsat_core_with_info t =
@@ -624,8 +644,8 @@ let unsat_core_with_info t =
   | UnSat (pred, preds) ->
     begin
         let deductions, given = get_given_lst t preds in
-          (*TODO order the deductions ?? *)
-          (And(pred :: (PredSet.elements given)), pred, DL, PredSet.elements deductions)
+        let odeductions = order_deductions t deductions in
+          (And(pred :: (PredSet.elements given)), pred, DL, List.map (fun x -> (x,DL)) odeductions)
     end
 
 let unsat_core t = let (p,_,_,_) = unsat_core_with_info t in p
