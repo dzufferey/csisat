@@ -389,7 +389,7 @@ module CoreSolver =
     let dl_lemma_with_info_for t pred =
       SatDL.justify t.dl pred
 
-    let dl_lemma_with_info_for t =
+    let dl_lemma_with_info t =
       SatDL.unsat_core_with_info t.dl
 
     let is_dl_sat t = SatDL.is_sat t.dl
@@ -629,7 +629,23 @@ module CoreSolver =
         process ()
 
     (* blocking clause *)
-    let theory_lemma t = euf_lemma_with_info t (*TODO DL*)
+    let theory_lemma t =
+      (*TODO this is more complex, i.e. NO
+       * 1) determine which theory has a contradiction
+       * 2) get the core
+       * 3) for each NO that appears in the core -> justify (recursively)
+       *)
+      (*TODO justify from last to oldest *)
+      let justify pred =
+        failwith "TODO"
+      in
+      let (core, pred, th, deductions) = 
+        match (is_euf_sat t, is_dl_sat t) with
+        | (true, _) -> euf_lemma_with_info t
+        | (_, true) -> dl_lemma_with_info t
+        | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
+      in
+        failwith "TODO"
 
     let rec to_theory_solver t lst = match lst with
       | x::xs ->
