@@ -126,6 +126,16 @@ let _z_0 = "__ZERO__"
 let z_0 = Variable _z_0
 let z_0_c = Constant 0.0
 
+let copy t = 
+  { domain = t.domain;
+    var_to_id = t.var_to_id;
+    id_to_expr = t.id_to_expr;
+    status = t.status;
+    assignment = t.assignment;
+    history = Stack.copy t.history;
+    edges = Array.map Array.copy t.edges
+  }
+
 let to_string t =
   let buffer = Buffer.create 1000 in
   let add = Buffer.add_string buffer in
@@ -395,29 +405,33 @@ let propagations t shared =
   (* Assume the equalities are given at the beginning, just need to check if they are marked as Consequence
    * which means no sssp. *)
   (*look at the stack, get the changes from the last assignments *)
-  let (_, _, old_edges) = Stack.top t.history in
-  let relevent_changes = (* pairs of a,b such that a <= b *)
-    Utils.map_filter
-      (fun (a, b, (c, _, _, _)) ->
-        let a' = IntMap.find a t.id_to_expr in
-        let b' = IntMap.find b t.id_to_expr in
-          if c = 0.0 && List.mem a' shared && List.mem b' shared then Some (a, b) else None
-      )
-      old_edges
-  in
-  (*check that b <= a holds *)
-  let check_entailed b a =
-    let active_lst = List.filter active_constraint t.edges.(b).(a) in
-    let equal_lst = List.filter (fun (c,_,_,_) -> c = 0.0) active_lst in
-      equal_lst <> []
-  in
-  let equals = List.filter (fun (a,b) -> check_entailed b a) relevent_changes in
-  let equalities =
-    List.map
-      (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)))
-      equals
-  in
-    PredSet.elements (List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty equalities)
+  if Stack.is_empty t.history then []
+  else
+    begin
+      let (_, _, old_edges) = Stack.top t.history in
+      let relevent_changes = (* pairs of a,b such that a <= b *)
+        Utils.map_filter
+          (fun (a, b, (c, _, _, _)) ->
+            let a' = IntMap.find a t.id_to_expr in
+            let b' = IntMap.find b t.id_to_expr in
+              if c = 0.0 && List.mem a' shared && List.mem b' shared then Some (a, b) else None
+          )
+          old_edges
+      in
+      (*check that b <= a holds *)
+      let check_entailed b a =
+        let active_lst = List.filter active_constraint t.edges.(b).(a) in
+        let equal_lst = List.filter (fun (c,_,_,_) -> c = 0.0) active_lst in
+          equal_lst <> []
+      in
+      let equals = List.filter (fun (a,b) -> check_entailed b a) relevent_changes in
+      let equalities =
+        List.map
+          (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)))
+          equals
+      in
+        PredSet.elements (List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty equalities)
+    end
 
 let t_propagations t (x, y, c) pred =
   Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (print_pred pred)));
@@ -667,7 +681,8 @@ let order_deductions t set =
 let justify t pred =
   let deductions, given = get_given t pred in
   let odeductions = order_deductions t deductions in
-    (And(pred :: (PredSet.elements given)), pred, DL, List.map (fun x -> (x,DL)) odeductions)
+  let contradiction = normalize (Not pred) in
+    (And(contradiction :: (PredSet.elements given)), contradiction, DL, List.map (fun x -> (x,DL)) odeductions)
 
 (*info: but for the contradiction, cannot do much.*)
 let unsat_core_with_info t =

@@ -46,14 +46,13 @@ module SatDL   = CsisatSatDL
 type find_t =  Leader of PredSet.t * PredSet.t (*all given predicates, all congruences*)
             |  Member of int (*representative is int*)
 type node_info = int * find_t * IntSet.t (* (id, find, ccpar) *)
-type sat_changes = Equal of node_info * node_info (* information to restore previous state *)
-                 | ImplyNotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
-                 | SentToTheory of theory * predicate (* what was sent to which solver *)
+type euf_change = Deduction of predicate * node_info * node_info (* theory deduction (one equality) TODO how to extend this to non convex theories*)
+                | Internal of (int * find_t) list (* path compression: (id, old find) list *)
+                | Equal of node_info * node_info (* information to restore previous state *)
+                | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
 type change = StackSat of predicate (* predicate given by sat solver *)
-            | StackEUFDeduction of predicate * node_info * node_info (* theory deduction (one equality) TODO how to extend this to non convex theories*)
-            | StackInternal of (int * find_t) list (* path compression: (id, old find) list *)
             | StackNO of predicate * theory
-            | StackChanges of sat_changes list
+            | StackChanges of (theory * predicate) list (*what was sent to which theory*)
 
 module Node =
   struct
@@ -64,7 +63,7 @@ module Node =
       arity: int;
       expr: expression;
       nodes: t array;
-      events: change Stack.t;
+      events: euf_change Stack.t;
       mutable find: find_t; (*the predicate list is used to construct the unsat core faster *)
       mutable ccpar: IntSet.t
     }
@@ -83,14 +82,14 @@ module Node =
     }
     
     (*val copy: t -> t*)
-    let copy n = {
+    let copy n stack = {
       id = n.id;
       fn = n.fn;
       args = n.args;
       arity = n.arity;
       expr = n.expr;
       nodes = n.nodes;
-      events = n.events;
+      events = stack;
       find = n.find;
       ccpar = n.ccpar;
     }
@@ -125,7 +124,7 @@ module Node =
       in
       let result = process this in
         if !path_compression <> [] then
-          Stack.push (StackInternal !path_compression) (this.events);
+          Stack.push (Internal !path_compression) (this.events);
         result
 
     let get_find_predicates_find f = match f with
@@ -189,7 +188,7 @@ module Node =
       let other_to_stack a b changed_a changed_b =
         Message.print Message.Debug (lazy("CoreSolver: merge congruence " ^ (print_pred (mk_eq a b))));
         Stack.push
-          (StackEUFDeduction (mk_eq a b, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
+          (Deduction (mk_eq a b, (changed_a.id, changed_a.find, changed_a.ccpar), (changed_b.id, changed_b.find, changed_b.ccpar)))
           a.events
       in
       let rec process to_stack pred congruence this that =
@@ -221,34 +220,19 @@ module Node =
         process first_to_stack (mk_eq_set this that) PredSet.empty this that 
   end
 
-(*TODO extend to EUF + T *)
-module CoreSolver =
+module SatEUF =
   struct
     type t = {
-      sat_solver: Dpll.csi_dpll;
       nodes: Node.t array;
       expr_to_node: Node.t ExprMap.t;
-      propositions: PredSet.t;
-      stack: change Stack.t;
+      stack: euf_change Stack.t;
       mutable neqs: (int * int) list; (* neqs as pairs of node id *)
-      mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t;
-      (* TODO what is needed for the theory splitting and theory solvers *)
-      (* a theory solver being a module, there are some problem
-       * Functors: modular, but only handles a fixed number of solver
-       * class: modular, dynamic dispatch
-       * explicitely listing all possible solver: not modular, but can take advantage of the specificties of each theories.
-       *)
-      shared: expression OrdSet.t;
-      definitions: expression ExprMap.t;
-      rev_definitions: expression ExprMap.t;
-      dl: SatDL.t
     }
-
-    (* EUF *)
-    let euf_to_string dag =
+    
+    let to_string dag =
       let buffer = Buffer.create 1000 in
       let add = Buffer.add_string buffer in
-        add "EUF:\n";
+        add "SatEUF:\n";
         Array.iter (fun x -> add (Node.to_string x); add "\n") dag.nodes;
         Buffer.contents buffer
 
@@ -264,14 +248,14 @@ module CoreSolver =
         n.Node.find <- find;
         n.Node.ccpar <- parent
 
-    let is_euf_sat dag =
+    let is_sat dag =
       not (
         List.exists
           (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
       )
 
-    let euf_t_deductions dag below =
+    let t_deductions dag below =
       let l = ref (Stack.length dag.stack) in
       let rec inspect_stack () =
         if Stack.is_empty dag.stack then []
@@ -280,7 +264,7 @@ module CoreSolver =
             l := !l - 1;
             let t = Stack.pop dag.stack in
             let ans = match t with
-              | StackEUFDeduction (t_eq, _, _) when !l < below -> t_eq :: (inspect_stack ())
+              | Deduction (t_eq, _, _) when !l < below -> t_eq :: (inspect_stack ())
               | _ -> inspect_stack ()
             in
               Stack.push t dag.stack;
@@ -289,8 +273,8 @@ module CoreSolver =
       in
         inspect_stack ()
 
-    let euf_mk_lemma dag contradiction (given1, congr1) (given2, congr2) decision_level =
-      let raw_congruences = euf_t_deductions dag decision_level in
+    let mk_lemma dag contradiction (given1, congr1) (given2, congr2) decision_level =
+      let raw_congruences = t_deductions dag decision_level in
       let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
       let needed_congruences = PredSet.inter all_congruences (PredSet.union congr1 congr2) in
       let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
@@ -300,32 +284,33 @@ module CoreSolver =
       let core = contradiction :: (PredSet.elements raw_core) in
         (And core, contradiction, EUF, info)
 
-    let euf_lemma_with_info_for dag (c1, c2) =
+    let lemma_with_info_for dag (c1, c2) =
       let find1 = Node.get_find_predicates (Node.find (get dag c1)) in
       let find2 = Node.get_find_predicates (Node.find (get dag c2)) in
       let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
-       euf_mk_lemma dag contradiction find1 find2 (Stack.length dag.stack)
+       mk_lemma dag contradiction find1 find2 (Stack.length dag.stack)
 
-    let euf_lemma_with_info dag =
+    let lemma_with_info dag =
       let (c1,c2) = try
           List.find
             (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
             dag.neqs
         with Not_found ->
-          failwith "CoreSolver, euf_lemma_with_info: system is sat!"
+          failwith "CoreSolver, lemma_with_info: system is sat!"
       in
-        euf_lemma_with_info_for dag (c1,c2)
+        lemma_with_info_for dag (c1,c2)
 
     (* justify a congruence *)
-    let euf_justify t pred =
+    (* TODO justifying a congruence requires to look at the args ... *)
+    let justify t pred =
       let rec find () =
         if Stack.is_empty t.stack then
-          failwith ("CoreSolver, euf_justify: not a congruence " ^ (print_pred pred))
+          failwith ("CoreSolver, justify: not a congruence " ^ (print_pred pred))
         else
           begin
             let top = Stack.pop t.stack in
             let ans = match top with
-              | StackEUFDeduction (t_eq, o1, o2) when t_eq = pred -> (Stack.length t.stack, o1, o2)
+              | Deduction (t_eq, o1, o2) when t_eq = pred -> (Stack.length t.stack, o1, o2)
               | _ -> find ()
             in
               Stack.push top t.stack;
@@ -334,13 +319,13 @@ module CoreSolver =
       in
       let (decision_level, (_, f1, _), (_, f2, _)) = find () in
         (*find the right propagation (and below, then get reason)*)
-        euf_mk_lemma t (Not pred) (Node.get_find_predicates_find f1) (Node.get_find_predicates_find f2) decision_level
+        mk_lemma t (Not pred) (Node.get_find_predicates_find f1) (Node.get_find_predicates_find f2) decision_level
     
     (* for NO EQ propagation, use an undo/redo system
      * TODO needs to remember which congruence is responsible for an eq *)
-    let euf_propagations dag shared =
+    let propagations dag shared =
       let rec to_last_deduction () = match Stack.pop dag.stack with
-        | (StackEUFDeduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
+        | (Deduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
           begin
             let old1 = (id1, f1, c1) in
             let old2 = (id2, f2, c2) in
@@ -350,12 +335,16 @@ module CoreSolver =
               undo dag old2;
               Some (top, current1, current2)
           end
-        | StackInternal lst ->
+        | Internal lst ->
           begin
             List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
             to_last_deduction ()
           end
-        | _ -> None
+        | top ->
+          begin
+            Stack.push top dag.stack;
+            None
+          end
       in
       let are_equal exprs_pairs =
         List.filter
@@ -365,7 +354,7 @@ module CoreSolver =
           exprs_pairs
       in
       let all_equals =
-        let to_test = Utils.cartesian_product dag.shared dag.shared in
+        let to_test = Utils.cartesian_product shared shared in
         let as_nodes = List.map (fun (a, b) -> ((get_node dag a).Node.id, (get_node dag b).Node.id)) to_test in
         let equals = List.filter (fun (a,b) -> a < b ) as_nodes in
           are_equal equals
@@ -379,7 +368,7 @@ module CoreSolver =
             let new_equals = List.filter (fun x -> not (List.mem x old_equals)) equals in
             (*prune using cc from old_equals*)
             let old_cc = Utils.get_scc_undirected_graph old_equals in
-            let node_to_cc = Hashtbl.create (List.length dag.shared) in
+            let node_to_cc = Hashtbl.create (List.length shared) in
               List.iter
                 (fun cc ->
                   let representative = List.hd cc in
@@ -410,15 +399,159 @@ module CoreSolver =
       in
       let deductions = List.flatten (new_equalities all_equals) in
         List.map (fun (a,b) -> order_eq (Eq ((get dag a).Node.expr, (get dag b).Node.expr))) deductions
+
+    let create pred =
+      let set = get_expr_deep_set pred in
+      let id = ref 0 in
+      let nodes = Array.make
+        (ExprSet.cardinal set)
+        (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()))
+      in
+      let expr_to_node = ref ExprMap.empty in
+      let stack = Stack.create () in
+      let create_and_add expr fn args =
+        try ExprMap.find expr !expr_to_node
+        with Not_found ->
+          begin
+            let node_args = List.map (fun x -> x.Node.id) args in
+            let n = Node.create expr !id fn node_args nodes stack in
+              nodes.(!id) <- n;
+              id := !id + 1;
+              expr_to_node := ExprMap.add expr n !expr_to_node;
+              List.iter (fun a -> Node.add_ccparent a n.Node.id) args;
+              n
+          end
+      in
+      let rec convert_exp expr = match expr with
+        | Constant c as cst -> create_and_add cst (string_of_float c) []
+        | Variable v as var -> create_and_add var v []
+        | Application (f, args) as appl ->
+          let node_args = List.map convert_exp args in
+          let new_node  = create_and_add appl f node_args in
+            new_node
+        | Sum lst as sum ->
+          let node_args = List.map convert_exp lst in
+          let new_node  = create_and_add sum "+" node_args in
+            new_node
+        | Coeff (c, e) as coeff ->
+          let node_args = List.map convert_exp  [Constant c; e] in
+          let new_node  = create_and_add coeff "*" node_args in
+            new_node
+      in
+      let _ = ExprSet.iter (fun x -> ignore (convert_exp x)) set in
+      let graph = {
+          nodes = nodes;
+          expr_to_node = !expr_to_node;
+          stack = stack;
+          neqs = []
+        }
+      in
+        Message.print Message.Debug (lazy("CoreSolver, " ^ (to_string graph)));
+        graph
+
+    let push t pred =
+      Message.print Message.Debug (lazy("CoreSolver, SatEUF: push " ^ (print_pred pred)));
+      match pred with
+      | Not (Eq (e1,e2)) ->
+        begin
+          let n1 = get_node t e1 in
+          let n2 = get_node t e2 in
+          let neq = (n1.Node.id, n2.Node.id) in
+            t.neqs <- neq :: t.neqs;
+            Stack.push (NotEqual neq) t.stack;
+            (Node.find n1).Node.id <> (Node.find n2).Node.id
+        end
+      | Eq (e1, e2) ->
+        begin
+          let n1 = get_node t e1 in
+          let n2 = get_node t e2 in
+          let n1' = Node.find n1 in
+          let n2' = Node.find n2 in
+          let change = Equal (get_node_info t n1'.Node.id, get_node_info t n2'.Node.id) in
+            Stack.push change t.stack;
+            Node.merge n1 n2;
+            is_sat t
+        end
+      | _ -> failwith "CoreSolver, SatEUF: only Eq, Not Eq"
+
+    let pop t =
+      Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop"));
+      let rec process () =
+        if Stack.is_empty t.stack then
+          failwith "CoreSolver, SatEUF: pop called on an empty stack"
+        else
+          begin
+            match Stack.pop t.stack with
+            | Internal lst ->
+              begin
+                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop StackInternal"));
+                List.iter (fun (id, find) -> (get t id).Node.find <- find) lst;
+                process ()
+              end
+            | Deduction (pred, old1, old2) ->
+              begin
+                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop StackEUFDeduction " ^ (print_pred pred)));
+                undo t old1;
+                undo t old2;
+                process ()
+              end
+            | Equal (old1, old2) ->
+              begin
+                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop Equal"));
+                undo t old1;
+                undo t old2
+              end
+            | NotEqual (i1, i2) ->
+              begin
+                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop NotEqual"));
+                let (i1', i2') = List.hd t.neqs in
+                  assert(i1 = i1' && i2 = i2');
+                  t.neqs <- List.tl t.neqs
+              end
+        end
+      in
+        process ()
+  end
+
+(*TODO extend to EUF + T *)
+module CoreSolver =
+  struct
+    type t = {
+      sat_solver: Dpll.csi_dpll;
+      propositions: PredSet.t;
+      stack: change Stack.t;
+      mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t;
+      (* TODO what is needed for the theory splitting and theory solvers *)
+      (* a theory solver being a module, there are some problem
+       * Functors: modular, but only handles a fixed number of solver
+       * class: modular, dynamic dispatch
+       * explicitely listing all possible solver: not modular, but can take advantage of the specificties of each theories.
+       *)
+      shared: expression OrdSet.t;
+      definitions: expression ExprMap.t;
+      rev_definitions: expression ExprMap.t;
+      euf: SatEUF.t;
+      dl: SatDL.t
+    }
+
+    (* EUF *)
+    let euf_to_string dag           = SatEUF.to_string dag.euf
+    let get dag                     = SatEUF.get dag.euf
+    let get_node dag                = SatEUF.get_node dag.euf
+    let get_node_info dag           = SatEUF.get_node_info dag.euf
+    let undo dag                    = SatEUF.undo dag.euf
+    let is_euf_sat dag              = SatEUF.is_sat dag.euf
+    let euf_t_deductions dag        = SatEUF.t_deductions dag.euf
+    let euf_mk_lemma dag            = SatEUF.mk_lemma dag.euf
+    let euf_lemma_with_info_for dag = SatEUF.lemma_with_info_for dag.euf
+    let euf_lemma_with_info dag     = SatEUF.lemma_with_info dag.euf
+    let euf_justify dag             = SatEUF.justify dag.euf
+    let euf_propagations dag        = SatEUF.propagations dag.euf
     (* end of EUF *)
 
     (* DL *)
-    let dl_lemma_with_info_for t pred =
-      SatDL.justify t.dl pred
-
-    let dl_lemma_with_info t =
-      SatDL.unsat_core_with_info t.dl
-
+    let dl_lemma_with_info_for t pred = SatDL.justify t.dl pred
+    let dl_lemma_with_info t = SatDL.unsat_core_with_info t.dl
     let is_dl_sat t = SatDL.is_sat t.dl
     (* end of DL *)
 
@@ -432,62 +565,28 @@ module CoreSolver =
     (* partially sat / no explicit contradiction *)
     let is_consistent t = t.sat_solver#is_consistent && is_theory_consistent t
 
-    let add_and_test_neq t e1 e2 =
-      Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf_neq " ^ (print_expr e1) ^ ", " ^ (print_expr e2)));
-      try
-        let n1 = get_node t e1 in
-        let n2 = get_node t e2 in
-          t.neqs <- (n1.Node.id, n2.Node.id) :: t.neqs;
-          Some( (Node.find n1).Node.id <> (Node.find n2).Node.id, ImplyNotEqual (n1.Node.id, n2.Node.id))
-      with Not_found -> None
-
     let add_and_test_dl t pred =
       Message.print Message.Debug (lazy("CoreSolver: add_and_test_dl " ^ (print_pred pred)));
       try
         let dl_consistent = SatDL.push t.dl pred in
-          Some (dl_consistent, SentToTheory (DL, pred))
+          Some (dl_consistent, (DL, pred))
       with Failure str ->
         begin
           if Str.string_match (Str.regexp "^SatDL, expected DL expression:") str 0
           then None
           else failwith str
         end
+        | Not_found -> None
 
-    let add_and_test_euf_eq t e1 e2 =
-      Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf_eq " ^ (print_expr e1) ^ ", " ^ (print_expr e2)));
-      try
-        let n1 = get_node t e1 in
-        let n2 = get_node t e2 in
-        let n1' = Node.find n1 in
-        let n2' = Node.find n2 in
-        let euf_change = Equal (get_node_info t n1'.Node.id, get_node_info t n2'.Node.id) in
-          Node.merge n1 n2;
-          Some (is_euf_sat t, euf_change)
-      with Not_found -> None
-    
     let add_and_test_euf t pred =
       Message.print Message.Debug (lazy("CoreSolver: add_and_test_euf " ^ (print_pred pred)));
-      match pred with
-      | Eq (e1, e2) -> add_and_test_euf_eq t e1 e2
-      | Not (Eq (e1, e2)) -> add_and_test_neq t e1 e2
-      | _ -> failwith "CoreSolver: add_and_test_euf"
+      try Some(SatEUF.push t.euf pred, (EUF, pred))
+      with Not_found -> None
 
-    let undo_change dag c = match c with
-      | Equal (old1,old2) ->
-        undo dag old1;
-        undo dag old2
-      | ImplyNotEqual (id1, id2) ->
-        let (id1', id2') = List.hd dag.neqs in
-        let t = List.tl dag.neqs in
-          assert (Global.is_off_assert() || (id1 = id1' && id2 = id2'));
-          dag.neqs <- t
-      | SentToTheory (th, pred) ->
-        begin
-          match th with
-          | DL -> SatDL.pop dag.dl
-          | LA -> failwith "CoreSolver: SentToTheory LA"
-          | EUF -> failwith "CoreSolver: SentToTheory EUF"
-        end
+    let undo_change t (th, pred) = match th with
+      | DL -> SatDL.pop t.dl
+      | EUF -> SatEUF.pop t.euf
+      | LA -> failwith "CoreSolver: SentToTheory LA"
     let undo_changes dag lst = List.iter (undo_change dag) lst
     
     (* this is shady business with the order of events (StackInternal) and the pop/undo *)
@@ -549,9 +648,9 @@ module CoreSolver =
           (*push on stack first *)
           Stack.push (StackSat pred) dag.stack;
           match pred' with
-          | Eq(e1,e2) ->
+          | Eq _ ->
             begin
-              let res, changes = match add_and_test_euf_eq dag e1 e2 with
+              let res, changes = match add_and_test_euf dag pred' with
                 | Some (res, change) -> (res, [change])
                 | None -> (true, [])
               in
@@ -570,15 +669,15 @@ module CoreSolver =
                 (*NO*)
                 propagate dag res'
             end
-          | Not (Eq(e1,e2)) ->
+          | Not (Eq _) ->
             begin
-              match add_and_test_neq dag e1 e2 with
+              match add_and_test_euf dag pred' with
               | Some (status, changed) ->
                 insert_changes dag (StackChanges [changed]);
                 status
               | None -> failwith "CoreSolver: NEQ not found"
             end
-          | Atom (Internal _) | Not (Atom (Internal _)) -> true
+          | Atom (CsisatAst.Internal _) | Not (Atom (CsisatAst.Internal _)) -> true
           | Leq (_, _) ->
             begin
               let dl_consistent, dl_change =
@@ -593,7 +692,7 @@ module CoreSolver =
           | Lt (e1, e2) ->
             begin
               (*implies not EQ*)
-              let euf_consequence = add_and_test_neq dag e1 e2 in
+              let euf_consequence = add_and_test_euf dag (Not (Eq (e1, e2))) in
               let (res, changes) = match euf_consequence with
                 | Some (res, euf_change) -> (res, [euf_change])
                 | None -> (true, [])
@@ -627,23 +726,10 @@ module CoreSolver =
                 begin
                   Message.print Message.Debug (lazy("CoreSolver: pop StackSat " ^ (print_pred pred)))
                 end
-              | StackInternal lst ->
-                begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackInternal"));
-                  List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
-                  process ()
-                end
               | StackChanges sat_changes ->
                 begin
                   Message.print Message.Debug (lazy("CoreSolver: pop StackChanges"));
                   undo_changes dag sat_changes;
-                  process ()
-                end
-              | StackEUFDeduction (pred, old1, old2) ->
-                begin
-                  Message.print Message.Debug (lazy("CoreSolver: pop StackEUFDeduction " ^ (print_pred pred)));
-                  undo dag old1;
-                  undo dag old2;
                   process ()
                 end
               | StackNO (pred, th) ->
@@ -655,26 +741,73 @@ module CoreSolver =
       in
         process ()
 
-    (* blocking clause *)
+    (* blocking clause
+     * for the interpolation (later) only the eq (deductions) are needed
+     * for the blocking clause, need to 'justify' the deductions
+     *)
     let theory_lemma t =
-      (*TODO this is more complex, i.e. NO
+      (* this is more complex, i.e. NO.
        * 1) determine which theory has a contradiction
        * 2) get the core
        * 3) for each NO that appears in the core -> justify (recursively)
        *)
-      (*TODO justify from last to oldest *)
-      let justify (pred, th) = match th with
+      let remove_not_pred_from_core core npred = match core with
+        | And lst ->
+          begin
+            assert (List.mem npred lst);
+            let new_core = List.filter (fun x -> x <> npred) lst in
+              new_core
+          end
+        | err -> failwith ("CoreSolver, theory_lemma: expected conjunctive core, got" ^ (print_pred err))
+      in
+      let justify_pred (pred, th) = match th with
         | EUF -> euf_justify t pred
         | DL -> SatDL.justify t.dl pred
         | _ -> failwith "CoreSolver, theory_lemma: more theory"
       in
+      let rec justify justified core deduction =
+        if PredSet.mem (fst deduction) justified then (justified, core)
+        else
+          begin
+            let (ded_core, npred, _, new_deductions) = justify_pred deduction in
+            let lst = remove_not_pred_from_core ded_core npred in
+            let core' = List.fold_left (fun acc x -> PredSet.add x acc) core lst in
+            let justified' = PredSet.add (fst deduction) justified in
+              justify_list justified' core' new_deductions
+          end
+      and justify_list justified core lst =
+        List.fold_left (fun (a, b) c -> justify a b c) (justified, core) lst
+      in
+      let justify_NO (pred, th) = match th with
+        | EUF ->
+          begin
+            (*TODO map the deduction to the related congruence*)
+            let congruences =
+              failwith "TODO"
+            in
+            (*justify the congruences*)
+            let (_, core) = justify_list PredSet.empty PredSet.empty congruences in
+              failwith "TODO"
+          end
+        | DL -> justify_pred (pred, th)
+        | _ -> failwith "CoreSolver, theory_lemma: theory ??"
+      in
+      let get_NO_sharing core = match core with
+        | And lst ->
+          begin
+            failwith "TODO"
+          end
+        | err -> failwith ("CoreSolver, theory_lemma: expected conjunctive core, got" ^ (print_pred err))
+      in
       let (core, pred, th, deductions) = 
         match (is_euf_sat t, is_dl_sat t) with
-        | (true, _) -> euf_lemma_with_info t
-        | (_, true) -> dl_lemma_with_info t
+        | (false, _) -> euf_lemma_with_info t
+        | (_, false) -> dl_lemma_with_info t
         | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
       in
-        failwith "TODO"
+      let (_, core') = justify_list PredSet.empty PredSet.empty deductions in
+      let full_core = normalize (And (core :: (PredSet.elements core'))) in
+        (full_core, pred, th, []) (*TODO*)
 
     let rec to_theory_solver t lst = match lst with
       | x::xs ->
@@ -704,7 +837,7 @@ module CoreSolver =
       let classes =
         List.map
           (fun (id1,id2) -> ((Node.find (get t id1)).Node.id, (Node.find (get t id2)).Node.id))
-          t.neqs
+          t.euf.SatEUF.neqs (*TODO encapsulation*)
       in
       let unassigned = PredSet.diff t.propositions assigned in
       let implied =
@@ -740,8 +873,8 @@ module CoreSolver =
                     end
                   else None
               end
-            | Atom (Internal _)
-            | Not (Atom (Internal _)) -> None
+            | Atom (CsisatAst.Internal _)
+            | Not (Atom (CsisatAst.Internal _)) -> None
             | other ->
               begin
                 Message.print Message.Error (lazy ("TODO: more theories -> "^(print other)));
@@ -810,57 +943,14 @@ module CoreSolver =
           else t_contradiction ()
         end
 
-
     (*TODO split the theories and keep what belongs to what *)
     let create pred =
       let (euf_formula, la_formula, shared, definitions) = split_formula_LI_UIF pred in
-
-      (*EUF*)
-      let pset = get_proposition_set (And euf_formula) in
-      let set =
-        PredSet.fold
-          (fun p acc -> ExprSet.union (get_expr_deep_set p) acc)
-          pset
-          ExprSet.empty
-      in
-      let id = ref 0 in
       let sat_solver = new Dpll.csi_dpll true in
-      let nodes = Array.make
-        (ExprSet.cardinal set)
-        (Node.create (Constant (-1.)) (-1) "Dummy" [] [||] (Stack.create ()))
-      in
-      let expr_to_node = ref ExprMap.empty in
       let stack = Stack.create () in
-      let create_and_add expr fn args =
-        try ExprMap.find expr !expr_to_node
-        with Not_found ->
-          begin
-            let node_args = List.map (fun x -> x.Node.id) args in
-            let n = Node.create expr !id fn node_args nodes stack in
-              nodes.(!id) <- n;
-              id := !id + 1;
-              expr_to_node := ExprMap.add expr n !expr_to_node;
-              List.iter (fun a -> Node.add_ccparent a n.Node.id) args;
-              n
-          end
-      in
-      let rec convert_exp expr = match expr with
-        | Constant c as cst -> create_and_add cst (string_of_float c) []
-        | Variable v as var -> create_and_add var v []
-        | Application (f, args) as appl ->
-          let node_args = List.map convert_exp args in
-          let new_node  = create_and_add appl f node_args in
-            new_node
-        | Sum lst as sum ->
-          let node_args = List.map convert_exp lst in
-          let new_node  = create_and_add sum "+" node_args in
-            new_node
-        | Coeff (c, e) as coeff ->
-          let node_args = List.map convert_exp  [Constant c; e] in
-          let new_node  = create_and_add coeff "*" node_args in
-            new_node
-      in
-      let _ = ExprSet.iter (fun x -> ignore (convert_exp x)) set in
+      let pset = get_proposition_set pred in
+      (*EUF*)
+      let euf = SatEUF.create (And euf_formula) in
       (* end of EUF *)
       (* DL *)
       (*TODO check that it really is only DL*)
@@ -877,15 +967,13 @@ module CoreSolver =
 
       let graph = {
           sat_solver = sat_solver;
-          nodes = nodes;
-          expr_to_node = !expr_to_node;
           propositions = pset;
           stack = stack;
-          neqs = [];
           explanations = PredMap.empty;
           shared = shared;
           definitions = definitions;
           rev_definitions = ExprMap.fold (fun k v acc -> ExprMap.add v k acc) definitions ExprMap.empty;
+          euf = euf;
           dl = dl_solver
         }
       in
@@ -898,7 +986,7 @@ module CoreSolver =
         sat_solver#init f;
         (*already push the definitions*)
         ExprMap.iter (fun k v -> assert(push graph (order_eq (Eq (k,v))))) graph.definitions;
-        Message.print Message.Debug (lazy("CoreSolver: " ^ (euf_to_string graph)));
+        Message.print Message.Debug (lazy("CoreSolver: created"));
         graph
 
   end
