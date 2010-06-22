@@ -44,6 +44,7 @@ rule token = parse
   | "->"            { IMPLIES }
   | "<->"           { IFF }
   | "not"           { NOT }
+  | "!"             { NOT }
   | '&'             { AND }
   | '|'             { OR }
   | '+'             { PLUS }
