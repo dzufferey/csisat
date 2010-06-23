@@ -31,7 +31,7 @@ let digit = ['0'-'9']
 let num = '-'? digit+
 let real = '-'? digit+ '.' digit*
 
-let word = ['a'-'z' 'A'-'Z' '_']+
+let word = ['a'-'z' 'A'-'Z' '_' '@' ':']+
 let ident = word (word | digit)*
 let ident2 = ''' [^'\n' ''']+ '''
 
