@@ -73,16 +73,17 @@ opt_apply:
   | /*empty*/               { None }
 ;
 
-opt_times:
-  | TIMES term              { Some $2 }
-  | /*empty*/               { None }
-;
-
 term:
   | LPAREN term RPAREN              { $2 }
   | term PLUS term                  { Ast.Sum [$1; $3] }
   | term MINUS term                 { Ast.Sum [$1; Ast.Coeff (-1., $3)] }
-  | number opt_times                { match $2 with None -> Ast.Constant $1| Some t -> Ast.Coeff ($1, t) }
+  | term TIMES term                 { match ($1, $3) with
+                                      | (Ast.Constant c1, Ast.Constant c2) -> Ast.Constant (c1 *. c2)
+                                      | (Ast.Constant c, other)
+                                      | (other, Ast.Constant c) -> Ast.Coeff (c, other)
+                                      | _ -> raise Parsing.Parse_error
+                                    }
+  | number                          { Ast.Constant $1 }
   | MINUS term  %prec UMINUS        { Ast.Coeff (-1., $2) }
   | IDENT opt_apply                 { match $2 with None -> Ast.Variable $1 | Some lst -> Ast.Application ($1, lst)}
 ;
