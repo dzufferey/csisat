@@ -499,12 +499,13 @@ let push t pred =
     (* check if it is already an active constraint *)
     let already =
       List.exists
-        (fun ((_,_,_,p) as cstr) -> p = pred && active_constraint cstr)
+        (fun ((c2,_,_,p) as cstr) -> c = c2 && p = pred && active_constraint cstr)
         t.edges.(v1).(v2)
     in
       if already then (true, t.assignment, [])
       else
         begin
+          Message.print Message.Debug (lazy("SatDL: new constraint "));
           let new_assign = Array.copy old_assign in
           let pq = PQueue.empty 0.0 in
           let pi = eval old_assign in
@@ -513,14 +514,16 @@ let push t pred =
           let changes, new_edges =
             List.fold_left
               (fun (acc_c, acc_e) ((c', strictness', status, p) as cstr) ->
-                if p = pred then
+                if p = pred && c = c' then
                   begin
+                    Message.print Message.Debug (lazy("SatDL: assign " ^ (print_pred p)));
                     let cstr' = (c', strictness', Assigned, p) in
                       ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
                   end
                 else if status = Unassigned && (c < c' || (c = c' && (strictness = Strict || strictness' <> Strict))) then
                   begin
                     let cstr' = (c', strictness', Consequence [pred], p) in
+                      Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (print_pred p)));
                       ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
                   end
                 else (acc_c, cstr :: acc_e)
@@ -544,7 +547,9 @@ let push t pred =
                   )
                   (get_successors t.edges s)
             done;
-              if PQueue.get_priority pq v1 = 0.0
+            let v1_p = PQueue.get_priority pq v1 in
+              Message.print Message.Debug (lazy("SatDL: priority of v1 = " ^ (string_of_float v1_p)));
+              if v1_p >= 0.0
               then (true, new_assign, changes)
               else (false, new_assign, changes)
         end
@@ -596,18 +601,19 @@ let push t pred =
           (*redo the changes (but no propagation)*)
           let sat, fct, changes = process_pred () in
           let old_assign = t.assignment in
+          let c = match kind with Equal -> min c (-.c) | _ -> c in
             (* check that the distance y to x is less then x to y. *)
-            (*
             Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
             Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
             Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
             Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
-            *)
+            Message.print Message.Debug (lazy("SatDL: old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c = "^(string_of_float (old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c))));
             assert(old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c < 0.0);
             t.assignment <- fct;
             Stack.push (pred, old_assign, changes) t.history;
             t.status <- UnSat (pred, y_to_x)
         end;
+      Message.print Message.Debug (lazy("SatDL: after push -> " ^ (string_of_bool sat)));
       sat
 
 let rec get_given t p =

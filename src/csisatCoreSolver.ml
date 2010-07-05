@@ -324,27 +324,32 @@ module SatEUF =
     (* for NO EQ propagation, use an undo/redo system
      * TODO needs to remember which congruence is responsible for an eq *)
     let propagations dag shared =
-      let rec to_last_deduction () = match Stack.pop dag.stack with
-        | (Deduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
+      let rec to_last_deduction () =
+        if Stack.is_empty dag.stack then None
+        else
           begin
-            let old1 = (id1, f1, c1) in
-            let old2 = (id2, f2, c2) in
-            let current1 = get_node_info dag id1 in
-            let current2 = get_node_info dag id2 in
-              undo dag old1;
-              undo dag old2;
-              Some (top, current1, current2)
-          end
-        | Internal lst ->
-          begin
-            List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
-            to_last_deduction ()
-          end
-        | top ->
-          begin
-            Stack.push top dag.stack;
-            None
-          end
+            match Stack.pop dag.stack with
+            | (Deduction (_, (id1, f1, c1), (id2, f2, c2))) as top ->
+              begin
+                let old1 = (id1, f1, c1) in
+                let old2 = (id2, f2, c2) in
+                let current1 = get_node_info dag id1 in
+                let current2 = get_node_info dag id2 in
+                  undo dag old1;
+                  undo dag old2;
+                  Some (top, current1, current2)
+              end
+            | Internal lst ->
+              begin
+                List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
+                to_last_deduction ()
+              end
+            | top ->
+              begin
+                Stack.push top dag.stack;
+                None
+              end
+         end
       in
       let are_equal exprs_pairs =
         List.filter
@@ -601,6 +606,7 @@ module CoreSolver =
 
 
     let rec propagate t sat =
+      Message.print Message.Debug (lazy("CoreSolver: NO ("^(string_of_bool sat)^")"));
       (* ask EUF for new EQ *)
       let euf_deductions = euf_propagations t t.shared in
       (* ask DL for new EQ *)
@@ -709,7 +715,7 @@ module CoreSolver =
               in
                 insert_changes dag (StackChanges changes');
                 (*NO*)
-                propagate dag res
+                propagate dag res'
             end
           | _ -> failwith "TODO: more theories"
         end
@@ -902,7 +908,6 @@ module CoreSolver =
         let (new_clause, contradiction, th, explanation) = theory_lemma t in
         let new_clause = reverse new_clause in
         let old_dl = t.sat_solver#get_decision_level in
-          assert (Global.is_off_assert() || th = EUF);
           t.explanations <- PredMap.add new_clause (contradiction, th, explanation) t.explanations;
           t.sat_solver#add_clause new_clause;
           let new_dl = t.sat_solver#get_decision_level in
