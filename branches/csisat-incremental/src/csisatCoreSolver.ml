@@ -50,10 +50,6 @@ type euf_change = Deduction of predicate * node_info * node_info (* theory deduc
                 | Internal of (int * find_t) list (* path compression: (id, old find) list *)
                 | Equal of node_info * node_info (* information to restore previous state *)
                 | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
-type change = StackSat of predicate (* predicate given by sat solver *)
-            | StackNO of predicate * theory
-            | StackChanges of (theory * predicate) list (*what was sent to which theory*)
-
 module Node =
   struct
     type t = {
@@ -533,9 +529,13 @@ module SatEUF =
         process ()
   end
 
-(*TODO extend to EUF + T *)
 module CoreSolver =
   struct
+
+    type change = StackSat of predicate (* predicate given by sat solver *)
+                | StackNO of predicate * theory
+                | StackChanges of (theory * predicate) list (*what was sent to which theory*)
+
     type t = {
       sat_solver: Dpll.csi_dpll;
       propositions: PredSet.t;
@@ -834,7 +834,9 @@ module CoreSolver =
       Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
       Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred core)));
       Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
-      (*TODO NO propagated are not in deductions, so need to check what needs to be justified ... *)
+      (* TODO NO propagated are not in deductions, so need to check what needs to be justified ...
+       * Anyway, those are not required in sat mode.
+       *)
       let (_, core') = justify_list PredSet.empty PredSet.empty deductions in
       let full_core = normalize (And (core :: (PredSet.elements core'))) in
       (*NO variable renaming*)
