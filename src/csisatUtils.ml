@@ -99,12 +99,10 @@ let min_of_list query_fct lst =
     !min_term
 
 (** Removes the Some of an option *)
-let remove_some lst =
-  List.map
-    (fun x -> match x with
-      | Some x -> x
-      | None -> failwith "remove_some found a None"
-    ) lst
+let remove_some_once x = match x with
+  | Some x -> x
+  | None -> failwith "remove_some found a None"
+let remove_some lst = List.map remove_some_once lst
 
 (** Applies fct to some, returns default otherwise *)
 let maybe fct default opt = match opt with
