@@ -834,7 +834,7 @@ module CoreSolver =
       Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
       Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred core)));
       Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
-      (*TODO NO not in deductions*)
+      (*TODO NO propagated are not in deductions, so need to check what needs to be justified ... *)
       let (_, core') = justify_list PredSet.empty PredSet.empty deductions in
       let full_core = normalize (And (core :: (PredSet.elements core'))) in
       (*NO variable renaming*)
