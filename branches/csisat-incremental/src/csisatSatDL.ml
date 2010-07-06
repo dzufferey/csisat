@@ -595,26 +595,51 @@ let push t pred =
           (* get the shortest path from y to x *)
           let successors = lazy_successors t in
           let size = Array.length t.assignment in
-          let shortest_y, pred_y = sssp size successors v2 in
-          let path = List.rev (path_from_to pred_y v2 v1) in
-          let y_to_x = List.map (strongest_for_pair t) (path_to_pairs path) in
+          let find_path v1 v2 c =
+            let shortest_y, pred_y = sssp size successors v2 in
+            let path = List.rev (path_from_to pred_y v2 v1) in
+            let y_to_x = List.map (strongest_for_pair t) (path_to_pairs path) in
+              (* check that the distance y to x is less then x to y. *)
+              Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
+              Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
+              Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
+              Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
+              Message.print Message.Debug (lazy("SatDL: old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c = "^(string_of_float (old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c))));
+              if old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c < 0.0
+              then Some (y_to_x)
+              else None
+          in
+          let y_to_x = match kind with
+            | Equal -> maybe (fun x -> x) (lazy (remove_some_once (find_path v2 v1 (-.c)))) (find_path v1 v2 c)
+            | _ -> maybe (fun x -> x) (lazy (failwith "SatDL: find_path")) (find_path v1 v2 c)
+          in
           (*redo the changes (but no propagation)*)
           let sat, fct, changes = process_pred () in
           let old_assign = t.assignment in
-          let c = match kind with Equal -> min c (-.c) | _ -> c in
-            (* check that the distance y to x is less then x to y. *)
-            Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
-            Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
-            Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
-            Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
-            Message.print Message.Debug (lazy("SatDL: old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c = "^(string_of_float (old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c))));
-            assert(old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c < 0.0);
             t.assignment <- fct;
-            Stack.push (pred, old_assign, changes) t.history;
+            Stack.push (pred, old_assign, changes @ changes') t.history;
             t.status <- UnSat (pred, y_to_x)
         end;
       Message.print Message.Debug (lazy("SatDL: after push -> " ^ (string_of_bool sat)));
       sat
+
+(* test if a predicate is entailed by the current model
+ * this is for NO only and it assumes there are 'edges' between
+ * the nodes in p.
+ *)
+let entailed t p =
+  let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in
+  let test v1 v2 c =
+    List.exists
+      (fun ((c2,_,_,_) as cstr) -> c >= c2 && active_constraint cstr) (*TODO strictness ...*)
+      t.edges.(v1).(v2)
+  in
+  let res = match k with
+    | Equal -> test v1 v2 c && test v2 v1 (-.c)
+    | _ -> test v1 v2 c
+  in
+    Message.print Message.Debug (lazy("SatDL: entailed " ^ (print_pred p) ^ " -> " ^ (string_of_bool res)));
+    res
 
 let rec get_given t p =
   let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in

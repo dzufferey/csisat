@@ -254,6 +254,21 @@ module SatEUF =
           (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
           dag.neqs
       )
+    
+    (*test if two terms are equal*)
+    let entailed t pred = match pred with
+      | Eq (e1, e2) ->
+        begin
+          let n1 = get_node t e1 in
+          let n2 = get_node t e2 in
+          let n1' = Node.find n1 in
+          let n2' = Node.find n2 in
+          let res = n1'.Node.id = n2'.Node.id in
+            Message.print Message.Debug (lazy("SatEUF: entailed " ^ (print_pred pred) ^ " -> " ^ (string_of_bool res)));
+            res
+        end
+      (*TODO Neq*)
+      | err -> failwith ("SatEUF, entailed only eq for the moment ("^(print_pred pred)^")")
 
     let t_deductions dag below =
       let l = ref (Stack.length dag.stack) in
@@ -273,6 +288,7 @@ module SatEUF =
       in
         inspect_stack ()
 
+    (* TODO lemma for a congruence requires to look at the args ??? *)
     let mk_lemma dag contradiction (given1, congr1) (given2, congr2) decision_level =
       let raw_congruences = t_deductions dag decision_level in
       let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
@@ -296,16 +312,15 @@ module SatEUF =
             (fun (id1,id2) -> (Node.find (get dag id1)).Node.id = (Node.find (get dag id2)).Node.id)
             dag.neqs
         with Not_found ->
-          failwith "CoreSolver, lemma_with_info: system is sat!"
+          failwith "SatEUF, lemma_with_info: system is sat!"
       in
         lemma_with_info_for dag (c1,c2)
 
     (* justify a congruence *)
-    (* TODO justifying a congruence requires to look at the args ... *)
     let justify t pred =
       let rec find () =
         if Stack.is_empty t.stack then
-          failwith ("CoreSolver, justify: not a congruence " ^ (print_pred pred))
+          failwith ("SatEUF, justify: not a congruence " ^ (print_pred pred))
         else
           begin
             let top = Stack.pop t.stack in
@@ -451,11 +466,11 @@ module SatEUF =
           neqs = []
         }
       in
-        Message.print Message.Debug (lazy("CoreSolver, " ^ (to_string graph)));
+        Message.print Message.Debug (lazy("SatEUF, " ^ (to_string graph)));
         graph
 
     let push t pred =
-      Message.print Message.Debug (lazy("CoreSolver, SatEUF: push " ^ (print_pred pred)));
+      Message.print Message.Debug (lazy("SatEUF: push " ^ (print_pred pred)));
       match pred with
       | Not (Eq (e1,e2)) ->
         begin
@@ -477,38 +492,38 @@ module SatEUF =
             Node.merge n1 n2;
             is_sat t
         end
-      | _ -> failwith "CoreSolver, SatEUF: only Eq, Not Eq"
+      | _ -> failwith "SatEUF: only Eq, Not Eq"
 
     let pop t =
-      Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop"));
+      Message.print Message.Debug (lazy("SatEUF: pop"));
       let rec process () =
         if Stack.is_empty t.stack then
-          failwith "CoreSolver, SatEUF: pop called on an empty stack"
+          failwith "SatEUF: pop called on an empty stack"
         else
           begin
             match Stack.pop t.stack with
             | Internal lst ->
               begin
-                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop StackInternal"));
+                Message.print Message.Debug (lazy("SatEUF: pop StackInternal"));
                 List.iter (fun (id, find) -> (get t id).Node.find <- find) lst;
                 process ()
               end
             | Deduction (pred, old1, old2) ->
               begin
-                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop StackEUFDeduction " ^ (print_pred pred)));
+                Message.print Message.Debug (lazy("SatEUF: pop StackEUFDeduction " ^ (print_pred pred)));
                 undo t old1;
                 undo t old2;
                 process ()
               end
             | Equal (old1, old2) ->
               begin
-                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop Equal"));
+                Message.print Message.Debug (lazy("SatEUF: pop Equal"));
                 undo t old1;
                 undo t old2
               end
             | NotEqual (i1, i2) ->
               begin
-                Message.print Message.Debug (lazy("CoreSolver, SatEUF: pop NotEqual"));
+                Message.print Message.Debug (lazy("SatEUF: pop NotEqual"));
                 let (i1', i2') = List.hd t.neqs in
                   assert(i1 = i1' && i2 = i2');
                   t.neqs <- List.tl t.neqs
@@ -547,7 +562,6 @@ module CoreSolver =
     let undo dag                    = SatEUF.undo dag.euf
     let is_euf_sat dag              = SatEUF.is_sat dag.euf
     let euf_t_deductions dag        = SatEUF.t_deductions dag.euf
-    let euf_mk_lemma dag            = SatEUF.mk_lemma dag.euf
     let euf_lemma_with_info_for dag = SatEUF.lemma_with_info_for dag.euf
     let euf_lemma_with_info dag     = SatEUF.lemma_with_info dag.euf
     let euf_justify dag             = SatEUF.justify dag.euf
@@ -609,8 +623,10 @@ module CoreSolver =
       Message.print Message.Debug (lazy("CoreSolver: NO ("^(string_of_bool sat)^")"));
       (* ask EUF for new EQ *)
       let euf_deductions = euf_propagations t t.shared in
+      let euf_deductions = List.filter (fun x -> not (SatDL.entailed t.dl x)) euf_deductions in
       (* ask DL for new EQ *)
       let dl_deductions = SatDL.propagations t.dl t.shared in
+      let dl_deductions = List.filter (fun x -> not (SatEUF.entailed t.euf x)) dl_deductions in
       (* Nelson Oppen: *)
       let t1_to_t2 th1 fct2 lst acc =
         List.fold_left
@@ -643,9 +659,10 @@ module CoreSolver =
         else euf_to_dl
 
     (*TODO make code cleaner with 'maybe' *)
-    let push dag pred =
+    (* push with ot without purfying the terms *)
+    let push_abs dag pred abstract =
       (* abstract pred since it did not get through the theory split *)
-      let pred' = put_theory_split_variables dag.rev_definitions pred in
+      let pred' = if abstract then put_theory_split_variables dag.rev_definitions pred else pred in
       (*TODO other theories *)
       Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred)));
       if not (is_theory_consistent dag) then failwith "CoreSolver: push called on an already unsat system."
@@ -719,6 +736,8 @@ module CoreSolver =
             end
           | _ -> failwith "TODO: more theories"
         end
+    (* purify and push *)
+    let push dag pred = push_abs dag pred true
 
     let pop dag =
       let rec process () =
@@ -776,6 +795,7 @@ module CoreSolver =
         else
           begin
             let (ded_core, npred, _, new_deductions) = justify_pred deduction in
+             Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
             let lst = remove_not_pred_from_core ded_core npred in
             let core' = List.fold_left (fun acc x -> PredSet.add x acc) core lst in
             let justified' = PredSet.add (fst deduction) justified in
@@ -811,9 +831,17 @@ module CoreSolver =
         | (_, false) -> dl_lemma_with_info t
         | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
       in
+      Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
+      Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred core)));
+      Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
+      (*TODO NO not in deductions*)
       let (_, core') = justify_list PredSet.empty PredSet.empty deductions in
       let full_core = normalize (And (core :: (PredSet.elements core'))) in
-        (full_core, pred, th, []) (*TODO*)
+      (*NO variable renaming*)
+      (*TODO replacing the right stuff ... *)
+      let full_core = remove_theory_split_variables t.definitions full_core in
+      let pred = remove_theory_split_variables t.definitions pred in
+        (full_core, pred, th, []) (*TODO explanation ... *)
 
     let rec to_theory_solver t lst = match lst with
       | x::xs ->
@@ -828,6 +856,7 @@ module CoreSolver =
       | [] -> true
 
     (* propagate T deduction to the sat solver *)
+    (*TODO NO variable renaming*)
     let t_propagation t =
       let assigned =
         let p = ref PredSet.empty in
@@ -990,8 +1019,11 @@ module CoreSolver =
       let f = cnf (simplify f) in
         sat_solver#init f;
         (*already push the definitions*)
-        ExprMap.iter (fun k v -> assert(push graph (order_eq (Eq (k,v))))) graph.definitions;
+        ExprMap.iter (fun k v -> assert(push_abs graph (order_eq (Eq (k,v))) false)) graph.definitions;
         Message.print Message.Debug (lazy("CoreSolver: created"));
+        Message.print Message.Debug (lazy("EUF = "^(String.concat ", " (List.map print euf_formula))));
+        Message.print Message.Debug (lazy("LA  = "^(String.concat ", " (List.map print la_formula))));
+        Message.print Message.Debug (lazy("defs= "^(String.concat ", " (ExprMap.fold (fun k v acc -> ((print_expr k)^ "->"^(print_expr v)) :: acc) definitions []))));
         graph
 
   end
