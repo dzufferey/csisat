@@ -673,19 +673,10 @@ module CoreSolver =
           match pred' with
           | Eq _ ->
             begin
-              let res, changes = match add_and_test_euf dag pred' with
-                | Some (res, change) -> (res, [change])
-                | None -> (true, [])
-              in
+              let res, changes = Utils.maybe (fun (a, b) -> (a, [b])) (lazy (true, [])) (add_and_test_euf dag pred') in
               let res', changes' =
-                if res then
-                  begin
-                    match add_and_test_dl dag pred' with
-                    | Some (res, change) -> (res, change :: changes)
-                    | None -> (res, changes)
-                  end
-                else
-                  res, changes
+                if res then Utils.maybe (fun (a, b) -> (a, b :: changes)) (lazy (res, changes)) (add_and_test_dl dag pred')
+                else res, changes
               in
                 assert(changes' <> []);
                 insert_changes dag (StackChanges changes');
@@ -715,18 +706,13 @@ module CoreSolver =
           | Lt (e1, e2) ->
             begin
               (*implies not EQ*)
-              let euf_consequence = add_and_test_euf dag (Not (Eq (e1, e2))) in
-              let (res, changes) = match euf_consequence with
-                | Some (res, euf_change) -> (res, [euf_change])
-                | None -> (true, [])
-              in
+              let (res, changes) = Utils.maybe (fun (a,b) -> (a,[b])) (lazy (true, [])) (add_and_test_euf dag (Not (Eq (e1, e2)))) in
               let res', changes' =
                 if res then
-                  begin
-                    match add_and_test_dl dag pred' with
-                    | Some (res, chg) -> (res, chg :: changes)
-                    | None -> failwith "CoreSolver: Lt not in DL ??"
-                  end
+                  Utils.maybe
+                    (fun (a,b) -> (a, b::changes))
+                    (lazy (failwith "CoreSolver: Lt not in DL ??"))
+                    (add_and_test_dl dag pred')
                 else
                   (res, changes)
               in
@@ -786,7 +772,13 @@ module CoreSolver =
         | err -> failwith ("CoreSolver, theory_lemma: expected conjunctive core, got" ^ (print_pred err))
       in
       let justify_pred (pred, th) = match th with
-        | EUF -> euf_justify t pred
+        | EUF ->
+          begin
+            (*TODO map the deduction to the related congruence.
+             * in fact multiple congruences might be needed for one equaliy ...*)
+            let congruence = pred in
+              euf_justify t congruence
+          end
         | DL -> SatDL.justify t.dl pred
         | _ -> failwith "CoreSolver, theory_lemma: more theory"
       in
@@ -794,36 +786,36 @@ module CoreSolver =
         if PredSet.mem (fst deduction) justified then (justified, core)
         else
           begin
-            let (ded_core, npred, _, new_deductions) = justify_pred deduction in
-             Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
+            let (ded_core, npred, _, _) = justify_pred deduction in
+              Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
             let lst = remove_not_pred_from_core ded_core npred in
+            (*must look at ded_core to find further NO *)
+            let (no_to_justify, lst) = split_shared_NO (And lst) in
             let core' = List.fold_left (fun acc x -> PredSet.add x acc) core lst in
             let justified' = PredSet.add (fst deduction) justified in
-              justify_list justified' core' new_deductions
+              justify_list justified' core' no_to_justify
           end
       and justify_list justified core lst =
         List.fold_left (fun (a, b) c -> justify a b c) (justified, core) lst
-      in
-      let justify_NO (pred, th) = match th with
-        | EUF ->
-          begin
-            (*TODO map the deduction to the related congruence*)
-            let congruences =
-              failwith "TODO"
-            in
-            (*justify the congruences*)
-            let (_, core) = justify_list PredSet.empty PredSet.empty congruences in
-              failwith "TODO"
-          end
-        | DL -> justify_pred (pred, th)
-        | _ -> failwith "CoreSolver, theory_lemma: theory ??"
-      in
-      let get_NO_sharing core = match core with
-        | And lst ->
-          begin
-            failwith "TODO"
-          end
-        | err -> failwith ("CoreSolver, theory_lemma: expected conjunctive core, got" ^ (print_pred err))
+      (* returns the propagated (recent to old) *)
+      and split_shared_NO core =
+        let core = get_proposition_set core in
+        let used_no = ref [] in
+        let used_pred = ref PredSet.empty in
+          Stack.iter
+            (fun s -> match s with
+              | StackNO (a, b) ->
+                if PredSet.mem a core then
+                  begin
+                    used_no := (a,b) :: !used_no;
+                    used_pred := PredSet.add a !used_pred
+                  end
+              | _ -> ()
+            )
+            t.stack;
+          let nos = List.rev !used_no in
+          let rest = PredSet.elements (PredSet.diff core !used_pred) in
+            (nos, rest)
       in
       let (core, pred, th, deductions) = 
         match (is_euf_sat t, is_dl_sat t) with
@@ -831,19 +823,20 @@ module CoreSolver =
         | (_, false) -> dl_lemma_with_info t
         | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
       in
+      let (no_to_justify, core) = split_shared_NO core in
       Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
-      Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred core)));
+      Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred (And core))));
       Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
-      (* TODO NO propagated are not in deductions, so need to check what needs to be justified ...
-       * Anyway, those are not required in sat mode.
-       *)
-      let (_, core') = justify_list PredSet.empty PredSet.empty deductions in
-      let full_core = normalize (And (core :: (PredSet.elements core'))) in
+      Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") no_to_justify))));
+      let (_, core') = justify_list PredSet.empty PredSet.empty no_to_justify in
+      let full_core = normalize (And (core @ (PredSet.elements core'))) in
       (*NO variable renaming*)
-      (*TODO replacing the right stuff ... *)
+      (*TODO replacing the right stuff,
+       * definitions should no appears in the core.
+       *)
       let full_core = remove_theory_split_variables t.definitions full_core in
       let pred = remove_theory_split_variables t.definitions pred in
-        (full_core, pred, th, []) (*TODO explanation ... *)
+        (full_core, pred, th, []) (*TODO explanation: needs to accumulate deductions (for later interpolation)*)
 
     let rec to_theory_solver t lst = match lst with
       | x::xs ->
