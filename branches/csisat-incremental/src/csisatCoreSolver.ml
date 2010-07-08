@@ -44,7 +44,7 @@ module SatDL   = CsisatSatDL
 
 
 (** The different changes that can happen in the system *)
-type find_t =  Leader of UndirectedIntGraph.t * PredSet.t * PredSet.t (*graph of predicate used to make that CC, all given predicates, all congruences*)
+type find_t =  Leader of UndirectedIntGraph.t * PredSet.t (*graph of predicate used to make that CC, and the congruences*)
             |  Member of int (*representative is int*)
 type node_info = int * find_t * IntSet.t (* (id, find, ccpar) *)
 type euf_change = Deduction of predicate * node_info * node_info * (int list list) (* congruence. last part is a proof (for each argument, a path of equal terms) *)
@@ -74,7 +74,7 @@ module Node =
       expr = expr;
       nodes = nodes;
       events = events;
-      find = Leader (UndirectedIntGraph.empty, PredSet.empty, PredSet.empty);
+      find = Leader (UndirectedIntGraph.empty, PredSet.empty);
       ccpar = IntSet.empty;
     }
     
@@ -125,21 +125,20 @@ module Node =
         result
 
     let get_find_predicates_find f = match f with
-      | Leader (g,p1,p2) -> (g,p1,p2)
+      | Leader (g,p) -> (g,p)
       | Member _ -> failwith "get_find_predicates: only for leaders"
     let get_find_predicates n = get_find_predicates_find n.find
 
 
     (*val union: t -> t -> (t * t)*)
-    let union preds congruence this that = 
+    let union congruence this that given_this given_that = 
       let n1 = find this in
       let n2 = find that in
-      let gr1, g1, c1 = get_find_predicates n1 in
-      let gr2, g2, c2 = get_find_predicates n2 in
-      let new_gr = UndirectedIntGraph.add (UndirectedIntGraph.merge gr1 gr2) this.id that.id in
-      let new_g = PredSet.union preds (PredSet.union g1 g2) in
-      let new_c = PredSet.union congruence (PredSet.union c1 c2) in
-        n2.find <- Leader (new_gr, new_g, new_c);
+      let gr1, c1 = get_find_predicates n1 in
+      let gr2, c2 = get_find_predicates n2 in
+      let new_gr = UndirectedIntGraph.add (UndirectedIntGraph.merge gr1 gr2) given_this.id given_that.id in
+      let new_c = maybe (fun x -> PredSet.add x (PredSet.union c1 c2)) (lazy (PredSet.union c1 c2)) congruence in
+        n2.find <- Leader (new_gr, new_c);
         n1.find <- Member n2.id;
         n2.ccpar <- (IntSet.union n1.ccpar n2.ccpar);
         n1.ccpar <- IntSet.empty
@@ -159,54 +158,18 @@ module Node =
 
     let mk_eq a b = order_eq (Eq (a.expr, b.expr))
 
-    let small_justification (graph, g, c) this that =
-      if this.id = that.id then PredSet.empty
-      else
-        begin
-          let path = UndirectedIntGraph.shortest_path graph this.id that.id in
-          let edges = path_to_edges path in
-          let all_preds =
-            List.fold_left
-              (fun acc (a,b) ->
-                let node_a = this.nodes.(a) in
-                let node_b = this.nodes.(b) in
-                  PredSet.add (mk_eq node_a node_b) acc)
-              PredSet.empty
-              edges
-          in
-          let given = PredSet.inter all_preds g in
-          (*TODO need to go further ?
-          let congr = PredSet.inter all_preds c in
-          *)
-           given
-        end
-
-    let explain_congruence this that =
-      assert (Global.is_off_assert() || congruent this that);
-      List.fold_left2
-        (fun acc a b ->
-          let a = this.nodes.(a) in
-          let b = this.nodes.(b) in
-          let set = get_find_predicates (find a) in
-            PredSet.union acc (small_justification set a b)
-        )
-        PredSet.empty
-        this.args
-        that.args
-
-    (* return pairs of nodes whose equality comes from congruence*)
     (*val merge: t -> t -> unit*)
     let merge this that =
-      (* always report the first equality *)
-      let mk_eq_set a b = PredSet.singleton (mk_eq a b) in
-      Message.print Message.Debug (lazy("SatEUF: merge given " ^ (print_pred (mk_eq this that))));
-      let first_to_stack _ _ _ _ = () in
+      (* report only congruences *)
+      let first_to_stack _ _ _ _ =
+        Message.print Message.Debug (lazy("SatEUF: merge given " ^ (print_pred (mk_eq this that))));
+      in
       let other_to_stack a b changed_a changed_b =
         Message.print Message.Debug (lazy("SatEUF: merge congruence " ^ (print_pred (mk_eq a b))));
         let args_equalities =
           List.map
             (fun (arg_a, arg_b) ->
-              let graph, _, _ = get_find_predicates (find this.nodes.(arg_a)) in
+              let graph, _ = get_find_predicates (find this.nodes.(arg_a)) in
                 UndirectedIntGraph.shortest_path graph arg_a arg_b
             )
             (List.combine a.args b.args)
@@ -220,34 +183,35 @@ module Node =
         in
           Stack.push stack_elt a.events
       in
-      let rec process to_stack pred congruence this that =
-        Message.print Message.Debug (lazy("SatEUF: merge processing " ^ (print_pred (mk_eq this that))));
+      let rec process to_stack congruence this that =
         let n1 = find this in
         let n2 = find that in
           if n1.id <> n2.id then
             begin
               let p1 = ccpar n1 in
               let p2 = ccpar n2 in
+              let to_test = cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
                 to_stack this that n1 n2; (* report changes *)
-                union pred congruence n1 n2;
-                let to_test = cartesian_product (IntSet.elements p1) (IntSet.elements p2) in
+                union congruence n1 n2 this that;
                   Message.print Message.Debug (lazy(
                     "SatEUF: merge to_test " ^
                     (String.concat ", "
                       (List.map
                         (fun (x,y) -> print_pred (mk_eq this.nodes.(x) this.nodes.(y)))
                         to_test))));
-                  List.iter
-                    (fun (x,y) ->
-                      let x = this.nodes.(x) in
-                      let y = this.nodes.(y) in
-                        if (find x).id <> (find y).id && congruent x y then
-                          process other_to_stack (explain_congruence x y) (mk_eq_set x y) x y
-                    )
-                    to_test
+                List.iter
+                  (fun (x,y) ->
+                    let x = this.nodes.(x) in
+                    let y = this.nodes.(y) in
+                      if (find x).id <> (find y).id && congruent x y then
+                        process other_to_stack (Some (mk_eq x y)) x y
+                  )
+                  to_test
           end
+        else
+          Message.print Message.Debug (lazy("SatEUF: merge alreay equal " ^ (print_pred (mk_eq this that))))
       in
-        process first_to_stack (mk_eq_set this that) PredSet.empty this that 
+        process first_to_stack None this that 
   end
 
 module SatEUF =
@@ -300,16 +264,14 @@ module SatEUF =
       (*TODO Neq*)
       | err -> failwith ("SatEUF, entailed only eq for the moment ("^(print_pred pred)^")")
 
-    let t_deductions dag below =
-      let l = ref (Stack.length dag.stack) in
+    let t_deductions dag =
       let rec inspect_stack () =
         if Stack.is_empty dag.stack then []
         else
           begin
-            l := !l - 1;
             let t = Stack.pop dag.stack in
             let ans = match t with
-              | Deduction (t_eq, _, _, _) when !l < below -> t_eq :: (inspect_stack ())
+              | Deduction (t_eq, _, _, _) -> t_eq :: (inspect_stack ())
               | _ -> inspect_stack ()
             in
               Stack.push t dag.stack;
@@ -318,26 +280,89 @@ module SatEUF =
       in
         inspect_stack ()
 
-    (* TODO lemma for a congruence requires to look at the args ??? *)
-    let mk_lemma dag contradiction (graph1, given1, congr1) (graph2, given2, congr2) decision_level =
-      Message.print Message.Debug (lazy("SatEUF: mk_lemma for " ^ (print_pred contradiction) ^ " @ " ^ (string_of_int decision_level)));
-      let raw_congruences = t_deductions dag decision_level in
+
+    (* justify a congruence, return given preds + sub-congruences
+     * for each congruences take the justification from the stack.
+     * the congruences are loosely ordered (new to old DFS).
+     *)
+    let justify_congruence t pred =
+      Message.print Message.Debug (lazy("SatEUF: justify_congruence for " ^ (print_pred pred)));
+      let info = ref [] in
+      let congruences = ref PredMap.empty in
+        Stack.iter
+          (fun s -> match s with
+            | Deduction (t_eq, _, _, proof) -> congruences := PredMap.add t_eq proof !congruences
+            | _ -> ()
+          )
+          t.stack;
+        let rec process given_preds to_justify =
+          if PredSet.is_empty to_justify then given_preds
+          else
+            begin
+              let pred = PredSet.choose to_justify in
+              let proof = List.flatten (List.map path_to_edges (PredMap.find pred !congruences)) in
+              let preds = List.map (fun (a,b) -> Node.mk_eq (get t a) (get t b)) proof in
+              let congruences, givens = List.partition (fun p -> PredMap.mem p !congruences) preds in
+              let new_given = List.fold_left (fun acc x -> PredSet.add x acc) given_preds givens in
+              let new_to_justify = List.fold_left (fun acc x -> PredSet.add x acc) (PredSet.remove pred to_justify) congruences in
+                Message.print Message.Debug (lazy("SatEUF: justified " ^ (print_pred pred)));
+                info := pred :: !info;
+                process new_given new_to_justify
+            end
+        in
+        let pred_set = process PredSet.empty (PredSet.singleton pred) in
+          (PredSet.elements pred_set, List.rev !info)
+
+    (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
+     * find the shortest path, identify which predicates are congruences,
+     * for each congruences take the justification from the stack.
+     *)
+    let mk_lemma dag n1 n2 (graph, congr) =
+      Message.print Message.Debug (lazy("SatEUF: mk_lemma for " ^ (print_pred (Node.mk_eq n1 n2))));
+      let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
+      let edges = path_to_edges path in
+      let all_preds =
+        List.fold_left
+          (fun acc (a,b) ->
+            let node_a = get dag a in
+            let node_b = get dag b in
+              PredSet.add (Node.mk_eq node_a node_b) acc)
+          PredSet.empty
+          edges
+      in
+      let raw_congruences = t_deductions dag in
       let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
-      let needed_congruences = PredSet.inter all_congruences (PredSet.union congr1 congr2) in
-      let congruences = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in (*keep congruence in order*)
-      let info = List.map (fun x -> (x,EUF)) congruences in
-      (*TODO improve raw core (use the graphs) not everything is needed*)
-      let raw_core = PredSet.union given1 given2 in
-      let core = And (contradiction :: (PredSet.elements raw_core)) in
-        Message.print Message.Debug (lazy("SatEUF: mk_lemma core is " ^ (print_pred core)));
-        (core, contradiction, EUF, info)
+      let needed_congruences = PredSet.inter all_congruences all_preds in
+      let given = PredSet.diff all_preds needed_congruences in
+      let preds_info = List.map (justify_congruence dag) (PredSet.elements needed_congruences) in
+      let preds, infos = List.split preds_info in
+      let core_set = List.fold_left (fun acc x -> PredSet.add x acc) given (List.flatten preds) in
+      let all_needed_congruence = List.fold_left (fun acc x -> PredSet.add x acc) needed_congruences (List.flatten infos) in
+      let ordered_info = List.filter (fun x -> PredSet.mem x all_needed_congruence) raw_congruences in
+        Message.print Message.Debug (lazy("SatEUF: all_preds = " ^ (String.concat ", " (List.map print_pred (PredSet.elements all_preds)))));
+        Message.print Message.Debug (lazy("SatEUF: all_congruences = " ^ (String.concat ", " (List.map print_pred raw_congruences))));
+        Message.print Message.Debug (lazy("SatEUF: needed_congruences = " ^ (String.concat ", " (List.map print_pred (PredSet.elements needed_congruences)))));
+        Message.print Message.Debug (lazy("SatEUF: given = " ^ (String.concat ", " (List.map print_pred (PredSet.elements given)))));
+        (And (PredSet.elements core_set), List.map (fun x -> (x,EUF)) ordered_info)
 
     let lemma_with_info_for dag (c1, c2) =
-      let find1 = Node.get_find_predicates (Node.find (get dag c1)) in
-      let find2 = Node.get_find_predicates (Node.find (get dag c2)) in
-      let contradiction = order_eq (Not (Eq ((get dag c1).Node.expr,(get dag c2).Node.expr))) in
-       mk_lemma dag contradiction find1 find2 (Stack.length dag.stack)
+      let n1 = (get dag c1) in
+      let n2 = (get dag c2) in
+      let find = Node.get_find_predicates (Node.find n1) in
+        assert((Node.find n1).Node.id = (Node.find n2).Node.id);
+        mk_lemma dag n1 n2 find
 
+    (* core => Not contradiction *)
+    let justify t pred =
+      let (e1, e2, contradiction) = match pred with
+        | Eq(e1,e2) | Not (Eq(e1,e2)) -> (e1, e2, Not (Eq (e1,e2)))
+        | _ -> failwith "SatEUF, justify is only for EQ or NEQ"
+      in
+      let id1 = (get_node t e1).Node.id in
+      let id2 = (get_node t e2).Node.id in
+      let (core, info) = lemma_with_info_for t (id1, id2) in
+        (core, contradiction, EUF, info)
+    
     let lemma_with_info dag =
       let (c1,c2) = try
           List.find
@@ -346,28 +371,10 @@ module SatEUF =
         with Not_found ->
           failwith "SatEUF, lemma_with_info: system is sat!"
       in
-        lemma_with_info_for dag (c1,c2)
+      let n1 = (get dag c1) in
+      let n2 = (get dag c2) in
+        justify dag (Node.mk_eq n1 n2)
 
-    (* justify a congruence *)
-    let justify t pred =
-      let rec find () =
-        if Stack.is_empty t.stack then
-          failwith ("SatEUF, justify: not a congruence " ^ (print_pred pred))
-        else
-          begin
-            let top = Stack.pop t.stack in
-            let ans = match top with
-              | Deduction (t_eq, o1, o2, _) when t_eq = pred -> (Stack.length t.stack, o1, o2)
-              | _ -> find ()
-            in
-              Stack.push top t.stack;
-              ans
-          end
-      in
-      let (decision_level, (_, f1, _), (_, f2, _)) = find () in
-        (*find the right propagation (and below, then get reason)*)
-        mk_lemma t (Not pred) (Node.get_find_predicates_find f1) (Node.get_find_predicates_find f2) decision_level
-    
     (* for NO EQ propagation, use an undo/redo system
      * TODO needs to remember which congruence is responsible for an eq *)
     let propagations dag shared =
@@ -597,7 +604,6 @@ module CoreSolver =
     let get_node_info dag           = SatEUF.get_node_info dag.euf
     let undo dag                    = SatEUF.undo dag.euf
     let is_euf_sat dag              = SatEUF.is_sat dag.euf
-    let euf_t_deductions dag        = SatEUF.t_deductions dag.euf
     let euf_lemma_with_info_for dag = SatEUF.lemma_with_info_for dag.euf
     let euf_lemma_with_info dag     = SatEUF.lemma_with_info dag.euf
     let euf_justify dag             = SatEUF.justify dag.euf
@@ -798,15 +804,6 @@ module CoreSolver =
        * 2) get the core
        * 3) for each NO that appears in the core -> justify (recursively)
        *)
-      let remove_not_pred_from_core core npred = match core with
-        | And lst ->
-          begin
-            assert (List.mem npred lst);
-            let new_core = List.filter (fun x -> x <> npred) lst in
-              new_core
-          end
-        | err -> failwith ("CoreSolver, theory_lemma: expected conjunctive core, got" ^ (print_pred err))
-      in
       let justify_pred (pred, th) = match th with
         | EUF ->
           begin
@@ -824,9 +821,9 @@ module CoreSolver =
           begin
             let (ded_core, npred, _, _) = justify_pred deduction in
               Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
-            let lst = remove_not_pred_from_core ded_core npred in
             (*must look at ded_core to find further NO *)
-            let (no_to_justify, lst) = split_shared_NO (And lst) in
+            let (no_to_justify, lst) = split_shared_NO ded_core in
+            let lst = match ded_core with And lst -> lst | _ -> failwith "CoreSolver, theory_lemma" in
             let core' = List.fold_left (fun acc x -> PredSet.add x acc) core lst in
             let justified' = PredSet.add (fst deduction) justified in
               justify_list justified' core' no_to_justify
@@ -866,7 +863,7 @@ module CoreSolver =
       Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
       Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") no_to_justify))));
       let (_, core') = justify_list PredSet.empty PredSet.empty no_to_justify in
-      let full_core = normalize (And (core @ (PredSet.elements core'))) in
+      let full_core = normalize (And (pred :: (core @ (PredSet.elements core')))) in
       (*NO variable renaming*)
       (*TODO replacing the right stuff,
        * definitions should no appears in the core.
@@ -916,12 +913,8 @@ module CoreSolver =
                 let n2 = get_node t e2 in
                   if (Node.find n1).Node.id = (Node.find n2).Node.id then
                     begin
-                      let (core, _, _, _) = euf_lemma_with_info_for t (n1.Node.id, n2.Node.id) in
-                      let core' = match core with
-                        | And lst -> And (List.tl lst) (*Assumes 'contradiction' is the first element*)
-                        | _ -> failwith "..."
-                      in
-                        Some (Eq(e1,e2), core')
+                      let (core, _) = euf_lemma_with_info_for t (n1.Node.id, n2.Node.id) in
+                        Some (Eq(e1,e2), core)
                     end
                   else
                     None
@@ -930,13 +923,20 @@ module CoreSolver =
               begin
                 let n1 = get_node t e1 in
                 let n2 = get_node t e2 in
-                  if List.mem ((Node.find n1).Node.id, (Node.find n2).Node.id) (classes) then
+                let r1 = Node.find n1 in
+                let r2 = Node.find n2 in
+                  if   List.mem (r1.Node.id, r2.Node.id) classes
+                    || List.mem (r2.Node.id, r1.Node.id) classes
+                  then
                     begin
-                      let graph1, given1, _ = Node.get_find_predicates (Node.find n1) in
-                      let graph2, given2, _ = Node.get_find_predicates (Node.find n2) in
-                      (*TODO improve raw core, not everything is needed, use the graph *)
-                      let raw_core = PredSet.elements (PredSet.union given1 given2) in
-                        Some (Not (Eq(e1,e2)), And raw_core)
+                      (*take the path to the representative on both side ?? not the smallest explanation *)
+                      let (core1, _) = euf_lemma_with_info_for t (n1.Node.id, r1.Node.id) in
+                      let (core2, _) = euf_lemma_with_info_for t (n2.Node.id, r2.Node.id) in
+                      let core = match (core1, core2) with
+                        | (And lst1, And lst2) -> normalize_only (And (lst1 @ lst2))
+                        | _ -> failwith "..."
+                      in
+                        Some (Not (Eq(e1,e2)), core)
                     end
                   else None
               end
