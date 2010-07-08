@@ -257,7 +257,7 @@ let rec simplify_expr expr =
         else if c = 1.0 then prune e
         else Coeff(c, prune e)
   in
-    Message.print Message.Debug (lazy("  original:    " ^ (print_expr expr)));
+    (*Message.print Message.Debug (lazy("  original:    " ^ (print_expr expr)));*)
     let distr = distribute_coeff 1.0 expr in
       (*Message.print Message.Debug (lazy("  distributed: " ^ (print_expr distr)));*)
       let flat = flatten distr in
@@ -273,7 +273,7 @@ let rec simplify_expr expr =
               let merged_app =  List.fold_left (fun acc x -> merge_appl x acc) pruned apps in (*BUGGY: apps are not normalized ...*)
                 (*Message.print Message.Debug (lazy("  merge app:   " ^ (print_expr merged_app)));*)
                 let pruned2 = prune merged_app in
-                  Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));
+                  (*Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));*)
                   pruned2
 
 (** Basic simplification steps for literals: constant inequalities, ...

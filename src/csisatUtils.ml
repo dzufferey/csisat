@@ -238,8 +238,36 @@ module UndirectedIntGraph :
 
     let empty = IntMap.empty
 
+    let get_scc graph =
+      let rec get_class_of graph x =
+        if IntMap.mem x graph then
+          begin
+            let neighbours = IntMap.find x graph in
+            let graph = IntMap.remove x graph in
+              List.fold_left
+                (fun (acc_g, acc_c) x ->
+                  let g, c = get_class_of acc_g x in
+                    (g, IntSet.union acc_c c)
+                )
+                (graph, IntSet.singleton x)
+                neighbours
+          end
+        else
+          (graph, IntSet.empty)
+      in
+      let keys = IntMap.fold (fun k _ acc -> k::acc) graph [] in
+      let _, ccs =
+        List.fold_left
+          (fun (acc_g, acc_cls) k -> let g, cls = get_class_of acc_g k in (g, cls::acc_cls))
+          (graph, [])
+          keys
+      in
+        List.filter IntSet.is_empty ccs
+
     (* since the graph is not weigted, a BFS should be sufficient ?? *)
     let shortest_path graph a b =
+      (* print_endline ("shortest_path from " ^(string_of_int a)^ " to " ^ (string_of_int b));
+      IntMap.iter (fun k v -> print_endline ((string_of_int k) ^ " -> " ^ (String.concat ", " (List.map string_of_int (IntSet.elements v))))) graph; *)
       let visited = ref IntSet.empty in
       let to_process = Queue.create () in
       let pred = Hashtbl.create 100 in
@@ -250,7 +278,7 @@ module UndirectedIntGraph :
             begin
               (*get path to a*)
               let rec get_path current acc =
-        print_endline ("get_path from " ^ (string_of_int current)^ " to " ^ (string_of_int a)) ;
+                (*print_endline ("get_path from " ^ (string_of_int current)^ " to " ^ (string_of_int a));*)
                 if current = a then a::acc
                 else get_path (Hashtbl.find pred current) (current::acc)
               in

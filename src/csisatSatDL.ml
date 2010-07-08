@@ -709,7 +709,7 @@ let justify t pred =
   let deductions, given = get_given t pred in
   let odeductions = order_deductions t deductions in
   let contradiction = normalize (Not pred) in
-    (And(contradiction :: (PredSet.elements given)), contradiction, DL, List.map (fun x -> (x,DL)) odeductions)
+    (And (PredSet.elements given), contradiction, DL, List.map (fun x -> (x,DL)) odeductions)
 
 (*info: but for the contradiction, cannot do much.*)
 let unsat_core_with_info t =
