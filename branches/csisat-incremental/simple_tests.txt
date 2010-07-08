@@ -1,0 +1,23 @@
+x < y + 1; y < z + 1; x > 2; z < 0
+x <= y + 1; y <= z + 1; x = 2; z = 0
+x = y + 1 ; y = z + 1 ; x = 0 ; z = 0
+& [ = a f[f[f[f[f[a]]]]]]; & [  = a f[f[f[a]]] ~= a f [a] ]
+& [ = a b = c d ~= a e ]; & [ = b c = d e ]
+& [ = a b = c d ~= f[a] f[e] ]; & [ = b c = d e ]
+&[ = c_0 f3 [c_1 c_1] ];& [ ~= f1[c_1] f2[c_0] = f1[c_1] f2[c_1] = f2[c_1] f2[ f3 [c_1 c_1]] ]
+& [ = f3 [f2 [c_1 ] c_1 ] c_1 = f1 [f2 [c_0 ] ] f2 [c_0 ] = f3 [c_0 c_1 ] c_0 = f2 [c_0 ] c_0 ]; & [ = f1 [c_0 ] f2 [c_1 ] ~  = c_1 c_0 ]
+& [ = x y]; &[ = f [ x ] 1 = f [ a ] 0 = y a ]
+& [ ~= f [x] 0 = x y ]; & [ = f [y] 0 ]
+& [ ~= x 1 ]; & [ = x 1]
+& [ = f [ x ] 0 = f [ y ] 1]; & [ = x y ]
+
+
+Not_found:
+& [ ~<= f [x] 0 = x y ]; & [ <= f [y] 0 ]
+Failure("SatDL, unsat_core_with_info: Unassigned"):
+& [ = x p = q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = p q = f [ y ] 1 ]
+Satisfiable:
+& [ <= x p <= q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = f [ y ] 1 ]
+Failure("CoreSolver: Lt not in DL ??")
+& [ = g[a] + [ c 5 ] <= + [ c 1 ] f [ g [ a ] ]]; &[ = h [ b ] + [ d 4 ] = d + [ c 1 ] ~<= + [ c 1 ] f [ h [ b ] ] ]
+
