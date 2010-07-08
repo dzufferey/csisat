@@ -708,7 +708,9 @@ let justify t pred =
   let contradiction = normalize (Not pred) in
     (And (PredSet.elements given), contradiction, DL, List.map (fun x -> (x,DL)) odeductions)
 
-(*info: but for the contradiction, cannot do much.*)
+(*info: but for the contradiction, cannot do much.
+ * returns core => ~pred
+ *)
 let unsat_core_with_info t =
   match t.status with
   | Sat -> failwith "SatDL: unsat_core_with_info on a SAT system"
@@ -716,7 +718,7 @@ let unsat_core_with_info t =
     begin
         let deductions, given = get_given_lst t preds in
         let odeductions = order_deductions t deductions in
-          (And(pred :: (PredSet.elements given)), pred, DL, List.map (fun x -> (x,DL)) odeductions)
+          (And (PredSet.elements given), pred, DL, List.map (fun x -> (x,DL)) odeductions)
     end
 
 let unsat_core t = let (p,_,_,_) = unsat_core_with_info t in p

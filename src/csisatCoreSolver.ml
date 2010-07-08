@@ -857,19 +857,13 @@ module CoreSolver =
         | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
       in
       Message.print Message.Debug (lazy("CoreSolver: full core is "^(print_pred core)));
-      let (no_to_justify, core) = split_shared_NO core in
+      let (no_to_justify, core) = split_shared_NO (normalize_only (And [pred; core])) in
       Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
       Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred (And core))));
       Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
       Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") no_to_justify))));
       let (_, core') = justify_list PredSet.empty PredSet.empty no_to_justify in
-      let full_core = normalize (And (pred :: (core @ (PredSet.elements core')))) in
-      (*NO variable renaming*)
-      (*TODO replacing the right stuff,
-       * definitions should no appears in the core.
-       *)
-      let full_core = remove_theory_split_variables t.definitions full_core in
-      let pred = remove_theory_split_variables t.definitions pred in
+      let full_core = normalize (And (core @ (PredSet.elements core'))) in
         (full_core, pred, th, []) (*TODO explanation: needs to accumulate deductions (for later interpolation)*)
 
     let rec to_theory_solver t lst = match lst with
@@ -967,6 +961,12 @@ module CoreSolver =
       let rec t_contradiction () =
         Message.print Message.Debug (lazy("CoreSolver: solving t_contradiction"));
         let (new_clause, contradiction, th, explanation) = theory_lemma t in
+        (*NO variable renaming*)
+        (*TODO replacing the right stuff,
+         * definitions should no appears in the new clause.
+         *)
+        let new_clause = normalize (remove_theory_split_variables t.definitions new_clause) in
+        let contradiction = normalize (remove_theory_split_variables t.definitions contradiction) in
         let new_clause = reverse new_clause in
         let old_dl = t.sat_solver#get_decision_level in
           t.explanations <- PredMap.add new_clause (contradiction, th, explanation) t.explanations;
