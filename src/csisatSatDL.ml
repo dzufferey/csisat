@@ -302,13 +302,6 @@ let sssp size successors source =
                   pred.(idx') <- idx;
                   PQueue.add pq idx' d'
                 end
-              (*
-              else if d' < dist.(idx') then
-                begin
-                  pred.(idx') <- idx :: pred.(idx');
-                end
-              *)
-
           )
           (successors idx)
     done;
@@ -326,11 +319,12 @@ let strongest lst =
       None
       (List.filter active_constraint lst)
 
-let rec path_from_to pred source target =
+let rec path_from_to_rev pred source target =
   Message.print Message.Debug (lazy("SatDL: path from '" ^ (string_of_int source) ^ "' to '" ^ (string_of_int target)^"'"));
   if pred.(target) <> -1
-  then target :: (path_from_to pred source (pred.(target)))
+  then target :: (path_from_to_rev pred source (pred.(target)))
   else [source]
+let rec path_from_to pred source target = List.rev (path_from_to_rev pred source target)
         
 let strongest_for_pair t (x,y) =
   let lst = List.filter active_constraint t.edges.(x).(y) in
@@ -450,8 +444,11 @@ let t_propagations t (x, y, c) pred =
                   if status = Unassigned && strict = Strict && shortest_x.(i) +. c +. shortest_y.(j) <= d then
                     begin
                       (*x -> i, j -> y, pred*)
-                      let x_to_i = List.map (strongest_for_pair t) (path_to_edges (List.rev (path_from_to pred_x x i))) in
-                      let j_to_y = List.map (strongest_for_pair t) (path_to_edges (path_from_to pred_y y j)) in
+                      let mk_path lst = List.map (strongest_for_pair t) (path_to_edges lst) in 
+                      Message.print Message.Debug (lazy("SatDL: x_to_i"));
+                      let x_to_i = mk_path (path_from_to_rev pred_x x i) in
+                      Message.print Message.Debug (lazy("SatDL: j_to_y"));
+                      let j_to_y = mk_path (path_from_to pred_y y j) in
                       (*TODO check that path implies the constraint *)
                       let path = pred :: (x_to_i @ j_to_y) in
                         changed := (i, j, cstr) :: !changed;
@@ -593,15 +590,15 @@ let push t pred =
           let size = Array.length t.assignment in
           let find_path v1 v2 c =
             let shortest_y, pred_y = sssp size successors v2 in
-            let path = List.rev (path_from_to pred_y v2 v1) in
+            let path = path_from_to pred_y v2 v1 in
             let y_to_x = List.map (strongest_for_pair t) (path_to_edges path) in
               (* check that the distance y to x is less then x to y. *)
               Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
               Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
               Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
               Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
-              Message.print Message.Debug (lazy("SatDL: old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c = "^(string_of_float (old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c))));
-              if old_assign.(v2) +. shortest_y.(v1) -. old_assign.(v1) +. c < 0.0
+              Message.print Message.Debug (lazy("SatDL: old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c = "^(string_of_float (old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c))));
+              if old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c < 0.0
               then Some (y_to_x)
               else None
           in
