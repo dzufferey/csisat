@@ -332,10 +332,6 @@ let rec path_from_to pred source target =
   then target :: (path_from_to pred source (pred.(target)))
   else [source]
         
-let rec path_to_pairs lst = match lst with
-  | x :: y :: xs -> (x,y) :: path_to_pairs (y::xs)
-  | _ -> []
-
 let strongest_for_pair t (x,y) =
   let lst = List.filter active_constraint t.edges.(x).(y) in
   let (_,_,_,p) =
@@ -454,8 +450,8 @@ let t_propagations t (x, y, c) pred =
                   if status = Unassigned && strict = Strict && shortest_x.(i) +. c +. shortest_y.(j) <= d then
                     begin
                       (*x -> i, j -> y, pred*)
-                      let x_to_i = List.map (strongest_for_pair t) (path_to_pairs (List.rev (path_from_to pred_x x i))) in
-                      let j_to_y = List.map (strongest_for_pair t) (path_to_pairs (path_from_to pred_y y j)) in
+                      let x_to_i = List.map (strongest_for_pair t) (path_to_edges (List.rev (path_from_to pred_x x i))) in
+                      let j_to_y = List.map (strongest_for_pair t) (path_to_edges (path_from_to pred_y y j)) in
                       (*TODO check that path implies the constraint *)
                       let path = pred :: (x_to_i @ j_to_y) in
                         changed := (i, j, cstr) :: !changed;
@@ -598,7 +594,7 @@ let push t pred =
           let find_path v1 v2 c =
             let shortest_y, pred_y = sssp size successors v2 in
             let path = List.rev (path_from_to pred_y v2 v1) in
-            let y_to_x = List.map (strongest_for_pair t) (path_to_pairs path) in
+            let y_to_x = List.map (strongest_for_pair t) (path_to_edges path) in
               (* check that the distance y to x is less then x to y. *)
               Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
               Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));

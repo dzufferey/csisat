@@ -185,6 +185,94 @@ let get_scc_undirected_graph edges =
   let ccs = List.map get_class_of keys in
     List.filter (fun lst -> lst <> []) ccs
 
+let rec path_to_edges lst = match lst with
+  | x :: y :: xs -> (x,y) :: path_to_edges (y::xs)
+  | _ -> []
+
+(* immutable (add/remove creates a new graph) *)
+module UndirectedIntGraph :
+  sig
+    type t
+    val get: t -> int -> IntSet.t
+    val add: t -> int -> int -> t 
+    val remove: t -> int -> int -> t
+    val create: (int * int) list -> t
+    val merge: t -> t -> t
+    val empty: t
+    val shortest_path: t -> int -> int -> int list
+  end
+=
+  struct
+    type t = IntSet.t IntMap.t
+    
+    let get graph x =
+      if IntMap.mem x graph
+      then IntMap.find x graph
+      else IntSet.empty
+    
+    let add graph x y =
+      let alreadyx = get graph x in
+      let alreadyy = get graph y in
+      let graph'  = IntMap.add x (IntSet.add y alreadyx) graph  in
+      let graph'' = IntMap.add y (IntSet.add x alreadyy) graph' in
+        graph''
+
+    let remove graph x y =
+      let alreadyx = get graph x in
+      let alreadyy = get graph y in
+      let graph'  = IntMap.add x (IntSet.remove y alreadyx) graph  in
+      let graph'' = IntMap.add y (IntSet.remove x alreadyy) graph' in
+        graph''
+
+    let create edges =
+      List.fold_left
+        (fun graph (x,y) -> add graph x y)
+        IntMap.empty
+        edges
+    
+    let merge graph1 graph2 =
+      IntMap.fold
+        (fun x set acc -> IntMap.add x (IntSet.union set (get acc x)) acc)
+        graph1
+        graph2
+
+    let empty = IntMap.empty
+
+    (* since the graph is not weigted, a BFS should be sufficient ?? *)
+    let shortest_path graph a b =
+      let visited = ref IntSet.empty in
+      let to_process = Queue.create () in
+      let pred = Hashtbl.create 100 in
+      let rec find_b () =
+        let n = Queue.take to_process in
+          if IntSet.mem n !visited then find_b ()
+          else if n = b then
+            begin
+              (*get path to a*)
+              let rec get_path current acc =
+        print_endline ("get_path from " ^ (string_of_int current)^ " to " ^ (string_of_int a)) ;
+                if current = a then a::acc
+                else get_path (Hashtbl.find pred current) (current::acc)
+              in
+                get_path b []
+            end
+          else
+            begin
+              visited := IntSet.add n !visited;
+              IntSet.iter
+                (fun m ->
+                  Queue.add m to_process;
+                  if not (Hashtbl.mem pred m) then Hashtbl.add pred m n
+                )
+                (get graph n);
+                find_b ()
+            end
+      in
+        Queue.add a to_process;
+        find_b ()
+
+  end
+
 (* build the list of primes *)
 let prime_list n =
   let rec is_prime lst_prime x =
