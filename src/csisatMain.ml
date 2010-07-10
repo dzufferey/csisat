@@ -230,7 +230,15 @@ let stat () =
 
 let main =
   Random.self_init ();
-  if !sat_only then
-    sat_only_2 ()
-  else
-    interpolate_in ()
+  if ! Message.debug then Printexc.record_backtrace true;
+  try
+    if !sat_only then
+      sat_only_2 ()
+    else
+      interpolate_in ()
+  with exc ->
+    begin
+      Message.print Message.Error (lazy ("Fatal error: exception " ^ (Printexc.to_string exc)));
+      if Printexc.backtrace_status () then
+        Message.print Message.Error (lazy (Printexc.get_backtrace ()))
+    end

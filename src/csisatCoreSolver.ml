@@ -378,6 +378,7 @@ module SatEUF =
     (* for NO EQ propagation, use an undo/redo system
      * TODO needs to remember which congruence is responsible for an eq *)
     let propagations dag shared =
+      Message.print Message.Debug (lazy("SatEUF: propagations on " ^ (String.concat "," (List.map print_expr shared))));
       let rec to_last_deduction () =
         if Stack.is_empty dag.stack then None
         else
@@ -423,6 +424,7 @@ module SatEUF =
         match to_last_deduction () with
         | Some (top, restore1, restore2) ->
           begin
+            (*TODO rewrite that part *)
             let old_equals = are_equal equals in
             let new_equals = List.filter (fun x -> not (List.mem x old_equals)) equals in
             (*prune using cc from old_equals*)
