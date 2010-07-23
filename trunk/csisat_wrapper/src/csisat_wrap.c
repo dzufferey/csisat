@@ -1,3 +1,29 @@
+/*
+ *  CSIsat is an interpolating decision procedure for LA + EUF.
+ *  This file is part of CSIsat. 
+ *
+ *  Copyright (C) 2007-2008  Dirk Beyer and Damien Zufferey.
+ *  All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
+ *  CSIsat web page:
+ *    http://www.cs.sfu.ca/~dbeyer/CSIsat/
+ */
+
+#include "csisat_wrap.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,24 +33,24 @@
 #include <caml/memory.h>
 #include <caml/callback.h>
 
-static const char * interpolate_string(const char * s) {
+#include <jni.h> 
+
+JNIEXPORT jstring JNICALL
+Java_CSIsatWrap_interpolateString (JNIEnv *env, jclass clazz, jstring s)
+{
   CAMLparam0();
   CAMLlocal1(ostr);
-  
-  ostr = caml_copy_string(s);
+
+  const jbyte *str = (*env)->GetStringUTFChars(env, s, NULL);
+  if (NULL == str) {
+    return NULL;
+  }
+  ostr = caml_copy_string(str);
+  (*env)->ReleaseStringUTFChars(env, s, str);
   
   value *func = caml_named_value("interpolate_string");
-
   if (NULL == func) {
-    puts("caml_named_value failed!");
     return NULL;
-  } else {
-    return strdup(String_val(caml_callback(*func, ostr)));
   }
-}
-  
-int main(int argc, char **argv) { 
-  caml_startup(argv);
-  puts(interpolate_string("blablabla"));
-  return 0;
+  return (*env)->NewStringUTF(env, String_val(caml_callback(*func, ostr)));
 }

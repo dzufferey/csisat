@@ -97,7 +97,7 @@ then
   [ $static = yes ] && CFLAGS="$CFLAGS -static"
   case X"$CC" in
     X*gcc*)
-      CFLAGS="$CFLAGS -Wall -Wextra"
+      CFLAGS="$CFLAGS -Wall -Wextra -fPIC"
       [ $thirtytwobit = yes ] && CFLAGS="$CFLAGS -m32"
       if [ $satcompetition = yes ]
       then
