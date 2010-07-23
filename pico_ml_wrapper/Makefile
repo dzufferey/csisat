@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -O2 -Wall
+CFLAGS= -O2 -Wall -fPIC
 INCLUDE= -I../picosat
 LIBS= -lpicosat -L../picosat
 RM = /bin/rm -f
