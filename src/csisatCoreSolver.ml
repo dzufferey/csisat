@@ -958,6 +958,31 @@ module CoreSolver =
     type solved = Sat of predicate list
                 | Unsat of CsisatDpllProof.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
 
+    let solved_to_string t = match t with
+      | Sat lst -> "Satisfiable: " ^ (String.concat ", " (List.map print_pred lst))
+      | Unsat (res, blocking_clauses) ->
+        begin
+          let (str_prf, (_,index_to_atom, clauses)) = CsisatDpllProof.tracecheck_of_proof_with_tables res in
+          let blocking_clause pred (contradiction, th, explanation) =
+            (* TODO refactor the 'theory proof' to piggyback more informations *)
+            failwith "TODO"
+          in
+          let prop_buffer = Buffer.create 1000 in
+          let clause_buffer = Buffer.create 1000 in
+          let blocking_buffer = Buffer.create 1000 in
+            Hashtbl.iter (fun k v -> Buffer.add_string prop_buffer ((string_of_int k) ^ " -> " ^ (print_pred v) ^ "\n")) index_to_atom;
+            Hashtbl.iter (fun k v -> Buffer.add_string clause_buffer ((string_of_int v) ^ " -> " ^ (print_pred (Or (PredSet.elements k))) ^ "\n")) clauses;
+            PredMap.iter (fun k v -> Buffer.add_string blocking_buffer (blocking_clause k v)) blocking_clauses;
+            "resolution proof (tracecheck format):\n" ^
+            str_prf ^ "\n" ^
+            "propositions:\n" ^
+            (Buffer.contents prop_buffer) ^
+            "clauses:\n" ^
+            (Buffer.contents clause_buffer) ^
+            "blocking clauses:\n" ^
+            (Buffer.contents blocking_buffer)
+        end
+
     let rec solve t =
       Message.print Message.Debug (lazy("CoreSolver: solving"));
       let rec t_contradiction () =
