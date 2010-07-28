@@ -77,7 +77,7 @@ let string_of_proof prf =
     print_prf prf 0;
     Buffer.contents buffer
 
-let tracecheck_of_proof prf =
+let tracecheck_of_proof_with_tables prf =
   let counter = ref 0 in
   let get_fresh_index () = counter := !counter + 1; !counter in
   let index_to_atom = Hashtbl.create 500 in
@@ -147,4 +147,7 @@ let tracecheck_of_proof prf =
       end
   in
     print_prf prf;
-    Buffer.contents buffer
+    (Buffer.contents buffer, (atom_to_index, index_to_atom, indexes))
+
+let tracecheck_of_proof prf =
+  fst (tracecheck_of_proof_with_tables prf)
