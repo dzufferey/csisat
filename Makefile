@@ -64,6 +64,7 @@ FILES = \
 	$(OBJ)/csisatNelsonOppen.cmx \
 	$(OBJ)/csisatSatPL.cmx \
 	$(OBJ)/csisatSatDL.cmx \
+	$(OBJ)/csisatSatEUF.cmx \
 	$(OBJ)/csisatCoreSolver.cmx \
 	$(OBJ)/csisatInterpolate.cmx \
 	$(OBJ)/csisatConfig.cmx

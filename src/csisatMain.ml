@@ -40,6 +40,7 @@ module InfixLex    = CsisatInfixLex
 module InfixParse  = CsisatInfixParse
 module DimacsLex   = CsisatDimacsLex
 module DimacsParse = CsisatDimacsParse
+module CoreSolver  = CsisatCoreSolver
 (**/**)
 
 let print_fct = ref FociPrinter.print_foci
@@ -213,10 +214,10 @@ let sat_only_2 () =
     if formula = True then true
     else if formula = False then false
     else
-    let solver = CsisatCoreSolver.CoreSolver.create formula in
-      match CsisatCoreSolver.CoreSolver.solve solver with
-      | CsisatCoreSolver.CoreSolver.Sat _ -> true
-      | CsisatCoreSolver.CoreSolver.Unsat _ -> false
+    let solver = CoreSolver.create formula in
+      match CoreSolver.solve solver with
+      | CoreSolver.Sat _ -> true
+      | CoreSolver.Unsat _ -> false
   in
     if ans
     then Message.print Message.Normal (lazy "satisfiable")
