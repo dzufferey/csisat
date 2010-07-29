@@ -313,8 +313,40 @@ let justify_congruence t pred =
       (PredSet.elements pred_set, List.rev !info)
 
 (*TODO make real congruence proof i.e. using the congruence_proof type.*)
-let mk_proof dag n1 n2 (graph, congr) =
-  failwith "TODO"
+let rec mk_proof dag n1 n2 (graph, congr) =
+  Message.print Message.Debug (lazy("SatEUF: mk_proof for " ^ (print_pred (Node.mk_eq n1 n2))));
+  (*TODO cache proof to avoid computing them multiple times*)
+  let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
+  let edges = path_to_edges path in
+  let all_preds =
+    List.fold_left
+      (fun acc (a,b) ->
+        let node_a = get dag a in
+        let node_b = get dag b in
+          PredSet.add (Node.mk_eq node_a node_b) acc)
+      PredSet.empty
+      edges
+  in
+  let raw_congruences = t_deductions dag in
+  let used_congruences = List.filter (fun x -> PredSet.mem x all_preds) raw_congruences in
+  let recurse pred = match pred with
+    | Eq (Application(s, a1), Application(_,a2)) ->
+      begin
+        (* get the (graph, congr) at that time, and call recursively*)
+        failwith "TODO"
+      end
+    | other -> failwith ("SatEUF: congruence is " ^ (print_pred other))
+  in
+  let paths = List.map recurse used_congruences in
+  let proof =
+    List.fold_left
+      (fun acc (a,b) ->
+        failwith "TODO"
+      )
+      []
+      edges
+  in
+    proof
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
  * find the shortest path, identify which predicates are congruences,
