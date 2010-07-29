@@ -22,7 +22,9 @@
  *    http://www.cs.sfu.ca/~dbeyer/CSIsat/
  *)
 
-(** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)*)
+(** Satisfiability for EUF. (UIF stands for UnInterpreted Function symbols)
+ * going deprecated. will soon be replaced by csisatSatEUF.
+ *)
 
 open   CsisatAst
 open   CsisatAstUtil
