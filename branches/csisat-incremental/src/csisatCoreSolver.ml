@@ -47,12 +47,22 @@ module Node    = CsisatSatEUF.Node
 type change = StackSat of predicate (* predicate given by sat solver *)
             | StackNO of predicate * theory
             | StackChanges of (theory * predicate) list (*what was sent to which theory*)
+type explanation = ProofEUF of SatEUF.congruence_path
+                 | ProofDL of predicate (*TODO more complex *)
+                 | NoProof (*TODO remove when everything is done *)
+
+let string_of_explanation e = match e with
+  | ProofEUF path -> SatEUF.string_of_path path
+  | _ -> "TODO"
 
 type t = {
   sat_solver: Dpll.csi_dpll;
   propositions: PredSet.t;
   stack: change Stack.t;
-  mutable explanations: (predicate * theory * (predicate * theory) list) PredMap.t;
+  mutable explanations: (predicate * theory * explanation list) PredMap.t;
+  (* about the equisatisfiable conversion *)
+  dico: (predicate, predicate) Hashtbl.t;
+  pred_to_atom: (predicate, predicate) Hashtbl.t;
   (* TODO what is needed for the theory splitting and theory solvers *)
   (* a theory solver being a module, there are some problem
    * Functors: modular, but only handles a fixed number of solver
@@ -334,7 +344,12 @@ let theory_lemma t =
   Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") no_to_justify))));
   let (_, core') = justify_list PredSet.empty PredSet.empty no_to_justify in
   let full_core = normalize (And (core @ (PredSet.elements core'))) in
-    (full_core, pred, th, []) (*TODO explanation: needs to accumulate deductions (for later interpolation)*)
+  let explanation =
+    if th = EUF && no_to_justify = []
+    then [ProofEUF (SatEUF.mk_proof t.euf (contra pred))]
+    else [NoProof] (*TODO explanation: needs to accumulate deductions (for later interpolation)*)
+  in
+    (full_core, pred, th, explanation)
 
 let rec to_theory_solver t lst = match lst with
   | x::xs ->
@@ -424,22 +439,27 @@ let reverse formula = match formula with
   | e -> Or [contra e] (*abstract can return atoms*)
 
 type solved = Sat of predicate list
-            | Unsat of DpllProof.res_proof * (predicate * theory * (predicate * theory) list) PredMap.t
+            | Unsat of DpllProof.res_proof * (predicate * theory * explanation list) PredMap.t
 
-let solved_to_string t = match t with
-  | Sat lst -> "Satisfiable: " ^ (String.concat ", " (List.map print_pred lst))
+let solved_to_string t prf = match prf with
+  | Sat lst ->
+    begin
+      let lst = (List.filter (fun x -> x <> True) (List.map remove_equisat_atoms lst)) in
+      "Satisfiable: " ^ (String.concat ", " (List.map print_pred lst))
+    end
   | Unsat (res, blocking_clauses) ->
     begin
       let (str_prf, (_,index_to_atom, clauses)) = DpllProof.tracecheck_of_proof_with_tables res in
       let blocking_clause pred (contradiction, th, explanation) =
-        (* TODO refactor the 'theory proof' to piggyback more informations *)
-        failwith "TODO"
+        (print_pred (normalize_only (unabstract_equisat t.dico (Not pred)))) ^ " is unsat ("^(string_of_theory th)^","^(print_pred contradiction)^") because:\n" ^ 
+        (String.concat "\n" (List.map string_of_explanation explanation)) ^ "\n"
       in
+      let clause set = print_pred (Or (List.map (unabstract_equisat t.dico) (PredSet.elements set))) in
       let prop_buffer = Buffer.create 1000 in
       let clause_buffer = Buffer.create 1000 in
       let blocking_buffer = Buffer.create 1000 in
-        Hashtbl.iter (fun k v -> Buffer.add_string prop_buffer ((string_of_int k) ^ " -> " ^ (print_pred v) ^ "\n")) index_to_atom;
-        Hashtbl.iter (fun k v -> Buffer.add_string clause_buffer ((string_of_int v) ^ " -> " ^ (print_pred (Or (PredSet.elements k))) ^ "\n")) clauses;
+        Hashtbl.iter (fun k v -> Buffer.add_string prop_buffer ((string_of_int k) ^ " -> " ^ (print_pred (unabstract_equisat t.dico v)) ^ "\n")) index_to_atom;
+        Hashtbl.iter (fun k v -> Buffer.add_string clause_buffer ((string_of_int v) ^ " -> " ^ (clause k) ^ "\n")) clauses;
         PredMap.iter (fun k v -> Buffer.add_string blocking_buffer (blocking_clause k v)) blocking_clauses;
         "resolution proof (tracecheck format):\n" ^
         str_prf ^ "\n" ^
@@ -450,6 +470,7 @@ let solved_to_string t = match t with
         "blocking clauses:\n" ^
         (Buffer.contents blocking_buffer)
     end
+
 
 let rec solve t =
   Message.print Message.Debug (lazy("CoreSolver: solving"));
@@ -525,23 +546,26 @@ let create pred =
   let extended_la_formula = to_conjunctive_list (normalize (And (possible_deduction @ la_formula))) in
   let dl_solver = SatDL.create SatDL.Integer extended_la_formula in
   (* end of DL *)
+  
+  (* equisatisfiable *)
+  let dico, pred_to_atom, f =
+    if is_cnf pred then (Hashtbl.create 0, Hashtbl.create 0, pred)
+    else equisatisfiable pred
+  in
 
   let graph = {
       sat_solver = sat_solver;
       propositions = pset;
       stack = stack;
       explanations = PredMap.empty;
+      dico = dico;
+      pred_to_atom = pred_to_atom;
       shared = shared;
       definitions = definitions;
       rev_definitions = ExprMap.fold (fun k v acc -> ExprMap.add v k acc) definitions ExprMap.empty;
       euf = euf;
       dl = dl_solver
     }
-  in
-  let f =
-    if is_cnf pred then pred 
-    else match equisatisfiable pred with
-      | (_,_,f) -> f
   in
   let f = cnf (simplify f) in
     sat_solver#init f;

@@ -920,6 +920,7 @@ let split_formula_t1_t2 t1 t2 pred =
   (* TODO Not Eq might also be shared ... *)
   let rec process_p pred = match pred with
     | And lst -> And (List.map process_p lst)
+    | Or lst -> Or (List.map process_p lst)
     | Eq (e1,e2) ->
       begin
         let e1_t1 = process_e_t1 e1 in
@@ -1046,17 +1047,18 @@ let equisatisfiable pred =
       end
   in
     let subterm = get_subterm_nnf pred in
+    (* TODO the last part seem not very efficient when the formula are very close to CNF *)
     let formula = normalize_only (And ((rep pred)::(List.map enc subterm))) in
       (dico, pred_to_atom, normalize_only (remove_lit_clash formula))
 
+let unabstract_equisat_expr dico expr = match expr with
+  | Leq(e1,e2) -> (Not (Lt(e2,e1)))
+  | Atom (Internal _) as a -> Hashtbl.find dico a
+  | p -> p
+
 (** Replaces the atoms by the part they represent.*)
 let unabstract_equisat dico formula =
-  let process f = match f with
-    | Leq(e1,e2) -> (Not (Lt(e2,e1)))
-    | Atom (Internal _) as a -> Hashtbl.find dico a
-    | p -> p
-  in
-    normalize_only (map_pred_top_down process formula)
+  normalize_only (map_pred_top_down (unabstract_equisat_expr dico) formula)
 
 (** Formula is an equisatisfiable formula (assignment returned by the satsolver),
  * it removes the atoms, keeps only the theory literals.

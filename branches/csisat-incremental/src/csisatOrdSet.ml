@@ -28,6 +28,11 @@
  *)
 
 type 'a t = 'a list
+
+
+let empty = []
+
+let is_empty lst = lst = []
   
 let remove_duplicates lst =
   let rec process last acc lst = match lst with
