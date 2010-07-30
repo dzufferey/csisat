@@ -51,6 +51,23 @@ let proof_get_left_expr prf = match prf with
 let proof_get_right_expr prf = match prf with
   | Congruence (_, r, _) -> r
   | Eqs lst -> List.hd (List.rev lst)
+let rec path_well_formed lst = match lst with
+  | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
+  | _ -> true
+let compact_path lst =
+  let rec process acc lst = match lst with
+    | (Eqs lst1) :: (Eqs lst2) :: xs ->
+      begin
+        assert (List.hd lst2 = List.hd (List.rev lst1));
+        process acc ((Eqs (lst1 @ (List.tl lst2))) :: xs)
+      end
+    | x :: xs -> x :: acc 
+    | [] -> List.rev acc
+  in
+  let proof = process [] lst in
+    assert (path_well_formed proof);
+    proof
+
 
 module Node =
   struct
@@ -312,41 +329,103 @@ let justify_congruence t pred =
     let pred_set = process PredSet.empty (PredSet.singleton pred) in
       (PredSet.elements pred_set, List.rev !info)
 
-(*TODO make real congruence proof i.e. using the congruence_proof type.*)
-let rec mk_proof dag n1 n2 (graph, congr) =
+(*TODO make real congruence proof i.e. using the congruence_proof/path type.*)
+let mk_proof dag n1 n2 =
   Message.print Message.Debug (lazy("SatEUF: mk_proof for " ^ (print_pred (Node.mk_eq n1 n2))));
-  (*TODO cache proof to avoid computing them multiple times*)
-  let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
-  let edges = path_to_edges path in
-  let all_preds =
-    List.fold_left
-      (fun acc (a,b) ->
-        let node_a = get dag a in
-        let node_b = get dag b in
-          PredSet.add (Node.mk_eq node_a node_b) acc)
-      PredSet.empty
-      edges
-  in
+
+  (* is a congruence or not *)
   let raw_congruences = t_deductions dag in
-  let used_congruences = List.filter (fun x -> PredSet.mem x all_preds) raw_congruences in
-  let recurse pred = match pred with
+  let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
+  let is_congruence pred = PredSet.mem pred all_congruences in
+  
+  let mk_pred (a, b) = 
+    let node_a = get dag a in
+    let node_b = get dag b in
+      Node.mk_eq node_a node_b
+  in
+
+  let mk_path n1 n2 graph =
+    Message.print Message.Debug (lazy("SatEUF: mk_path for " ^ (print_pred (Node.mk_eq n1 n2))));
+    let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
+    let edges = path_to_edges path in
+    let all_preds =
+      List.fold_left
+        (fun acc (a,b) -> PredSet.add (mk_pred (a, b)) acc)
+        PredSet.empty
+        edges
+    in
+    let used_congruences = List.filter (fun x -> PredSet.mem x all_preds) raw_congruences in
+      (edges, used_congruences)
+  in
+
+  (* raw proof contained in the stack *)
+  let stack_deductions =
+    let t = Hashtbl.create 100 in
+      Stack.iter
+        (fun x ->
+          match x with
+          | Deduction (pred, _, _, proof) -> Hashtbl.add t pred proof
+          | _ -> ()
+        )
+        dag.stack;
+      t
+  in
+  (*TODO cache proof to avoid computing them multiple times*)
+  let rec find_justification pred = match pred with
     | Eq (Application(s, a1), Application(_,a2)) ->
       begin
-        (* get the (graph, congr) at that time, and call recursively*)
-        failwith "TODO"
+        let int_prf = Hashtbl.find stack_deductions pred in
+        let args_pairs = List.combine a1 a2 in
+        let proofs =
+          List.map2
+            (fun (a1, a2) prf ->
+              (*check direction of prf*)
+              let prf =
+                if (get dag (List.hd prf)).Node.expr = a1
+                then prf
+                else List.rev prf
+              in
+              let edges = path_to_edges prf in
+              let preds = List.map mk_pred edges in
+              (*check for further congruence*)
+              let proofs =
+                List.map2
+                  (fun x (a,b) ->
+                    let a = (get dag a).Node.expr in
+                    let b = (get dag b).Node.expr in
+                      if is_congruence x
+                      then Congruence (a, b, find_justification pred)
+                      else Eqs [a;b])
+                  preds edges
+              in
+                compact_path proofs
+            )
+            args_pairs
+            int_prf
+        in
+          proofs
       end
     | other -> failwith ("SatEUF: congruence is " ^ (print_pred other))
   in
-  let paths = List.map recurse used_congruences in
-  let proof =
-    List.fold_left
-      (fun acc (a,b) ->
-        failwith "TODO"
+  
+  let graph = fst (Node.get_find_predicates (Node.find n1)) in
+  let edges, used_congruences = mk_path n1 n2 graph in
+  let sub_proofs = List.fold_left (fun acc p -> PredMap.add p (find_justification p) acc) PredMap.empty used_congruences in
+  (*put everything together ...*)
+  let raw_proof = 
+    List.map
+      (fun (a,b) ->
+        let pred = mk_pred (a,b) in
+        let a = (get dag a).Node.expr in
+        let b = (get dag b).Node.expr in
+          if PredMap.mem pred sub_proofs
+          then Congruence (a, b, PredMap.find pred sub_proofs)
+          else Eqs [a; b]
       )
-      []
       edges
   in
-    proof
+    compact_path raw_proof
+
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
  * find the shortest path, identify which predicates are congruences,
