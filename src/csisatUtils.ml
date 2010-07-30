@@ -193,6 +193,7 @@ let rec path_to_edges lst = match lst with
 module UndirectedIntGraph :
   sig
     type t
+    val to_string: t -> string
     val get: t -> int -> IntSet.t
     val add: t -> int -> int -> t 
     val remove: t -> int -> int -> t
@@ -205,6 +206,16 @@ module UndirectedIntGraph :
   struct
     type t = IntSet.t IntMap.t
     
+    let to_string t =
+      let buffer = Buffer.create 1000 in
+      let add = Buffer.add_string buffer in
+        IntMap.iter
+          (fun k v ->
+            let succ = String.concat ", " (List.map string_of_int (IntSet.elements v)) in
+            add ((string_of_int k) ^ " -> " ^ succ ^ "\n") )
+          t;
+        Buffer.contents buffer
+
     let get graph x =
       if IntMap.mem x graph
       then IntMap.find x graph

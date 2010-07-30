@@ -42,18 +42,29 @@ type euf_change = Deduction of predicate * node_info * node_info * (int list lis
                 | Internal of (int * find_t) list (* path compression: (id, old find) list *)
                 | Equal of node_info * node_info (* information to restore previous state *)
                 | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
+
+
 type congruence_proof = Congruence of expression * expression * (congruence_path list) (* last part is, for each argument, a path of equal terms.*)
                       | Eqs of expression list (* equality path of given predicates *)
 and congruence_path = congruence_proof list
+
 let proof_get_left_expr prf = match prf with
   | Congruence (l, _, _) -> l
   | Eqs lst -> List.hd lst
+
 let proof_get_right_expr prf = match prf with
   | Congruence (_, r, _) -> r
   | Eqs lst -> List.hd (List.rev lst)
+
+let proof_final_equality p =
+  let a = proof_get_left_expr p in
+  let b = proof_get_right_expr p in
+    order_eq (Eq (a, b))
+
 let rec path_well_formed lst = match lst with
   | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
   | _ -> true
+
 let compact_path lst =
   let rec process acc lst = match lst with
     | (Eqs lst1) :: (Eqs lst2) :: xs ->
@@ -61,13 +72,33 @@ let compact_path lst =
         assert (List.hd lst2 = List.hd (List.rev lst1));
         process acc ((Eqs (lst1 @ (List.tl lst2))) :: xs)
       end
-    | x :: xs -> x :: acc 
+    | x :: xs -> process (x :: acc) xs
     | [] -> List.rev acc
   in
   let proof = process [] lst in
     assert (path_well_formed proof);
     proof
 
+let path_final_equality path =
+  let a = proof_get_left_expr (List.hd path) in
+  let b = proof_get_right_expr (List.hd (List.rev path)) in
+    order_eq (Eq (a, b))
+
+let rec string_of_proof prf =
+  let eq = proof_final_equality prf in
+    match prf with
+    | Congruence (a,b,args) ->
+      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_path args))^" }{ "^(print_pred eq)^" }"
+    | Eqs lst -> 
+      "\\inferrule{ "^String.concat " = " (List.map print_expr lst)^" }{ "^(print_pred eq)^" }"
+and string_of_path path = 
+  let eq = path_final_equality path in
+    "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof path))^" }{ "^(print_pred eq)^" }"
+
+let rec proof_map_expr fct prf = match prf with
+  | Congruence (a,b,args) -> Congruence (fct a, fct b, List.map (path_map_expr fct) args)
+  | Eqs lst -> Eqs (List.map fct lst)
+and path_map_expr fct path = List.map (proof_map_expr fct) path
 
 module Node =
   struct
@@ -329,9 +360,14 @@ let justify_congruence t pred =
     let pred_set = process PredSet.empty (PredSet.singleton pred) in
       (PredSet.elements pred_set, List.rev !info)
 
-(*TODO make real congruence proof i.e. using the congruence_proof/path type.*)
-let mk_proof dag n1 n2 =
-  Message.print Message.Debug (lazy("SatEUF: mk_proof for " ^ (print_pred (Node.mk_eq n1 n2))));
+(*make real congruence proof i.e. using the congruence_proof/path type.*)
+let mk_proof dag pred =
+  Message.print Message.Debug (lazy("SatEUF: mk_proof for " ^ (print_pred pred)));
+
+  let n1, n2 = match pred with
+    | Eq (e1, e2) -> ((get_node dag e1), (get_node dag e2))
+    | err -> failwith ("SatEUF: mk_proof can only justify Eq (for the moment), not " ^ (print_pred err))
+  in
 
   (* is a congruence or not *)
   let raw_congruences = t_deductions dag in
@@ -345,8 +381,10 @@ let mk_proof dag n1 n2 =
   in
 
   let mk_path n1 n2 graph =
-    Message.print Message.Debug (lazy("SatEUF: mk_path for " ^ (print_pred (Node.mk_eq n1 n2))));
+    Message.print Message.Debug (lazy("SatEUF: mk_path for " ^ (print_pred (Node.mk_eq n1 n2)) ^ " in"));
+    (*Message.print Message.Debug (lazy(UndirectedIntGraph.to_string graph));*)
     let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
+    (*Message.print Message.Debug (lazy("SatEUF: path is " ^ (String.concat ", " (List.map string_of_int path))));*)
     let edges = path_to_edges path in
     let all_preds =
       List.fold_left
@@ -371,7 +409,9 @@ let mk_proof dag n1 n2 =
       t
   in
   (*TODO cache proof to avoid computing them multiple times*)
-  let rec find_justification pred = match pred with
+  let rec find_justification pred =
+    Message.print Message.Debug (lazy("SatEUF: find_justification for " ^ (print_pred pred)));
+    match pred with
     | Eq (Application(s, a1), Application(_,a2)) ->
       begin
         let int_prf = Hashtbl.find stack_deductions pred in
@@ -393,8 +433,9 @@ let mk_proof dag n1 n2 =
                   (fun x (a,b) ->
                     let a = (get dag a).Node.expr in
                     let b = (get dag b).Node.expr in
+                      Message.print Message.Debug (lazy("SatEUF: find_justification processing " ^ (print_expr a) ^ " and " ^ (print_expr b)));
                       if is_congruence x
-                      then Congruence (a, b, find_justification pred)
+                      then Congruence (a, b, find_justification x)
                       else Eqs [a;b])
                   preds edges
               in
@@ -405,7 +446,7 @@ let mk_proof dag n1 n2 =
         in
           proofs
       end
-    | other -> failwith ("SatEUF: congruence is " ^ (print_pred other))
+    | other -> failwith ("SatEUF: not a congruence " ^ (print_pred other))
   in
   
   let graph = fst (Node.get_find_predicates (Node.find n1)) in
@@ -424,6 +465,7 @@ let mk_proof dag n1 n2 =
       )
       edges
   in
+    Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (string_of_path raw_proof)));
     compact_path raw_proof
 
 

@@ -215,7 +215,10 @@ let sat_only_2 () =
     else if formula = False then false
     else
     let solver = CoreSolver.create formula in
-      match CoreSolver.solve solver with
+    let res = CoreSolver.solve solver in
+      (* TODO print the proof if needed *)
+      Message.print Message.Debug (lazy (CoreSolver.solved_to_string solver res));
+      match res with
       | CoreSolver.Sat _ -> true
       | CoreSolver.Unsat _ -> false
   in
