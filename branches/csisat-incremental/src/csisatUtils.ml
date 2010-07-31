@@ -61,6 +61,7 @@ let find_in_IntSet query set =
       end
     else raise Not_found
 
+(*
 (** Concatenates a list of string, adding a separator between 2 elements.
  * @param sep the separator
  * @param lst the list to concatenate
@@ -74,6 +75,7 @@ let string_list_cat sep lst =
   in
     process lst;
     Buffer.contents buffer
+*)
 
 (** Print a float and removes trailing '.'.
  *)

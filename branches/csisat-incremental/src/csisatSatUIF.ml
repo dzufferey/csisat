@@ -181,9 +181,9 @@ class dag = fun expr ->
         Buffer.add_char buffer '\n';
         Buffer.add_string buffer ("  in class of:  "^(print_expr (self#get_expr n#find)));
         Buffer.add_char buffer '\n';
-        Buffer.add_string buffer ("  ccparent are: "^(Utils.string_list_cat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#get_ccparent)));
+        Buffer.add_string buffer ("  ccparent are: "^(String.concat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#get_ccparent)));
         Buffer.add_char buffer '\n';
-        Buffer.add_string buffer ("  ccpar    are: "^(Utils.string_list_cat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#ccpar)));
+        Buffer.add_string buffer ("  ccpar    are: "^(String.concat ", " (List.map (fun x -> print_expr (self#get_expr x)) n#ccpar)));
         Buffer.add_char buffer '\n';
       in
         Hashtbl.iter (fun _ n -> print_node n) nodes;
@@ -261,7 +261,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | c -> failwith ("UIF: only for a conjunction of eq/ne, given: "^(Utils.string_list_cat ", " (List.map print c)))
+        | c -> failwith ("UIF: only for a conjunction of eq/ne, given: "^(String.concat ", " (List.map print c)))
       in
       match conj with
         | And lst ->
@@ -509,8 +509,8 @@ let is_uif_sat pred =
 let common_expression a b =
   let common_var =  OrdSet.intersection (get_var a) (get_var b) in
   let common_sym =  OrdSet.intersection (get_fct_sym a) (get_fct_sym b) in
-    Message.print Message.Debug (lazy("common variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr common_var))));
-    Message.print Message.Debug (lazy("common fct are: " ^ (Utils.string_list_cat ", " common_sym)));
+    Message.print Message.Debug (lazy("common variables are: " ^ (String.concat ", " (List.map print_expr common_var))));
+    Message.print Message.Debug (lazy("common fct are: " ^ (String.concat ", " common_sym)));
     (common_sym, common_var)
 
 (*TODO refactore*)

@@ -35,8 +35,7 @@ module Global  = CsisatGlobal
 type clause_t = PredSet.t
 
 let string_of_clause_t cl =
-  (CsisatUtils.string_list_cat ", "
-    (PredSet.fold (fun x acc -> (print x)::acc) cl []))
+  String.concat ", " (PredSet.fold (fun x acc -> (print x)::acc) cl [])
   
 
 (** Resolution proof*)
@@ -125,7 +124,7 @@ let tracecheck_of_proof_with_tables prf =
             Buffer.add_string buffer (string_of_int (get_index cl));
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) cl [] in
-            Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
+            Buffer.add_string buffer (String.concat " " cl_lst);
             Buffer.add_string buffer " 0 0\n";
             Hashtbl.replace printed (get_result prf) ()
           end
@@ -136,7 +135,7 @@ let tracecheck_of_proof_with_tables prf =
             Buffer.add_string buffer (string_of_int (get_fresh_index new_cl));
             Buffer.add_char buffer ' ';
             let cl_lst = PredSet.fold (fun x acc -> (string_of_int (get_index_atom x)) :: acc) new_cl [] in
-            Buffer.add_string buffer (CsisatUtils.string_list_cat " " cl_lst);
+            Buffer.add_string buffer (String.concat " " cl_lst);
             Buffer.add_string buffer " 0 ";
             Buffer.add_string buffer (string_of_int (get_index (get_result left)));
             Buffer.add_char buffer ' ';

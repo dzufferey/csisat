@@ -191,7 +191,7 @@ class clause =
         left <- IntSet.add (lNot lit) left
 
     method to_string =
-      (string_list_cat " "
+      (String.concat " "
         (Array.fold_right
           (fun x acc -> if x <> 0 then (string_of_int x)::acc else acc)
           (Array.mapi (fun i x -> i * x ) literals) ["0"] ))
@@ -199,5 +199,5 @@ class clause =
     method to_string_detailed =
       "clause: " ^ self#to_string ^ "\n" ^
       "satisfied is: " ^ (string_of_int satisfied) ^ "\n" ^
-      "left is: " ^ (string_list_cat ", " (IntSet.fold (fun x acc -> (string_of_int x)::acc) left []))
+      "left is: " ^ (String.concat ", " (IntSet.fold (fun x acc -> (string_of_int x)::acc) left []))
   end

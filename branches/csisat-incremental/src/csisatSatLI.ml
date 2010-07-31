@@ -47,7 +47,7 @@ let is_li_sat pred =
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars pred_lst)) in
   let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
   let nb_vars = List.length vars in
-    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
+    Message.print Message.Debug (lazy("Variables are: " ^ (String.concat ", " (List.map print_expr vars))));
     if nb_vars <= 0 then
       (*simple case when formula contains only constant terms*)
       let simple = simplify pred in
@@ -119,7 +119,7 @@ let is_eq_implied pred eq =
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars pred_lst)) in
   let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
   let nb_vars = List.length vars in
-    Message.print Message.Debug ("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars)));
+    Message.print Message.Debug ("Variables are: " ^ (String.concat ", " (List.map print_expr vars)));
     if nb_vars <= 0 then
         failwith ("is_eq_implied: no variables... ")
     else
@@ -219,8 +219,8 @@ let find_common_expr pred source_expr common_var common_sym =
   let vars = ExprSet.fold (fun x acc -> x::acc) vars_set [] in
   let common_vars = List.filter (fun x -> only_vars_and_symbols common_var common_sym (Eq(x,Constant 0.0))) vars in
   let nb_vars = List.length vars in
-    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
-    Message.print Message.Debug (lazy("Common Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr common_vars))));
+    Message.print Message.Debug (lazy("Variables are: " ^ (String.concat ", " (List.map print_expr vars))));
+    Message.print Message.Debug (lazy("Common Variables are: " ^ (String.concat ", " (List.map print_expr common_vars))));
     if nb_vars <= 0 then
       failwith ("SatLI, find_common_expr: expected variables")
     else
@@ -308,9 +308,9 @@ let unsat_core_no_basis formula =
   let unsat_core = ref [] in
   let rec divide_and_try fixed lst =
     Message.print Message.Debug (lazy "divide_and_try called: ");
-    Message.print Message.Debug (lazy ("    with           "^(Utils.string_list_cat ", " (List.map print lst))));
-    Message.print Message.Debug (lazy ("    fixed is       "^(Utils.string_list_cat ", " (List.map print fixed))));
-    Message.print Message.Debug (lazy ("    unsat_core is  "^(Utils.string_list_cat ", " (List.map print !unsat_core))));
+    Message.print Message.Debug (lazy ("    with           "^(String.concat ", " (List.map print lst))));
+    Message.print Message.Debug (lazy ("    fixed is       "^(String.concat ", " (List.map print fixed))));
+    Message.print Message.Debug (lazy ("    unsat_core is  "^(String.concat ", " (List.map print !unsat_core))));
     (* assume query_fct (And (lst @ fixed @ !unsat_core)) is unsat *)
     let n = List.length lst in
       if n = 1 then

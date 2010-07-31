@@ -69,14 +69,14 @@ let test_split () =
     Message.print Message.Normal (lazy("formula is "^(AstUtil.print f1)));
     Message.print Message.Normal (lazy("uif is "^(AstUtil.print (And uif1))));
     Message.print Message.Normal (lazy("li  is "^(AstUtil.print (And li1))));
-    Message.print Message.Normal (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map AstUtil.print_expr shared1))));
-    Message.print Message.Normal (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def1))));
+    Message.print Message.Normal (lazy("shared vars are "^(String.concat ", " (List.map AstUtil.print_expr shared1))));
+    Message.print Message.Normal (lazy("definitions are "^(String.concat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def1))));
   let (uif2,li2,shared2,def2) = AstUtil.split_formula_LI_UIF f2 in
     Message.print Message.Normal (lazy("formula is "^(AstUtil.print f2)));
     Message.print Message.Normal (lazy("uif is "^(AstUtil.print (And uif2))));
     Message.print Message.Normal (lazy("li  is "^(AstUtil.print (And li2))));
-    Message.print Message.Normal (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map AstUtil.print_expr shared2))));
-    Message.print Message.Normal (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def2))))
+    Message.print Message.Normal (lazy("shared vars are "^(String.concat ", " (List.map AstUtil.print_expr shared2))));
+    Message.print Message.Normal (lazy("definitions are "^(String.concat ", " (List.map (fun (x,y) -> AstUtil.print (Eq (x,y))) def2))))
 
 let test_sat_li () =
   let f1 =
@@ -220,7 +220,7 @@ let test_unsat_core_with_pl () =
       | NelsonOppen.UIF -> Message.print Message.Normal (lazy "UIF contradiction")
       | NelsonOppen.SATISFIABLE -> Message.print Message.Error (lazy "NelsonOppen.SATISFIABLE!!!")
     end;
-    Message.print Message.Normal (lazy("congruence is: "^(Utils.string_list_cat ", " (List.map print_dedeq eq))))
+    Message.print Message.Normal (lazy("congruence is: "^(String.concat ", " (List.map print_dedeq eq))))
   in
   let test f =
     Message.print Message.Normal (lazy("unsat cores of "^(AstUtil.print f)));

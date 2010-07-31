@@ -96,8 +96,8 @@ let splitN_unsat_cores_set proposition_lst mixed =
  * @param eq the equality to 'localize'
  *)
 let make_deduc_local th side common_var common_sym a_eq a_li b_eq b_li eq =
-  Message.print Message.Debug (lazy("common var are: "^(Utils.string_list_cat ", "(List.map print_expr common_var))));
-  Message.print Message.Debug (lazy("common sym are: "^(Utils.string_list_cat ", " common_sym)));
+  Message.print Message.Debug (lazy("common var are: "^(String.concat ", "(List.map print_expr common_var))));
+  Message.print Message.Debug (lazy("common sym are: "^(String.concat ", " common_sym)));
   Message.print Message.Debug (lazy("for "^(print eq)));
   let make_eq_local_LA ea eb =
     let m = SatLI.find_common_expr (And (a_li @ b_li)) ea common_var common_sym in
@@ -169,8 +169,8 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
   let a_sym = get_fct_sym (And a_part) in
   let b_sym = get_fct_sym (And b_part) in
   let common_sym = OrdSet.intersection a_sym b_sym in
-    Message.print Message.Debug (lazy("common var are: "^(Utils.string_list_cat ", "(List.map print_expr common_var))));
-    Message.print Message.Debug (lazy("common sym are: "^(Utils.string_list_cat ", " common_sym)));
+    Message.print Message.Debug (lazy("common var are: "^(String.concat ", "(List.map print_expr common_var))));
+    Message.print Message.Debug (lazy("common sym are: "^(String.concat ", " common_sym)));
 
   let side expr =
     match (only_vars_and_symbols a_vars a_sym (Eq (expr, Constant 0.0)),
@@ -234,7 +234,7 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
           | _ -> failwith "Interpolate, partial_interpolant: theory ??"
         in
         let new_it = List.map compute_it queries in
-          Message.print Message.Debug (lazy("deduction its: "^(Utils.string_list_cat ", "(List.map (fun (x,y) -> (side_to_string x)^" "^(print y)) new_it))));
+          Message.print Message.Debug (lazy("deduction its: "^(String.concat ", "(List.map (fun (x,y) -> (side_to_string x)^" "^(print y)) new_it))));
           List.iter2
             (fun (s, eq) (_s, it) -> match s with
               | A -> ( a_part_eq := eq::!a_part_eq; a_part_li := eq::!a_part_li )
@@ -317,9 +317,9 @@ let partial_interpolant a a_prop b b_prop (core, theory, eq_deduced) =
                 end
               | (a,b,c) ->
                 failwith ("Interpolate, partial_interpolant: LA interpolants A: "
-                  ^(Utils.string_list_cat ", "(List.map print a))
-                  ^" B: "^(Utils.string_list_cat ", "(List.map print b))
-                  ^" M: "^(Utils.string_list_cat ", "(List.map print c)))
+                  ^(String.concat ", "(List.map print a))
+                  ^" B: "^(String.concat ", "(List.map print b))
+                  ^" M: "^(String.concat ", "(List.map print c)))
             end
       )
       its final_it 
