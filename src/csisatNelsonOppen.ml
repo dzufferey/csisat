@@ -52,9 +52,9 @@ let unsat_core_for_convex_theory query_fct formula =
   let unsat_core = ref [] in
   let rec divide_and_try fixed lst =
     Message.print Message.Debug (lazy "divide_and_try called: ");
-    Message.print Message.Debug (lazy ("    with           "^(Utils.string_list_cat ", " (List.map print lst))));
-    Message.print Message.Debug (lazy ("    fixed is       "^(Utils.string_list_cat ", " (List.map print fixed))));
-    Message.print Message.Debug (lazy ("    unsat_core is  "^(Utils.string_list_cat ", " (List.map print !unsat_core))));
+    Message.print Message.Debug (lazy ("    with           "^(String.concat ", " (List.map print lst))));
+    Message.print Message.Debug (lazy ("    fixed is       "^(String.concat ", " (List.map print fixed))));
+    Message.print Message.Debug (lazy ("    unsat_core is  "^(String.concat ", " (List.map print !unsat_core))));
     (* assume query_fct (And (lst @ fixed @ !unsat_core)) is unsat *)
     let n = List.length lst in
       if n = 1 then
@@ -101,8 +101,8 @@ let is_liuif_sat formula =
     Message.print Message.Debug (lazy("formula is "^(print formula)));
     Message.print Message.Debug (lazy("uif is "^(print (And uif))));
     Message.print Message.Debug (lazy("li  is "^(print (And li))));
-    Message.print Message.Debug (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map print_expr shared))));
-    (*Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> print (Eq (x,y))) def))));*)
+    Message.print Message.Debug (lazy("shared vars are "^(String.concat ", " (List.map print_expr shared))));
+    (*Message.print Message.Debug (lazy("definitions are "^(String.concat ", " (List.map (fun (x,y) -> print (Eq (x,y))) def))));*)
   let possible_deduction = ref (
     OrdSet.list_to_ordSet (
       Utils.map_filter 
@@ -115,14 +115,14 @@ let is_liuif_sat formula =
     let get_and_add_from_uif () =
       let from_uif_all = graph#new_equalities in
       let from_uif = List.filter (only_vars shared) from_uif_all in
-        Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(Utils.string_list_cat ", " (List.map print from_uif_all))));
-        Message.print Message.Debug (lazy("new Eq from UIF: "^(Utils.string_list_cat ", " (List.map print from_uif))));
+        Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(String.concat ", " (List.map print from_uif_all))));
+        Message.print Message.Debug (lazy("new Eq from UIF: "^(String.concat ", " (List.map print from_uif))));
         List.iter (fun x -> new_eq := PredSet.add x !new_eq) from_uif
     in
     
     let rec try_and_propagate old_cardinal =
       let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
-        Message.print Message.Debug (lazy("eq_deduced: "^(Utils.string_list_cat ", " (List.map print eq_deduced))));
+        Message.print Message.Debug (lazy("eq_deduced: "^(String.concat ", " (List.map print eq_deduced))));
         List.iter graph#add_constr eq_deduced;
         if graph#has_contradiction then false
         else
@@ -233,8 +233,8 @@ let is_liuif_sat_with_eq formula =
     Message.print Message.Debug (lazy("formula is "^(print formula)));
     Message.print Message.Debug (lazy("uif is "^(print (And uif))));
     Message.print Message.Debug (lazy("li  is "^(print (And li))));
-    Message.print Message.Debug (lazy("shared vars are "^(Utils.string_list_cat ", " (List.map print_expr shared))));
-    (*Message.print Message.Debug (lazy("definitions are "^(Utils.string_list_cat ", " (List.map (fun (x,y) -> print (Eq (x,y))) def))));*)
+    Message.print Message.Debug (lazy("shared vars are "^(String.concat ", " (List.map print_expr shared))));
+    (*Message.print Message.Debug (lazy("definitions are "^(String.concat ", " (List.map (fun (x,y) -> print (Eq (x,y))) def))));*)
   let possible_deduction = ref (
     OrdSet.list_to_ordSet (
       Utils.map_filter 
@@ -256,14 +256,14 @@ let is_liuif_sat_with_eq formula =
     let get_and_add_from_uif () =
       let from_uif_all = graph#new_equalities in
       let from_uif = List.filter (only_vars shared) from_uif_all in
-        Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(Utils.string_list_cat ", " (List.map print from_uif_all))));
-        Message.print Message.Debug (lazy("new Eq from UIF: "^(Utils.string_list_cat ", " (List.map print from_uif))));
+        Message.print Message.Debug (lazy("new Eq ALL from UIF: "^(String.concat ", " (List.map print from_uif_all))));
+        Message.print Message.Debug (lazy("new Eq from UIF: "^(String.concat ", " (List.map print from_uif))));
         List.iter (fun x -> new_eq := PredSet.add x !new_eq) from_uif
     in
     
     let rec try_and_propagate old_cardinal =
       let eq_deduced = PredSet.fold (fun x acc -> x::acc) !new_eq [] in
-        Message.print Message.Debug (lazy("eq_deduced: "^(Utils.string_list_cat ", " (List.map print eq_deduced))));
+        Message.print Message.Debug (lazy("eq_deduced: "^(String.concat ", " (List.map print eq_deduced))));
 
         let uif_ded =  List.flatten (List.map (graph#add_constr_with_applied) eq_deduced) in(*add the constraints and get congruence*)
           List.iter

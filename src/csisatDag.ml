@@ -190,7 +190,7 @@ class dag = fun expr ->
         | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
         | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
         | [] ->  (accEq,accNeq)
-        | c -> failwith ("Dag: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map print c)))
+        | c -> failwith ("Dag: only for a conjunction of eq/ne, given:"^(String.concat ", " (List.map print c)))
       in
       match conj with
         | And lst ->
@@ -433,7 +433,7 @@ class dag = fun expr ->
 
     method print =
       let buffer = Buffer.create 100 in
-        Buffer.add_string buffer ("  CC are: "^(Utils.string_list_cat ", "(List.map (fun x -> "["^(Utils.string_list_cat ", " (List.map print_expr x))^"]") self#get_cc)));
+        Buffer.add_string buffer ("  CC are: "^(String.concat ", "(List.map (fun x -> "["^(String.concat ", " (List.map print_expr x))^"]") self#get_cc)));
         Buffer.add_string buffer "\n  Eq are: ";
         List.iter (fun x -> Buffer.add_string buffer (print x);Buffer.add_string buffer ", ") (self#get_given_eq);
         Buffer.add_string buffer "\n  Neq are: ";
@@ -447,7 +447,7 @@ let rec split_eq_neq accEq accNeq lst = match lst with
   | (Eq _ as eq)::xs -> split_eq_neq (eq::accEq) accNeq xs
   | (Not (Eq _) as neq)::xs -> split_eq_neq accEq (neq::accNeq) xs
   | [] ->  (accEq,accNeq)
-  | c -> failwith ("DAG: only for a conjunction of eq/ne, given:"^(Utils.string_list_cat ", " (List.map print c)))
+  | c -> failwith ("DAG: only for a conjunction of eq/ne, given:"^(String.concat ", " (List.map print c)))
 
 
 (** breadth first search (shortest path from source to sink): consider equalities as edges *)

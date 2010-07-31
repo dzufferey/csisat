@@ -290,8 +290,8 @@ let round_coeff li_cstr =
  *  such that A*vars </<=/= a is equivalent to the input formulae
  *)
 let conj_to_matrix pred_lst vars =
-  Message.print Message.Debug (lazy("conj_to_matrix for: " ^ (Utils.string_list_cat ", " (List.map print pred_lst))));
-  Message.print Message.Debug (lazy("vars are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
+  Message.print Message.Debug (lazy("conj_to_matrix for: " ^ (String.concat ", " (List.map print pred_lst))));
+  Message.print Message.Debug (lazy("vars are: " ^ (String.concat ", " (List.map print_expr vars))));
   let length =  List.length pred_lst in
   let matrixA = Array.make_matrix length (List.length vars) 0.0 in
   let vectorB = Array.make length 0.0 in

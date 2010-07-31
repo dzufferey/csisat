@@ -40,16 +40,16 @@ let string_of_theory th = match th with
 let rec print_expr expr = match expr with
   | Constant cst -> Utils.my_string_of_float cst
   | Variable v -> v
-  | Application (sym, lst) -> sym ^ "(" ^ (Utils.string_list_cat ", " (List.map print_expr lst)) ^")"
-  | Sum lst ->  "(" ^ (Utils.string_list_cat " + " (List.map print_expr lst)) ^")"
+  | Application (sym, lst) -> sym ^ "(" ^ (String.concat ", " (List.map print_expr lst)) ^")"
+  | Sum lst ->  "(" ^ (String.concat " + " (List.map print_expr lst)) ^")"
   | Coeff (co, expr) -> (Utils.my_string_of_float co) ^ "*" ^ (print_expr expr)
 
 let rec print_pred p =
   match p with
   | False -> "false"
   | True -> "true"
-  | And lst -> "(" ^ (Utils.string_list_cat " & " (List.map print_pred lst)) ^")"
-  | Or lst -> "(" ^ (Utils.string_list_cat " | " (List.map print_pred lst)) ^")"
+  | And lst -> "(" ^ (String.concat " & " (List.map print_pred lst)) ^")"
+  | Or lst -> "(" ^ (String.concat " | " (List.map print_pred lst)) ^")"
   | Not p -> "not " ^ print_pred p
   | Eq (e1,e2) -> (print_expr e1) ^ " = " ^ (print_expr e2)
   | Lt (e1,e2) -> (print_expr e1) ^ " < " ^ (print_expr e2)

@@ -92,7 +92,7 @@ let extract_answer lp lambdas =
           !solver.cols_primal lp last_lambda_index result;
           (*the solver precision is 10e-7 => filter all term that are less than !solver.solver_error*)
           Array.iteri (fun i x -> if (abs_float x) < !solver.solver_error then result.(i) <- 0.0) result;
-          Message.print Message.Debug (lazy("lambdas are: "^(Utils.string_list_cat ", " (Array.to_list (Array.map string_of_float result)))));
+          Message.print Message.Debug (lazy("lambdas are: "^(String.concat ", " (Array.to_list (Array.map string_of_float result)))));
           Message.print Message.Debug (lazy ("solver returned: "^(string_of_float value)));
           let count = (*count is the number of non-strict interpolant*)
             if value < (1.0 -. !solver.solver_error) then
@@ -135,7 +135,7 @@ let compute_interpolant vars_size blocks results =
           for k = 0 to vars_size -1 do
             i_acc.(k) <- i_acc.(k) +. i.(k)
           done;
-          Message.print Message.Debug (lazy("I: "^(Utils.string_list_cat ", " (Array.to_list (Array.map string_of_float i_acc)))));
+          Message.print Message.Debug (lazy("I: "^(String.concat ", " (Array.to_list (Array.map string_of_float i_acc)))));
           let d = Matrix.row_vect_times_col_vect result vect in
           let d = if (abs_float d) < !solver.solver_error then 0.0 else d in
             d_acc := d +. !d_acc;
@@ -213,11 +213,11 @@ let rec get_lt_lambdas target_array lambdas = match lambdas with
 (** compute a series of |lst| -1 (inductive) interpolant
  *)
 let interpolate_clp lst =
-  Message.print Message.Debug (lazy("interpolate_clp called: " ^ (Utils.string_list_cat ", " (List.map print lst))));
+  Message.print Message.Debug (lazy("interpolate_clp called: " ^ (String.concat ", " (List.map print lst))));
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
   let vars = exprSet_to_ordSet vars_set in
   let nb_vars = List.length vars in
-    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
+    Message.print Message.Debug (lazy("Variables are: " ^ (String.concat ", " (List.map print_expr vars))));
     if nb_vars <= 0 then
       (*simple case when formula contains only constant terms*)
       let simple = List.map simplify lst in
@@ -302,11 +302,11 @@ let interpolate_clp lst =
  *  Assume the formula is unsat.
  *)
 let unsat_core lst =
-  Message.print Message.Debug (lazy("unsat_core_clp called: " ^ (Utils.string_list_cat ", " (List.map print lst))));
+  Message.print Message.Debug (lazy("unsat_core_clp called: " ^ (String.concat ", " (List.map print lst))));
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
   let vars = exprSet_to_ordSet vars_set in
   let nb_vars = List.length vars in
-    Message.print Message.Debug (lazy("Variables are: " ^ (Utils.string_list_cat ", " (List.map print_expr vars))));
+    Message.print Message.Debug (lazy("Variables are: " ^ (String.concat ", " (List.map print_expr vars))));
     assert (Global.is_off_assert() || nb_vars > 0 );
 
       (*Warning: the next line works with the assumption that each element of lst is atomic*)
