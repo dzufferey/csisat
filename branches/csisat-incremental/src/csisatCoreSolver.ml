@@ -550,7 +550,7 @@ let create pred =
   (* equisatisfiable *)
   let dico, pred_to_atom, f =
     if is_cnf pred then (Hashtbl.create 0, Hashtbl.create 0, pred)
-    else equisatisfiable pred
+    else better_equisatisfiable pred (*TODO more tests for better_equisatisfiable !!*)
   in
 
   let graph = {

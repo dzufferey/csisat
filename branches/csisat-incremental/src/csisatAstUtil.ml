@@ -1051,6 +1051,85 @@ let equisatisfiable pred =
     let formula = normalize_only (And ((rep pred)::(List.map enc subterm))) in
       (dico, pred_to_atom, normalize_only (remove_lit_clash formula))
 
+(** Equisatisfiable CNF conversiont designed to work on fomula close to CNF.
+  * Converts only the non-CNF parts.
+  * Assumes the formula was simplified and in NNF. *)
+let better_equisatisfiable pred =
+  let dico = Hashtbl.create 23 in
+  let pred_to_atom = Hashtbl.create 23 in
+  let get_rep p =
+    try Hashtbl.find pred_to_atom p
+    with Not_found ->
+      begin
+        counter_equisat := 1 + !counter_equisat;
+        let atom = Atom (Internal !counter_equisat) in
+          Hashtbl.replace dico atom p;
+          Hashtbl.replace pred_to_atom p atom;
+          atom
+      end
+  in
+  let defs = ref [] in
+  let encoded = ref PredSet.empty in
+  let rec rep pred = match pred with
+    | And _ as an ->
+      begin
+        let repAnd = get_rep an in
+          defs := (enc repAnd an) @ !defs;
+          repAnd
+      end
+    | Or _ as o ->
+      begin
+        let repOr = get_rep o in
+          defs := (enc repOr o) @ !defs;
+          repOr
+      end
+    | Leq (e1,e2) -> (Not (Lt (e2, e1)))
+    | ok -> ok
+  and enc p pred = match pred with
+    | And lst as pp when not (PredSet.mem pp !encoded) ->
+      begin
+        encoded := PredSet.add pp !encoded;
+        let repr = List.map rep lst in
+        let one_false = List.map (fun x -> Or [Not p; x]) repr in
+        let neg =  List.map (fun x -> Not x) repr in
+          (Or (p::neg)) :: one_false
+      end
+    | Or lst as pp when not (PredSet.mem pp !encoded) ->
+      begin
+        encoded := PredSet.add pp !encoded;
+        let repr = List.map rep lst in
+        let one_true = List.map (fun x -> Or [Not x; p]) repr in
+          (Or ((Not p)::repr)) :: one_true
+      end
+    | _ -> []
+  in
+  let big_cunjunct = 
+    (* check that the fisrt stage is a big conjunction. *)
+    match pred with
+    | And lst ->
+      begin
+        let clausify pred =
+          (* clausify only when needed *)
+          match pred with
+          | Or lst -> Or (List.map rep lst)
+          | atom when is_atomic atom -> Or [atom]
+          | what -> failwith ("AstUtil, better_equisatisfiable: ??? " ^ (print_pred what))
+        in
+          And (!defs @ (List.map clausify lst))
+      end
+    (* trivial encoding *)
+    | x when is_atomic x -> And [Or [x]]
+    (* otherwise revert to normal CNF encoding. *)
+    | otherwise -> 
+      begin
+        let (dico', pred_to_atom', formula) = equisatisfiable otherwise in
+          Hashtbl.iter (fun k v -> Hashtbl.replace dico k v) dico';
+          Hashtbl.iter (fun k v -> Hashtbl.replace pred_to_atom k v) pred_to_atom';
+          formula
+      end 
+  in
+    (dico, pred_to_atom, normalize_only (remove_lit_clash big_cunjunct))
+
 let unabstract_equisat_expr dico expr = match expr with
   | Leq(e1,e2) -> (Not (Lt(e2,e1)))
   | Atom (Internal _) as a -> Hashtbl.find dico a
