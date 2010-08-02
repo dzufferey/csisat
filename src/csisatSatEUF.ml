@@ -243,9 +243,9 @@ module Node =
                 to_stack this that n1 n2; (* report changes *)
                 union congruence n1 n2 this that;
                   Message.print Message.Debug (lazy(
-                    "SatEUF: merge to_test " ^
+                    "SatEUF: merge to_test (rev) " ^
                     (String.concat ", "
-                      (List.map
+                      (List.rev_map
                         (fun (x,y) -> print_pred (mk_eq this.nodes.(x) this.nodes.(y)))
                         to_test))));
                 List.iter
