@@ -99,6 +99,32 @@ let rec proof_map_expr fct prf = match prf with
   | Eqs lst -> Eqs (List.map fct lst)
   | Path lst -> Path (List.map (proof_map_expr fct) lst)
 
+(** returns all the congruence in the proof *)
+let rec proof_congruences_contained prf = match prf with
+  | Congruence (a,b,args) ->
+    List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
+      (PredSet.singleton (order_eq (Eq (a, b))))
+      args
+  | Eqs _ -> PredSet.empty
+  | Path lst ->
+    List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
+      PredSet.empty
+      lst
+
+(** returns all the given equalities in the proof *)
+let rec proof_equalities_contained prf = match prf with
+  | Congruence (a,b,args) ->
+    List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
+      PredSet.empty
+      args
+  | Eqs lst ->
+    let lst2 = path_to_edges lst in
+      List.fold_left (fun acc (a,b) -> PredSet.add (order_eq (Eq (a, b))) acc) PredSet.empty lst2
+  | Path lst ->
+    List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
+      PredSet.empty
+      lst
+
 module Node =
   struct
     type t = {
@@ -473,6 +499,7 @@ let mk_proof dag pred =
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
  * find the shortest path, identify which predicates are congruences,
  * for each congruences take the justification from the stack.
+ * TODO use the mk_proof method and extract the predicate from there.
  *)
 let mk_lemma dag n1 n2 (graph, congr) =
   Message.print Message.Debug (lazy("SatEUF: mk_lemma for " ^ (print_pred (Node.mk_eq n1 n2))));
@@ -533,7 +560,8 @@ let lemma_with_info dag =
     justify dag (Node.mk_eq n1 n2)
 
 (* for NO EQ propagation, use an undo/redo system
- * TODO needs to remember which congruence is responsible for an eq *)
+ * TODO needs to remember which congruence is responsible for an eq
+ * TODO make the proof of equality, extract the congruence and check when the last one is present. *)
 let propagations dag shared =
   Message.print Message.Debug (lazy("SatEUF: propagations on " ^ (String.concat "," (List.map print_expr shared))));
   let rec to_last_deduction () =
