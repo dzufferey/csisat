@@ -561,7 +561,8 @@ let lemma_with_info dag =
 
 (* for NO EQ propagation, use an undo/redo system
  * TODO needs to remember which congruence is responsible for an eq
- * TODO make the proof of equality, extract the congruence and check when the last one is present. *)
+ * TODO make the proof of equality, extract the congruence and check when the last one is present.
+ * TODO this method seems buggy, it does not catch all the propagation ?? *)
 let propagations dag shared =
   Message.print Message.Debug (lazy("SatEUF: propagations on " ^ (String.concat "," (List.map print_expr shared))));
   let rec to_last_deduction () =
