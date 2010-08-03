@@ -44,17 +44,19 @@ type euf_change = Deduction of predicate * node_info * node_info * (int list lis
                 | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
 
 
-type congruence_proof = Congruence of expression * expression * (congruence_path list) (* last part is, for each argument, a path of equal terms.*)
+type congruence_proof = Congruence of expression * expression * (congruence_proof list) (* last part is, for each argument, a path of equal terms.*)
                       | Eqs of expression list (* equality path of given predicates *)
-and congruence_path = congruence_proof list
+                      | Path of congruence_proof list (*alternation of Congruence and Eqs*)
 
-let proof_get_left_expr prf = match prf with
+let rec proof_get_left_expr prf = match prf with
   | Congruence (l, _, _) -> l
   | Eqs lst -> List.hd lst
+  | Path lst -> proof_get_left_expr (List.hd lst)
 
-let proof_get_right_expr prf = match prf with
+let rec proof_get_right_expr prf = match prf with
   | Congruence (_, r, _) -> r
   | Eqs lst -> List.hd (List.rev lst)
+  | Path lst -> proof_get_right_expr (List.hd (List.rev lst))
 
 let proof_final_equality p =
   let a = proof_get_left_expr p in
@@ -65,8 +67,9 @@ let rec path_well_formed lst = match lst with
   | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
   | _ -> true
 
-let compact_path lst =
+let proof_compact_path proof =
   let rec process acc lst = match lst with
+    | (Path lst) :: xs -> process acc (lst @ xs)
     | (Eqs lst1) :: (Eqs lst2) :: xs ->
       begin
         assert (List.hd lst2 = List.hd (List.rev lst1));
@@ -75,30 +78,26 @@ let compact_path lst =
     | x :: xs -> process (x :: acc) xs
     | [] -> List.rev acc
   in
-  let proof = process [] lst in
+  let proof = process [] [proof] in
     assert (path_well_formed proof);
-    proof
-
-let path_final_equality path =
-  let a = proof_get_left_expr (List.hd path) in
-  let b = proof_get_right_expr (List.hd (List.rev path)) in
-    order_eq (Eq (a, b))
+    if List.length proof = 1
+    then List.hd proof
+    else Path proof
 
 let rec string_of_proof prf =
   let eq = proof_final_equality prf in
     match prf with
     | Congruence (a,b,args) ->
-      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_path args))^" }{ "^(print_pred eq)^" }"
+      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof args))^" }{ "^(print_pred eq)^" }"
     | Eqs lst -> 
       "\\inferrule{ "^String.concat " = " (List.map print_expr lst)^" }{ "^(print_pred eq)^" }"
-and string_of_path path = 
-  let eq = path_final_equality path in
-    "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof path))^" }{ "^(print_pred eq)^" }"
+    | Path lst ->
+      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof lst))^" }{ "^(print_pred eq)^" }"
 
 let rec proof_map_expr fct prf = match prf with
-  | Congruence (a,b,args) -> Congruence (fct a, fct b, List.map (path_map_expr fct) args)
+  | Congruence (a,b,args) -> Congruence (fct a, fct b, List.map (proof_map_expr fct) args)
   | Eqs lst -> Eqs (List.map fct lst)
-and path_map_expr fct path = List.map (proof_map_expr fct) path
+  | Path lst -> Path (List.map (proof_map_expr fct) lst)
 
 module Node =
   struct
@@ -439,7 +438,7 @@ let mk_proof dag pred =
                       else Eqs [a;b])
                   preds edges
               in
-                compact_path proofs
+                proof_compact_path (Path proofs)
             )
             args_pairs
             int_prf
@@ -454,19 +453,21 @@ let mk_proof dag pred =
   let sub_proofs = List.fold_left (fun acc p -> PredMap.add p (find_justification p) acc) PredMap.empty used_congruences in
   (*put everything together ...*)
   let raw_proof = 
-    List.map
-      (fun (a,b) ->
-        let pred = mk_pred (a,b) in
-        let a = (get dag a).Node.expr in
-        let b = (get dag b).Node.expr in
-          if PredMap.mem pred sub_proofs
-          then Congruence (a, b, PredMap.find pred sub_proofs)
-          else Eqs [a; b]
-      )
-      edges
+    Path (
+      List.map
+        (fun (a,b) ->
+          let pred = mk_pred (a,b) in
+          let a = (get dag a).Node.expr in
+          let b = (get dag b).Node.expr in
+            if PredMap.mem pred sub_proofs
+            then Congruence (a, b, PredMap.find pred sub_proofs)
+            else Eqs [a; b]
+        )
+        edges
+    )
   in
-    Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (string_of_path raw_proof)));
-    compact_path raw_proof
+    Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (string_of_proof raw_proof)));
+    proof_compact_path raw_proof
 
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
