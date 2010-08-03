@@ -47,12 +47,12 @@ module Node    = CsisatSatEUF.Node
 type change = StackSat of predicate (* predicate given by sat solver *)
             | StackNO of predicate * theory
             | StackChanges of (theory * predicate) list (*what was sent to which theory*)
-type explanation = ProofEUF of SatEUF.congruence_path
+type explanation = ProofEUF of SatEUF.congruence_proof
                  | ProofDL of predicate (*TODO more complex *)
                  | NoProof (*TODO remove when everything is done *)
 
 let string_of_explanation e = match e with
-  | ProofEUF path -> SatEUF.string_of_path path
+  | ProofEUF path -> SatEUF.string_of_proof path
   | _ -> "TODO"
 
 type t = {
