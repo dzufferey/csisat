@@ -497,44 +497,24 @@ let mk_proof dag pred =
 
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
- * find the shortest path, identify which predicates are congruences,
- * for each congruences take the justification from the stack.
- * TODO use the mk_proof method and extract the predicate from there.
+ * use the mk_proof method and extract the predicate from there.
  *)
-let mk_lemma dag n1 n2 (graph, congr) =
+let mk_lemma dag n1 n2 =
   Message.print Message.Debug (lazy("SatEUF: mk_lemma for " ^ (print_pred (Node.mk_eq n1 n2))));
-  let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
-  let edges = path_to_edges path in
-  let all_preds =
-    List.fold_left
-      (fun acc (a,b) ->
-        let node_a = get dag a in
-        let node_b = get dag b in
-          PredSet.add (Node.mk_eq node_a node_b) acc)
-      PredSet.empty
-      edges
-  in
+  let proof = mk_proof dag (Node.mk_eq n1 n2) in
   let raw_congruences = t_deductions dag in
-  let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
-  let needed_congruences = PredSet.inter all_congruences all_preds in
-  let given = PredSet.diff all_preds needed_congruences in
-  let preds_info = List.map (justify_congruence dag) (PredSet.elements needed_congruences) in
-  let preds, infos = List.split preds_info in
-  let core_set = List.fold_left (fun acc x -> PredSet.add x acc) given (List.flatten preds) in
-  let all_needed_congruence = List.fold_left (fun acc x -> PredSet.add x acc) needed_congruences (List.flatten infos) in
-  let ordered_info = List.filter (fun x -> PredSet.mem x all_needed_congruence) raw_congruences in
-    Message.print Message.Debug (lazy("SatEUF: all_preds = " ^ (String.concat ", " (List.map print_pred (PredSet.elements all_preds)))));
-    Message.print Message.Debug (lazy("SatEUF: all_congruences = " ^ (String.concat ", " (List.map print_pred raw_congruences))));
+  let needed_congruences = proof_congruences_contained proof in
+  let core_set = proof_equalities_contained proof in
+  let ordered_info = List.filter (fun x -> PredSet.mem x needed_congruences) raw_congruences in
     Message.print Message.Debug (lazy("SatEUF: needed_congruences = " ^ (String.concat ", " (List.map print_pred (PredSet.elements needed_congruences)))));
-    Message.print Message.Debug (lazy("SatEUF: given = " ^ (String.concat ", " (List.map print_pred (PredSet.elements given)))));
+    Message.print Message.Debug (lazy("SatEUF: given = " ^ (String.concat ", " (List.map print_pred (PredSet.elements core_set)))));
     (And (PredSet.elements core_set), List.map (fun x -> (x,EUF)) ordered_info)
 
 let lemma_with_info_for dag (c1, c2) =
   let n1 = (get dag c1) in
   let n2 = (get dag c2) in
-  let find = Node.get_find_predicates (Node.find n1) in
     assert((Node.find n1).Node.id = (Node.find n2).Node.id);
-    mk_lemma dag n1 n2 find
+    mk_lemma dag n1 n2
 
 (* core => Not contradiction *)
 let justify t pred =
@@ -560,11 +540,19 @@ let lemma_with_info dag =
     justify dag (Node.mk_eq n1 n2)
 
 (* for NO EQ propagation, use an undo/redo system
- * TODO needs to remember which congruence is responsible for an eq
- * TODO make the proof of equality, extract the congruence and check when the last one is present.
- * TODO this method seems buggy, it does not catch all the propagation ?? *)
+ * TODO this method seems buggy, it does not catch all the propagation ??
+ * TODO raise Not_found *)
 let propagations dag shared =
   Message.print Message.Debug (lazy("SatEUF: propagations on " ^ (String.concat "," (List.map print_expr shared))));
+  (*TODO
+   * 1) get the list of congruence down to the last push
+   * 2) get the cc at the last push
+   * 3) get the cc now
+   * 4) make the cc difference to get the new equalities (one equalities per cc merge ?).
+   * 5) get proofs for the new equalities
+   * 6) get the congruences from the proofs
+   * 7) sort the new equalities according to the congruences used and their ordering
+   *)
   let rec to_last_deduction () =
     if Stack.is_empty dag.stack then None
     else
