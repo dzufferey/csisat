@@ -31,16 +31,17 @@ module Message = CsisatMessage
 module IntSet  = CsisatUtils.IntSet
 module OrdSet  = CsisatOrdSet
 module EqDag   = CsisatDag
+module UIGraph = UndirectedIntGraph
 (**/**)
 
 
 (** The different changes that can happen in the system *)
-type find_t =  Leader of UndirectedIntGraph.t * PredSet.t (*graph of predicate used to make that CC, and the congruences*)
+type find_t =  Leader of UIGraph.t * PredSet.t (*graph of predicate used to make that CC, and the congruences*)
             |  Member of int (*representative is int*)
 type node_info = int * find_t * IntSet.t (* (id, find, ccpar) *)
 type euf_change = Deduction of predicate * node_info * node_info * (int list list) (* congruence. last part is a proof (for each argument, a path of equal terms) *)
                 | Internal of (int * find_t) list (* path compression: (id, old find) list *)
-                | Equal of node_info * node_info (* information to restore previous state *)
+                | Equal of predicate * node_info * node_info (* information to restore previous state *)
                 | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
 
 
@@ -148,7 +149,7 @@ module Node =
       expr = expr;
       nodes = nodes;
       events = events;
-      find = Leader (UndirectedIntGraph.empty, PredSet.empty);
+      find = Leader (UIGraph.empty, PredSet.empty);
       ccpar = IntSet.empty;
     }
     
@@ -210,7 +211,7 @@ module Node =
       let n2 = find that in
       let gr1, c1 = get_find_predicates n1 in
       let gr2, c2 = get_find_predicates n2 in
-      let new_gr = UndirectedIntGraph.add (UndirectedIntGraph.merge gr1 gr2) given_this.id given_that.id in
+      let new_gr = UIGraph.add (UIGraph.merge gr1 gr2) given_this.id given_that.id in
       let new_c = maybe (fun x -> PredSet.add x (PredSet.union c1 c2)) (lazy (PredSet.union c1 c2)) congruence in
         n2.find <- Leader (new_gr, new_c);
         n1.find <- Member n2.id;
@@ -244,7 +245,7 @@ module Node =
           List.map
             (fun (arg_a, arg_b) ->
               let graph, _ = get_find_predicates (find this.nodes.(arg_a)) in
-                UndirectedIntGraph.shortest_path graph arg_a arg_b
+                UIGraph.shortest_path graph arg_a arg_b
             )
             (List.combine a.args b.args)
         in
@@ -321,6 +322,16 @@ let is_sat dag =
       dag.neqs
   )
 
+let mk_pred dag (a, b) = 
+  let node_a = get dag a in
+  let node_b = get dag b in
+    Node.mk_eq node_a node_b
+
+let mk_npred dag (a, b) = 
+  let node_a = get dag a in
+  let node_b = get dag b in
+    Not (Node.mk_eq node_a node_b)
+
 (*test if two terms are equal*)
 let entailed t pred = match pred with
   | Eq (e1, e2) ->
@@ -352,6 +363,16 @@ let t_deductions dag =
   in
     inspect_stack ()
 
+let current_predicates dag =
+  let preds = ref [] in
+    Stack.iter
+      (fun s -> match s with
+        | Equal (pred,_,_) -> preds := pred :: !preds
+        | NotEqual (i1, i2) -> preds := (mk_npred dag (i1,i2)) :: !preds
+        | _ -> ()
+      )
+      dag.stack;
+    !preds
 
 (* justify a congruence, return given preds + sub-congruences
  * for each congruences take the justification from the stack.
@@ -384,7 +405,7 @@ let justify_congruence t pred =
     in
     let pred_set = process PredSet.empty (PredSet.singleton pred) in
       (PredSet.elements pred_set, List.rev !info)
-
+  
 (*make real congruence proof i.e. using the congruence_proof/path type.*)
 let mk_proof dag pred =
   Message.print Message.Debug (lazy("SatEUF: mk_proof for " ^ (print_pred pred)));
@@ -394,21 +415,17 @@ let mk_proof dag pred =
     | err -> failwith ("SatEUF: mk_proof can only justify Eq (for the moment), not " ^ (print_pred err))
   in
 
+  let mk_pred = mk_pred dag in
+
   (* is a congruence or not *)
   let raw_congruences = t_deductions dag in
   let all_congruences = List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty raw_congruences in
   let is_congruence pred = PredSet.mem pred all_congruences in
   
-  let mk_pred (a, b) = 
-    let node_a = get dag a in
-    let node_b = get dag b in
-      Node.mk_eq node_a node_b
-  in
-
   let mk_path n1 n2 graph =
     Message.print Message.Debug (lazy("SatEUF: mk_path for " ^ (print_pred (Node.mk_eq n1 n2)) ^ " in"));
-    (*Message.print Message.Debug (lazy(UndirectedIntGraph.to_string graph));*)
-    let path = UndirectedIntGraph.shortest_path graph n1.Node.id n2.Node.id in
+    (*Message.print Message.Debug (lazy(UIGraph.to_string graph));*)
+    let path = UIGraph.shortest_path graph n1.Node.id n2.Node.id in
     (*Message.print Message.Debug (lazy("SatEUF: path is " ^ (String.concat ", " (List.map string_of_int path))));*)
     let edges = path_to_edges path in
     let all_preds =
@@ -495,6 +512,7 @@ let mk_proof dag pred =
     Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (string_of_proof raw_proof)));
     proof_compact_path raw_proof
 
+(*TODO clean up the mess with all these methods that do not quite the same ... *)
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
  * use the mk_proof method and extract the predicate from there.
@@ -540,100 +558,53 @@ let lemma_with_info dag =
     justify dag (Node.mk_eq n1 n2)
 
 (* for NO EQ propagation, use an undo/redo system
- * TODO this method seems buggy, it does not catch all the propagation ??
- * TODO raise Not_found *)
+ * TODO this method seems buggy, it does not catch all the propagation ?? *)
 let propagations dag shared =
   Message.print Message.Debug (lazy("SatEUF: propagations on " ^ (String.concat "," (List.map print_expr shared))));
-  (*TODO
-   * 1) get the list of congruence down to the last push
-   * 2) get the cc at the last push
-   * 3) get the cc now
-   * 4) make the cc difference to get the new equalities (one equalities per cc merge ?).
-   * 5) get proofs for the new equalities
-   * 6) get the congruences from the proofs
-   * 7) sort the new equalities according to the congruences used and their ordering
-   *)
-  let rec to_last_deduction () =
-    if Stack.is_empty dag.stack then None
+  (* 1) get the list of congruence down to the last push *)
+  let rec to_last_push () =
+    if Stack.is_empty dag.stack
+    then []
+    (*then failwith "SatEUF: to_last_push found empty stack"*)
     else
       begin
-        match Stack.pop dag.stack with
-        | (Deduction (_, (id1, f1, c1), (id2, f2, c2), _)) as top ->
-          begin
-            let old1 = (id1, f1, c1) in
-            let old2 = (id2, f2, c2) in
-            let current1 = get_node_info dag id1 in
-            let current2 = get_node_info dag id2 in
-              undo dag old1;
-              undo dag old2;
-              Some (top, current1, current2)
-          end
-        | Internal lst ->
-          begin
-            List.iter (fun (id, find) -> (get dag id).Node.find <- find) lst;
-            to_last_deduction ()
-          end
-        | top ->
-          begin
-            Stack.push top dag.stack;
-            None
-          end
-     end
-  in
-  let are_equal exprs_pairs =
-    List.filter
-      (fun (a,b) ->
-        (Node.find (get dag a)).Node.id = (Node.find (get dag b)).Node.id
-      )
-      exprs_pairs
-  in
-  let all_equals =
-    let to_test = cartesian_product shared shared in
-    let as_nodes = List.map (fun (a, b) -> ((get_node dag a).Node.id, (get_node dag b).Node.id)) to_test in
-    let equals = List.filter (fun (a,b) -> a < b ) as_nodes in
-      are_equal equals
-  in
-  (*determines which thing are equal now because of the new congruences (newer to older)*)
-  let rec new_equalities equals =
-    match to_last_deduction () with
-    | Some (top, restore1, restore2) ->
-      begin
-        (*TODO rewrite that part *)
-        let old_equals = are_equal equals in
-        let new_equals = List.filter (fun x -> not (List.mem x old_equals)) equals in
-        (*prune using cc from old_equals*)
-        let old_cc = get_scc_undirected_graph old_equals in
-        let node_to_cc = Hashtbl.create (List.length shared) in
-          List.iter
-            (fun cc ->
-              let representative = List.hd cc in
-                List.iter (fun x -> Hashtbl.add node_to_cc x representative) cc
-            )
-            old_cc;
-          let get_representative = Hashtbl.find node_to_cc in
-          let new_equals_pruned =
-            let replaced =
-              List.map
-                (fun (a,b) ->
-                  let rep_a = get_representative a in
-                  let rep_b = get_representative b in
-                    if rep_a <= rep_b then (rep_a, rep_b) else (rep_b, rep_a)
-                )
-                new_equals
-            in
-              OrdSet.list_to_ordSet replaced
-          in
-          let recurse = new_equalities old_equals in
-            (* restore previous status *)
-            undo dag restore1;
-            undo dag restore2;
-            Stack.push top dag.stack;
-            new_equals_pruned :: recurse
+        let top = Stack.pop dag.stack in
+        let acc =
+          match top with
+          | Deduction (_,(id1, f1, c1), (id2, f2, c2),_) -> (f1, f2) :: (to_last_push ())
+          | Internal _ -> to_last_push ()
+          | Equal _ | NotEqual _ -> []
+        in
+          Stack.push top dag.stack;
+          acc
       end
-    | None -> []
   in
-  let deductions = List.flatten (new_equalities all_equals) in
-    List.map (fun (a,b) -> order_eq (Eq ((get dag a).Node.expr, (get dag b).Node.expr))) deductions
+  (* 2) get the cc down to the last push and project *)
+  let int_shared = List.map (fun e -> (get_node dag e).Node.id) shared in
+  let graphs_pairs_before =
+    List.map
+      (fun (f1,f2) -> match (f1,f2) with
+        | (Leader (g1,_), Leader (g2, _)) ->
+          (UIGraph.project_scc g1 int_shared, UIGraph.project_scc g2 int_shared)
+        | _ -> failwith "SatEUF, propagations: expected pairs of leaders"
+      )
+      (to_last_push ())
+  in
+  (* 3) make the cc difference to get the new equalities (one equalities per cc merge). *)
+  (* need to be carefull with cc, since they contains only the affected equivalence class.
+   * therefore, the graph should be fully connected!
+   * after projection there should be 0 or 1 scc on each side. *)
+  let merge =
+    map_filter
+      (fun (l1,l2) -> match (l1,l2) with
+        | ([scc1],[scc2]) -> Some (IntSet.choose scc1, IntSet.choose scc2)
+        | ([],[_]) | ([_],[]) | ([],[]) -> None
+        | _ -> failwith ("SatEUF, propagations: merge ("^(string_of_int (List.length l1))^","^(string_of_int (List.length l2))^")" )
+      )
+      graphs_pairs_before
+  in
+  let preds = List.map (mk_pred dag) merge in
+    preds
 
 let create pred =
   let set = get_expr_deep_set pred in
@@ -702,7 +673,7 @@ let push t pred =
       let n2 = get_node t e2 in
       let n1' = Node.find n1 in
       let n2' = Node.find n2 in
-      let change = Equal (get_node_info t n1'.Node.id, get_node_info t n2'.Node.id) in
+      let change = Equal (pred, get_node_info t n1'.Node.id, get_node_info t n2'.Node.id) in
         Stack.push change t.stack;
         Node.merge n1 n2;
         is_sat t
@@ -730,7 +701,7 @@ let pop t =
             undo t old2;
             process ()
           end
-        | Equal (old1, old2) ->
+        | Equal (_,old1, old2) ->
           begin
             Message.print Message.Debug (lazy("SatEUF: pop Equal"));
             undo t old1;

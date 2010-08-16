@@ -203,6 +203,8 @@ module UndirectedIntGraph :
     val merge: t -> t -> t
     val empty: t
     val shortest_path: t -> int -> int -> int list
+    val get_scc: t -> IntSet.t list
+    val project_scc: t -> int list -> IntSet.t list
   end
 =
   struct
@@ -255,15 +257,15 @@ module UndirectedIntGraph :
       let rec get_class_of graph x =
         if IntMap.mem x graph then
           begin
-            let neighbours = IntMap.find x graph in
+            let neighbours = get graph x in
             let graph = IntMap.remove x graph in
-              List.fold_left
-                (fun (acc_g, acc_c) x ->
+              IntSet.fold
+                (fun x (acc_g, acc_c) ->
                   let g, c = get_class_of acc_g x in
                     (g, IntSet.union acc_c c)
                 )
-                (graph, IntSet.singleton x)
                 neighbours
+                (graph, IntSet.singleton x)
           end
         else
           (graph, IntSet.empty)
@@ -275,7 +277,14 @@ module UndirectedIntGraph :
           (graph, [])
           keys
       in
-        List.filter IntSet.is_empty ccs
+        List.filter (fun x -> not (IntSet.is_empty x)) ccs
+
+    let project_scc graph lst =
+      let ccs = get_scc graph in
+      let to_keep = List.fold_left (fun acc x -> IntSet.add x acc) IntSet.empty lst in
+      let ccs2 = List.map (IntSet.inter to_keep) ccs in
+        List.filter (fun x -> not (IntSet.is_empty x)) ccs2
+
 
     (* since the graph is not weigted, a BFS should be sufficient ?? *)
     let shortest_path graph a b =

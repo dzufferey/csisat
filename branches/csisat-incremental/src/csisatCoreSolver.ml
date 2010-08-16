@@ -336,6 +336,7 @@ let theory_lemma t =
     | (_, false) -> dl_lemma_with_info t
     | _ -> failwith "CoreSolver, theory_lemma: all theories are OK."
   in
+  Message.print Message.Debug (lazy("CoreSolver: EUF assignment is "^(String.concat ", " (List.map print_pred (SatEUF.current_predicates t.euf)))));
   Message.print Message.Debug (lazy("CoreSolver: full core is "^(print_pred core)));
   let (no_to_justify, core) = split_shared_NO (normalize_only (And [pred; core])) in
   Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
