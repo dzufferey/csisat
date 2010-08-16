@@ -461,27 +461,32 @@ let mk_proof dag pred =
         let proofs =
           List.map2
             (fun (a1, a2) prf ->
-              (*check direction of prf*)
-              let prf =
-                if (get dag (List.hd prf)).Node.expr = a1
-                then prf
-                else List.rev prf
-              in
-              let edges = path_to_edges prf in
-              let preds = List.map mk_pred edges in
-              (*check for further congruence*)
-              let proofs =
-                List.map2
-                  (fun x (a,b) ->
-                    let a = (get dag a).Node.expr in
-                    let b = (get dag b).Node.expr in
-                      Message.print Message.Debug (lazy("SatEUF: find_justification processing " ^ (print_expr a) ^ " and " ^ (print_expr b)));
-                      if is_congruence x
-                      then Congruence (a, b, find_justification x)
-                      else Eqs [a;b])
-                  preds edges
-              in
-                proof_compact_path (Path proofs)
+              if a1 = a2 then Eqs [a1;a2]
+              else
+                begin
+                  (*check direction of prf*)
+                  Message.print Message.Debug (lazy("SatEUF: find_justification args_pairs " ^ (print_expr a1) ^ " and " ^ (print_expr a2)));
+                  let prf =
+                    if (get dag (List.hd prf)).Node.expr = a1
+                    then prf
+                    else List.rev prf
+                  in
+                  let edges = path_to_edges prf in
+                  let preds = List.map mk_pred edges in
+                  (*check for further congruence*)
+                  let proofs =
+                    List.map2
+                      (fun x (a,b) ->
+                        let a = (get dag a).Node.expr in
+                        let b = (get dag b).Node.expr in
+                          Message.print Message.Debug (lazy("SatEUF: find_justification processing " ^ (print_expr a) ^ " and " ^ (print_expr b)));
+                          if is_congruence x
+                          then Congruence (a, b, find_justification x)
+                          else Eqs [a;b])
+                      preds edges
+                  in
+                    proof_compact_path (Path proofs)
+                end
             )
             args_pairs
             int_prf
@@ -495,6 +500,7 @@ let mk_proof dag pred =
   let edges, used_congruences = mk_path n1 n2 graph in
   let sub_proofs = List.fold_left (fun acc p -> PredMap.add p (find_justification p) acc) PredMap.empty used_congruences in
   (*put everything together ...*)
+  assert(edges <> []);
   let raw_proof = 
     Path (
       List.map
