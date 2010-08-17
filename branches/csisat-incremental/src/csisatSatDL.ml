@@ -48,6 +48,8 @@ module Matrix  = CsisatMatrix
  * see: A Schrijver, Theory of Linear and Integer Programming, John Wiley and Sons, NY, 1987
  *)
 
+(* TODO build an actual proof of unsat using the given constraints ... *)
+
 (* TODO need something like a binary heap / fibbonaci heap / bordal queue
  * a binary heap should be sufficient to start.
  * In the mean time, it is possible o use a set of pairs (priority, id).
@@ -484,6 +486,7 @@ let pop t =
     t.status <- Sat
 
 (** Assume only push on a sat system *)
+(* TODO strange thing happens when pushing = ... *)
 let push t pred =
   Message.print Message.Debug (lazy("SatDL: pushing " ^ (print_pred pred)));
   let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
@@ -515,6 +518,7 @@ let push t pred =
                   end
                 else if status = Unassigned && (c < c' || (c = c' && (strictness = Strict || strictness' <> Strict))) then
                   begin
+                    (*TODO something is wrong. p <= y has p = y for direct consequence, should print/store edge/pred differently *)
                     let cstr' = (c', strictness', Consequence [pred], p) in
                       Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (print_pred p)));
                       ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
@@ -635,13 +639,15 @@ let entailed t p =
     res
 
 let rec get_given t p =
+  Message.print Message.Debug (lazy("SatDL: get_given " ^ (print_pred p)));
   let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in
   let process_edge (c, strict, status, p) = 
     match status with
-    | Unassigned -> failwith "SatDL, unsat_core_with_info: Unassigned"
+    | Unassigned -> failwith "SatDL, get_given: Unassigned"
     | Assigned -> (PredSet.empty, PredSet.singleton p)
     | Consequence antedecents ->
       begin
+        Message.print Message.Debug (lazy("SatDL, get_given: is a Consequence of " ^ (String.concat ", " (List.map print_pred antedecents))));
         let d, g = get_given_lst t antedecents in
         let d' = PredSet.add p d in
           (d', g)
@@ -653,6 +659,8 @@ let rec get_given t p =
         List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v2).(v1)) ]
     | _ -> [List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2))]
   in
+  (*TODO why is this method called whith p s.t. status is unassigned
+   * there is something wrong with the Consequence ... *)
   let processed_edges = List.map process_edge edges in
     List.fold_left
       (fun (a1, a2) (b1, b2) -> (PredSet.union a1 b1, PredSet.union a2 b2))
@@ -703,6 +711,7 @@ let order_deductions t set =
     single
 
 let justify t pred =
+  Message.print Message.Debug (lazy("SatDL: justify " ^ (print_pred pred)));
   let deductions, given = get_given t pred in
   let odeductions = order_deductions t deductions in
   let contradiction = normalize (Not pred) in
