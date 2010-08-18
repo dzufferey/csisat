@@ -35,22 +35,26 @@
 
 #include <jni.h> 
 
+
+JNIEXPORT void JNICALL
+Java_CSIsatWrap_initCaml(JNIEnv *env, jclass clazz)
+{
+  char *dummy[] = {0};
+  caml_startup(dummy);
+}
+
 JNIEXPORT jstring JNICALL
-Java_CSIsatWrap_interpolateString (JNIEnv *env, jclass clazz, jstring s)
+Java_CSIsatWrap_interpolateString(JNIEnv *env, jclass clazz, jstring s)
 {
   CAMLparam0();
   CAMLlocal1(ostr);
 
-  const jbyte *str = (*env)->GetStringUTFChars(env, s, NULL);
-  if (NULL == str) {
-    return NULL;
-  }
+  static value *func;
+  const char *str;
+ 
+  if (!(str = (*env)->GetStringUTFChars(env, s, NULL))) return NULL;
   ostr = caml_copy_string(str);
   (*env)->ReleaseStringUTFChars(env, s, str);
-  
-  value *func = caml_named_value("interpolate_string");
-  if (NULL == func) {
-    return NULL;
-  }
+  if (!func && !(func = caml_named_value("interpolate_string"))) return NULL;
   return (*env)->NewStringUTF(env, String_val(caml_callback(*func, ostr)));
 }
