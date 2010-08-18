@@ -9,6 +9,14 @@ extern "C" {
 #endif
 /*
  * Class:     CSIsatWrap
+ * Method:    initCaml
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_CSIsatWrap_initCaml
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     CSIsatWrap
  * Method:    interpolateString
  * Signature: (Ljava/lang/String;)Ljava/lang/String;
  */
