@@ -239,7 +239,6 @@ module BasicSolver =
         (dist, pred)
 
     let strongest lst =
-      (* TODO if strict && domain = Real then put some small k *)
       let is_stronger (d1, _) d2 = min d1 d2 in
       let dist (d, _) = d in
         List.fold_left
@@ -446,7 +445,6 @@ module BasicSolver =
           end
       in
       let sat, fct, changes = process_pred () in
-      (*TODO check that the strict constraint are OK (and do the propagation) *)
       let old_assign = t.assignment in
         t.assignment <- fct;
         (* Do the propagation *)
@@ -560,6 +558,111 @@ module BasicSolver =
 module InterfaceLayer =
   struct
     (*TODO*)
+    type kind = Equal | LessEq | LessStrict
+    type strictness = Strict | NonStrict
+    type domain = Integer | Real
+
+    type t = {
+      domain: domain;
+      var_to_id: int StringMap.t;
+      id_to_expr: expression IntMap.t;
+      solver: BasicSolver.t;
+      history: predicate Stack.t
+    }
+
+    let _z_0 = "__ZERO__"
+    let z_0 = Variable _z_0
+    let z_0_c = Constant 0.0
+
+    let to_string t =
+      let buffer = Buffer.create 1000 in
+      let add = Buffer.add_string buffer in
+        add ("DL solver over "^(if t.domain = Real then "R" else "Z")^" :\n");
+        add "  variables: ";
+        StringMap.iter (fun k v -> add (k^"("^(string_of_int v)^"),")) t.var_to_id;
+        add "\n";
+        add (BasicSolver.to_string t.solver);
+        Buffer.contents buffer
+
+    let epsilon = 1.e-5
+
+    let adapt_domain domain (kind, v1, v2, c) = match domain with
+      | Integer when kind = LessStrict -> (v1, v2, c -. 1.0)
+      | Integer when kind = LessStrict -> (v1, v2, c -. epsilon)
+      | _ -> (v1, v2, c)
+
+    (* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
+    let rec normalize_dl domain map pred =
+      let (kind, e1, e2) = match pred with
+        | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
+        | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
+        | Leq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessEq, Variable v1, Sum [Variable v2; Constant c])
+        | Eq(e1, e2) -> (Equal, e1, e2)
+        | Lt(e1, e2) -> (LessStrict, e1, e2)
+        | Leq(e1, e2) -> (LessEq, e1, e2)
+        | err -> failwith ("SatDL expected DL predicate: "^(print_pred err))
+      in
+      let decompose_expr e = match e with
+        | Variable x -> (x, 0.0)
+        | Constant c -> (_z_0, c)
+        | Sum [Variable x; Constant c] | Sum [Constant c; Variable x] -> (x, c)
+        | err -> failwith ("SatDL, expected DL expression: "^(print_expr err))
+      in
+      let (v1,c1) = decompose_expr e1 in
+      let (v2,c2) = decompose_expr e2 in
+      let id1 = StringMap.find v1 map in
+      let id2 = StringMap.find v2 map in
+        (kind, id1, id2, c2 -. c1)
+
+    (*assume purified formula*)
+    let create domain preds =
+      Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (print_pred (And preds))));
+      let vars = get_var (And preds) in
+      let vars =
+        List.map
+          (fun x -> match x with
+            | Variable v -> v
+            | _ -> failwith "SatDL: get_vars returned smth else")
+          vars
+      in
+      let (n, var_to_id, id_to_expr) = (*n is #vars + 1*)
+        List.fold_left
+          (fun (i, acc, acc2) v -> (i+1, StringMap.add v i acc, IntMap.add i (Variable v) acc2))
+          (1, StringMap.add _z_0 0 StringMap.empty, IntMap.add 0 z_0_c IntMap.empty)
+          vars
+      in
+      let expand p = match p with
+        | (Equal, v1, v2, c) -> (LessEq, v1, v2,  c) :: (LessEq, v2, v1, -.c) :: []
+        | (LessEq, v1, v2, c) -> (LessEq, v1, v2,  c) :: (LessStrict, v2, v1, -.c) :: []
+        | (LessStrict, v1, v2, c) -> (LessStrict, v1, v2,  c) :: (LessEq, v2, v1, -.c) :: []
+      in
+      let history = Stack.create () in
+      let cstrs = PredSet.elements (get_literal_set (And preds)) in
+      let raw_diffs = List.map (normalize_dl domain var_to_id) cstrs in
+      let all_diffs = List.flatten (List.map expand raw_diffs) in
+      let final_diffs = List.map (adapt_domain domain) all_diffs in
+      let solver = BasicSolver.create final_diffs in
+        (* z_0 = 0 ? *)
+        {
+          domain = domain;
+          var_to_id = var_to_id;
+          id_to_expr = id_to_expr;
+          history = history;
+          solver = solver
+        }
+
+    let push t pred =
+      failwith "TODO"
+
+    let pop t =
+      failwith "TODO"
+
+    let is_sat t = BasicSolver.is_sat t.solver
+
+    let propagations t shared =
+      failwith "TODO"
+    
+    (* TODO mk_proof, unsat_core, ... *)
   end
 
 type potential_fct = float array (*'-satisfying' assignment*)
@@ -586,16 +689,6 @@ type t = {
 let _z_0 = "__ZERO__"
 let z_0 = Variable _z_0
 let z_0_c = Constant 0.0
-
-let copy t = 
-  { domain = t.domain;
-    var_to_id = t.var_to_id;
-    id_to_expr = t.id_to_expr;
-    status = t.status;
-    assignment = t.assignment;
-    history = Stack.copy t.history;
-    edges = Array.map Array.copy t.edges
-  }
 
 let to_string t =
   let buffer = Buffer.create 1000 in
