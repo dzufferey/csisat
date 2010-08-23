@@ -44,12 +44,6 @@ module Matrix  = CsisatMatrix
  * by Scott Cotton and Oded Maler
  *)
 
-(* fin an elegant way of getting ride of the strict constraints.
- * see: A Schrijver, Theory of Linear and Integer Programming, John Wiley and Sons, NY, 1987
- *)
-
-(* TODO build an actual proof of unsat using the given constraints ... *)
-
 (* TODO need something like a binary heap / fibbonaci heap / bordal queue
  * a binary heap should be sufficient to start.
  * In the mean time, it is possible o use a set of pairs (priority, id).
@@ -102,7 +96,472 @@ module PQueue =
       PSet.is_empty pq.queue
       
   end
+
+
+(* TODO
+ * divide this into 2 parts:
+ * ( i) basic solver only nonstrict, no equal, don't care oabout domain, ... 
+ * (ii) layer to take care of ==, leq in Integer/Real domain, proof rewriting, ...
+ *
+ * Integer vs Real: find an elegant way of getting ride of the strict constraints (small epsilon).
+ * see: A Schrijver, Theory of Linear and Integer Programming, John Wiley and Sons, NY, 1987
+ *
+ * build an actual proof of unsat using the given constraints ... 
+ *)
  
+module BasicSolver =
+  struct
+    type diff_constraint = int * int * float (* a - b <= c *)
+    type potential_fct = float array (*'-satisfying' assignment*)
+    type status = Unassigned
+                | Assigned (* but not propagated *)
+                | Consequence of diff_constraint list (* a consequence of an Assigned constraints *)
+    type edge_content = float * status
+    type edge = int * int * edge_content
+    type sat = Sat
+             | UnSat of diff_constraint * diff_constraint list (* contradiction, predicate (given + T deduction) that are required to derive Not contradiction *)
+
+    module Diff =
+      struct
+        type t = diff_constraint
+        let compare = Pervasives.compare
+      end
+    module DiffSet = Set.Make(Diff)
+
+    type t = {
+      mutable status: sat;
+      mutable assignment: potential_fct;
+      history: (diff_constraint * potential_fct * (edge list)) Stack.t;
+      edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
+    }
+
+    let string_of_diff (x,y,c) = "'" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y) ^ "' <= " ^ (string_of_float c)
+
+    let to_string t =
+      let buffer = Buffer.create 1000 in
+      let add = Buffer.add_string buffer in
+        add ("DL solver :\n");
+        begin
+          match t.status with
+          | Sat ->
+            begin
+              add "  status: sat\n";
+              add "  assignment: sat\n";
+              Array.iteri
+                (fun i v -> add ("'"^(string_of_int i)^"' = "^(string_of_float (v -. t.assignment.(0)))^","))
+                t.assignment;
+              add "\n";
+            end
+          | UnSat (ctr, core) ->
+            begin
+              add "  status: unsat\n";
+              add ("    contradiction: "^(string_of_diff ctr)^"\n");
+              add ("    reason: "^(String.concat ", " (List.map string_of_diff core))^"\n")
+            end
+        end;
+        add "  constraints:  ";
+        Array.iteri
+          (fun x row ->
+            Array.iteri
+              (fun y lst ->
+                let print (c,status) = match status with
+                  | Unassigned -> ()
+                  | Assigned -> add ("(Given)"^(string_of_diff (x,y,c))^", ")
+                  | Consequence _ -> add ("(Conseq.)"^(string_of_diff (x,y,c))^", ")
+                in
+                  List.iter print lst
+              )
+              row
+          )
+          t.edges;
+        add "\n";
+        Buffer.contents buffer
+
+    (* WARNING diff_constraint should ideally contains the constraints and their negation ? (how to deal with Int vs Real) *)
+    let create diff_constraints =
+      Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (String.concat "," (List.map string_of_diff diff_constraints))));
+      let n = List.fold_left (fun acc (v1,v2,_) -> max acc (max v1 v2)) 0 diff_constraints in
+      let history = Stack.create () in
+      (*initial assignment: 0 to everybody (is it right)*)
+      let first_assign = Array.make n 0.0 in
+      let edges = Array.make_matrix n n [] in
+        (* fill edges *)
+        List.iter
+          (fun (v1,v2,c) -> edges.(v1).(v2) <- (c, Unassigned) :: edges.(v1).(v2) )
+          diff_constraints;
+        {
+          status = Sat;
+          assignment = first_assign;
+          history = history;
+          edges = edges
+        }
+
+    let active_constraint (_,status) = match status with Unassigned -> false | _ -> true
+
+    let get_successors edges x =
+      let succ = ref [] in
+        Array.iteri
+          (fun y lst ->
+            let new_succ = List.filter active_constraint lst in
+            let new_succ = List.map (fun c -> (y,c)) new_succ in
+              succ := new_succ @ !succ
+          )
+          edges.(x);
+        !succ
+
+    let eval potential_fct x = potential_fct.(x)
+
+    let is_sat t = match t.status with Sat -> true | _ -> false
+
+    (*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
+    let sssp size successors source =
+      Message.print Message.Debug (lazy("SatDL: sssp from " ^ (string_of_int source)));
+      let dist = Array.make size max_float in
+      let pred = Array.make size (-1) in
+      let pq = PQueue.empty max_float in
+        PQueue.add pq source 0.0 ;
+        dist.(source) <- 0.0;
+        while not (PQueue.is_empty pq) do
+          let (d, idx) = PQueue.get_min pq in
+            PQueue.remove pq idx;
+            List.iter
+              (fun (c, idx') ->
+                let d' = d +. c in
+                  if d' < dist.(idx') then
+                    begin
+                      dist.(idx') <- d';
+                      pred.(idx') <- idx;
+                      PQueue.add pq idx' d'
+                    end
+              )
+              (successors idx)
+        done;
+        (dist, pred)
+
+    let strongest lst =
+      (* TODO if strict && domain = Real then put some small k *)
+      let is_stronger (d1, _) d2 = min d1 d2 in
+      let dist (d, _) = d in
+        List.fold_left
+          (fun acc x -> match acc with
+            | Some y -> Some (is_stronger x y)
+            | None -> Some (dist x)
+          )
+          None
+          (List.filter active_constraint lst)
+
+    let rec path_from_to_rev pred source target =
+      Message.print Message.Debug (lazy("SatDL: path from '" ^ (string_of_int source) ^ "' to '" ^ (string_of_int target)^"'"));
+      if pred.(target) <> -1
+      then target :: (path_from_to_rev pred source (pred.(target)))
+      else [source]
+    let rec path_from_to pred source target = List.rev (path_from_to_rev pred source target)
+        
+    let strongest_for_pair t (x,y) =
+      let lst = List.filter active_constraint t.edges.(x).(y) in
+      let (c,_) =
+        List.fold_left
+          (fun ((c,_) as c1) ((c',_) as c2) -> if c' < c then c2 else c1)
+          (List.hd lst)
+          (List.tl lst)
+      in
+        Message.print Message.Debug (lazy("SatDL: strongest_for_pair " ^ (string_of_diff (x,y,c))));
+        (x,y,c)
+
+    (*build the successors function for sssp using lazy elements*)
+    let lazy_successors t =
+      let size = Array.length t.assignment in
+      let successors_lists =
+        Array.init
+          size
+          (fun idx ->
+            lazy (
+              snd (Array.fold_left
+                (fun (idx', acc) lst ->
+                  ( idx' + 1,
+                    Utils.maybe
+                      (* use assign to speed-up the process (Johnson algorithm):
+                       * new weight are for x -c-> y is pi(x) + c - pi(y) *)
+                      (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
+                      (lazy acc)
+                      (strongest lst)
+                  )
+                )
+                (0, [])
+                (t.edges.(idx)))
+            )
+          )
+      in
+        (fun x -> Lazy.force successors_lists.(x))
+
+    (*build the predecessor function for sssp using lazy elements*)
+    let lazy_predecessors t =
+      let size = Array.length t.assignment in
+      let preds_lists =
+        Array.init
+          size
+          (fun idx ->
+            lazy (
+              snd (Array.fold_left
+                (fun (idx', acc) lst ->
+                  ( idx' + 1,
+                    Utils.maybe
+                      (* use assign to speed-up the process (Johnson algorithm):
+                       * new weight are for x -c-> y is pi(x) + c - pi(y) *)
+                      (fun x -> ((* -1. *. *) (t.assignment.(idx) +. x -. t.assignment.(idx')), idx')::acc) (*keep the edges positive ??*)
+                      (lazy acc)
+                      (strongest lst.(idx))
+                  )
+                )
+                (0, [])
+                (t.edges))
+            )
+          )
+      in
+        (fun x -> Lazy.force preds_lists.(x))
+
+    (*propagating equalities for NO*)
+    let propagations t shared =
+      failwith "TODO"
+
+    let t_propagations t (x, y, c) =
+      Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (string_of_diff (x,y,c))));
+      (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
+      let size = Array.length t.assignment in
+      let successors = lazy_successors t in
+      let predecessors = lazy_predecessors t in
+      let shortest_x, pred_x = sssp size predecessors x in
+      let shortest_y, pred_y = sssp size successors y in
+      (*test for each unassigned constraints test*)
+      let changed = ref [] in
+        Array.iteri
+          (fun i row ->
+            Array.iteri
+              (fun j lst ->
+                let modif = ref false in
+                let lst' =
+                  List.map
+                    (fun ((d, status) as cstr) ->
+                      if status = Unassigned && shortest_x.(i) +. c +. shortest_y.(j) <= d then
+                        begin
+                          (*x -> i, j -> y, pred*)
+                          let mk_path lst = List.map (strongest_for_pair t) (path_to_edges lst) in 
+                          Message.print Message.Debug (lazy("SatDL: x_to_i"));
+                          let x_to_i = mk_path (path_from_to_rev pred_x x i) in
+                          Message.print Message.Debug (lazy("SatDL: j_to_y"));
+                          let j_to_y = mk_path (path_from_to pred_y y j) in
+                          (*TODO check that path implies the constraint *)
+                          let path = (x,y,c) :: (x_to_i @ j_to_y) in
+                            changed := (i, j, cstr) :: !changed;
+                            (d, Consequence path)
+                        end
+                      else
+                         cstr
+                    )
+                    lst
+                in
+                  if !modif then t.edges.(i).(j) <- lst'
+              )
+              row)
+          t.edges;
+        !changed
+
+    (*undo changes (stored in stack)*)
+    let pop t =
+      Message.print Message.Debug (lazy("SatDL: pop"));
+      let (_, assign, changes) = Stack.pop t.history in 
+        t.assignment <- assign;
+        List.iter
+          (fun (v1, v2, (c, status)) ->
+            let current = t.edges.(v1).(v2) in
+            let old =
+              List.map
+                (fun (c', status') -> if c = c' then (c, status) else (c', status') )
+                current
+            in
+              t.edges.(v1).(v2) <- old
+          )
+          changes;
+        t.status <- Sat
+
+    (** Assume only push on a sat system *)
+    let push t (v1, v2, c) =
+      Message.print Message.Debug (lazy("SatDL: pushing " ^ (string_of_diff (v1,v2,c))));
+      (* check if it is already an active constraint *)
+      let already =
+        List.exists
+          (fun ((c2,_) as cstr) -> c = c2 && active_constraint cstr)
+          t.edges.(v1).(v2)
+      in
+      (* preform the changes *)
+      let process_pred () = 
+        if already then (true, t.assignment, [])
+        else
+          begin
+            Message.print Message.Debug (lazy("SatDL: new constraint "));
+            let new_assign = Array.copy t.assignment in
+            let pq = PQueue.empty 0.0 in
+            let pi = eval t.assignment in
+            let pi' = eval new_assign in
+            (* set the constraint status (and weaker constraints as consequences (trivial propagation))*)
+            let changes, new_edges =
+              List.fold_left
+                (fun (acc_c, acc_e) ((c', status) as cstr) ->
+                  if c = c' then
+                    begin
+                      let cstr' = (c', Assigned) in
+                        ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
+                    end
+                  else if status = Unassigned && c <= c' then
+                    begin
+                      let cstr' = (c', Consequence [(v1,v2,c)]) in
+                        Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (string_of_diff (v1,v2,c'))));
+                        ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
+                    end
+                  else (acc_c, cstr :: acc_e)
+                )
+                ([], [])
+                t.edges.(v1).(v2)
+            in
+              t.edges.(v1).(v2) <- new_edges;
+              PQueue.add pq v2 (pi v1 +. c -. pi v2);
+              while not (PQueue.is_empty pq) && PQueue.get_priority pq v1 = 0.0 do
+                let (gamma_s, s) = PQueue.get_min pq in
+                  new_assign.(s) <- pi s +. gamma_s;
+                  PQueue.add pq s 0.0;
+                  List.iter
+                    (fun (t,(c,status)) ->
+                      if status <> Unassigned && pi t = pi' t then
+                        let gamma' = pi' s +. c -. pi t in
+                          if gamma' < (PQueue.get_priority pq t) then
+                            PQueue.add pq t gamma'
+                    )
+                    (get_successors t.edges s)
+              done;
+              let v1_p = PQueue.get_priority pq v1 in
+                Message.print Message.Debug (lazy("SatDL: priority of v1 = " ^ (string_of_float v1_p)));
+                if v1_p >= 0.0
+                then (true, new_assign, changes)
+                else (false, new_assign, changes)
+          end
+      in
+      let sat, fct, changes = process_pred () in
+      (*TODO check that the strict constraint are OK (and do the propagation) *)
+      let old_assign = t.assignment in
+        t.assignment <- fct;
+        (* Do the propagation *)
+        let changes' =
+          if sat then t_propagations t (v1, v2, c)
+          else []
+        in
+          (* store stuff on the stack *)
+          Stack.push ((v1, v2, c), old_assign, changes @ changes') t.history;
+          (* if unsat then find a small explanation *)
+          if not sat then
+            begin
+              (* if there is a contradiction when adding x -c-> y then
+               * there must be an negative cycle that goes though the x -c-> y edge.
+               * We need to find that cycle.
+               * let x -c'-> y the new edge where c has be modified according to the old assigment.
+               * c' must be the only negative edge in the reweighted graph.
+               * we must find a path from y to x, such that the weight of that path is strictly less than c'. *)
+              (* restore previous graph*)
+              pop t;
+              (* get the shortest path from y to x *)
+              let successors = lazy_successors t in
+              let size = Array.length t.assignment in
+              let find_path v1 v2 c =
+                let shortest_y, pred_y = sssp size successors v2 in
+                let path = path_from_to pred_y v2 v1 in
+                let y_to_x = List.map (strongest_for_pair t) (path_to_edges path) in
+                  (* check that the distance y to x is less then x to y. *)
+                  Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
+                  Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
+                  Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
+                  Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
+                  Message.print Message.Debug (lazy("SatDL: old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c = "^(string_of_float (old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c))));
+                  if old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c < 0.0
+                  then Some (y_to_x)
+                  else None
+              in
+              let y_to_x = maybe (fun x -> x) (lazy (failwith "SatDL: find_path")) (find_path v1 v2 c) in
+              (*redo the changes (but no propagation)*)
+              let sat, fct, changes = process_pred () in
+              let old_assign = t.assignment in
+                t.assignment <- fct;
+                Stack.push ((v1,v2,c), old_assign, changes @ changes') t.history;
+                t.status <- UnSat ((v1,v2,c), y_to_x)
+            end;
+          Message.print Message.Debug (lazy("SatDL: after push -> " ^ (string_of_bool sat)));
+          sat
+
+    (* test if a predicate is entailed by the current model
+     * this is for NO only and it assumes there are 'edges' between
+     * the nodes in p.
+     *)
+    let entailed t (v1, v2, c) =
+      let res =
+        List.exists
+          (fun ((c2,_) as cstr) -> c >= c2 && active_constraint cstr)
+          t.edges.(v1).(v2)
+      in
+        Message.print Message.Debug (lazy("SatDL: entailed " ^ (string_of_diff (v1,v2,c)) ^ " -> " ^ (string_of_bool res)));
+        res
+
+    let rec get_given t (v1,v2,c) =
+      Message.print Message.Debug (lazy("SatDL: get_given " ^ (string_of_diff (v1,v2,c))));
+      let process_edge (c, status) = 
+        match status with
+        | Unassigned -> failwith "SatDL, get_given: Unassigned"
+        | Assigned -> (DiffSet.empty, DiffSet.singleton (v1,v2,c))
+        | Consequence antedecents ->
+          begin
+            Message.print Message.Debug (lazy("SatDL, get_given: is a Consequence of " ^ (String.concat ", " (List.map string_of_diff antedecents))));
+            let d, g = get_given_lst t antedecents in
+            let d' = DiffSet.add (v1,v2,c) d in
+              (d', g)
+          end
+      in
+      let edge = List.find (fun (c',_) -> c = c' ) (t.edges.(v1).(v2)) in
+        process_edge edge
+
+    and get_given_lst t lst =
+      List.fold_left
+        (fun (acc1, acc2) p ->
+          let d, g = get_given t p in
+            (DiffSet.union acc1 d, DiffSet.union acc2 g)
+          )
+        (DiffSet.empty, DiffSet.empty)
+        lst
+
+    (* order the deductions by looking into the stack *)
+    let order_deductions t set =
+      let ordered = ref [] in
+      let inspect_edge (v1,v2,(c,status)) =
+        if status = Unassigned && DiffSet.mem (v1,v2,c) set then
+          ordered := pred :: !ordered
+      in
+      let inspect (_, _, lst) =
+        List.iter inspect_edge lst
+      in
+        Stack.iter inspect t.history;
+        assert(List.length !ordered = DiffSet.cardinal set);
+        !ordered
+
+    (* returns a set of given equality and deduced constraints *)
+    let justify t diff =
+      Message.print Message.Debug (lazy("SatDL: justify " ^ (string_of_diff diff)));
+      let deductions, given = get_given t diff in
+      let ordered_deductions = order_deductions t deductions in
+        (given, ordered_deductions)
+
+  end
+
+module InterfaceLayer =
+  struct
+    (*TODO*)
+  end
+
 type potential_fct = float array (*'-satisfying' assignment*)
 type status = Unassigned
             | Assigned (* but not propagated *)
