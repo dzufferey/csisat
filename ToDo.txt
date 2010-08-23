@@ -6,9 +6,6 @@ LA:
      faster incremental implementation ?? (seems not any faster)
     -use the arbitrary precision solver (when no more that experimental)
 
-EUF:
-	-improve the unsat core (over-approximation)
-
 Theories:
     -array theory
 	-add difference logic (and later utvpi ?)
@@ -16,7 +13,6 @@ Theories:
 
 
 Sat Solver:
-    -bug for trivial boolean formula in 'sat' mode
     -sat solver decision policy.
 
 General:
