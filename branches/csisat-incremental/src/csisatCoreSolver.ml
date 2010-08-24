@@ -39,7 +39,7 @@ module OrdSet  = CsisatOrdSet
 module EqDag   = CsisatDag
 module Dpll    = CsisatDpllCore
 module DpllProof = CsisatDpllProof
-module SatDL   = CsisatSatDL
+module SatDL   = CsisatSatDL.InterfaceLayer
 module SatEUF  = CsisatSatEUF
 module Node    = CsisatSatEUF.Node
 (**/**)

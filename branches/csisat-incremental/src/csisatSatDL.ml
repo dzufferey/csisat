@@ -32,7 +32,7 @@ open   CsisatUtils
 module Global  = CsisatGlobal
 module Message = CsisatMessage
 module IntMap  = CsisatUtils.IntMap
-module Matrix  = CsisatMatrix
+module OrdSet  = CsisatOrdSet
 (**/**)
 
 (*TODO 
@@ -108,10 +108,19 @@ module PQueue =
  *
  * build an actual proof of unsat using the given constraints ... 
  *)
+    
+module Diff =
+  struct
+    type t = int * int * float (* a - b <= c *)
+    let compare = Pervasives.compare
+    let to_string (x,y,c) = "'" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y) ^ "' <= " ^ (string_of_float c)
+  end
+module DiffSet = Set.Make(Diff)
+module DiffMap = Map.Make(Diff)
  
 module BasicSolver =
   struct
-    type diff_constraint = int * int * float (* a - b <= c *)
+    type diff_constraint = Diff.t
     type potential_fct = float array (*'-satisfying' assignment*)
     type status = Unassigned
                 | Assigned (* but not propagated *)
@@ -121,12 +130,6 @@ module BasicSolver =
     type sat = Sat
              | UnSat of diff_constraint * diff_constraint list (* contradiction, predicate (given + T deduction) that are required to derive Not contradiction *)
 
-    module Diff =
-      struct
-        type t = diff_constraint
-        let compare = Pervasives.compare
-      end
-    module DiffSet = Set.Make(Diff)
 
     type t = {
       mutable status: sat;
@@ -134,8 +137,6 @@ module BasicSolver =
       history: (diff_constraint * potential_fct * (edge list)) Stack.t;
       edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
     }
-
-    let string_of_diff (x,y,c) = "'" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y) ^ "' <= " ^ (string_of_float c)
 
     let to_string t =
       let buffer = Buffer.create 1000 in
@@ -155,8 +156,8 @@ module BasicSolver =
           | UnSat (ctr, core) ->
             begin
               add "  status: unsat\n";
-              add ("    contradiction: "^(string_of_diff ctr)^"\n");
-              add ("    reason: "^(String.concat ", " (List.map string_of_diff core))^"\n")
+              add ("    contradiction: "^(Diff.to_string ctr)^"\n");
+              add ("    reason: "^(String.concat ", " (List.map Diff.to_string core))^"\n")
             end
         end;
         add "  constraints:  ";
@@ -166,8 +167,8 @@ module BasicSolver =
               (fun y lst ->
                 let print (c,status) = match status with
                   | Unassigned -> ()
-                  | Assigned -> add ("(Given)"^(string_of_diff (x,y,c))^", ")
-                  | Consequence _ -> add ("(Conseq.)"^(string_of_diff (x,y,c))^", ")
+                  | Assigned -> add ("(Given)"^(Diff.to_string (x,y,c))^", ")
+                  | Consequence _ -> add ("(Conseq.)"^(Diff.to_string (x,y,c))^", ")
                 in
                   List.iter print lst
               )
@@ -179,7 +180,7 @@ module BasicSolver =
 
     (* WARNING diff_constraint should ideally contains the constraints and their negation ? (how to deal with Int vs Real) *)
     let create diff_constraints =
-      Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (String.concat "," (List.map string_of_diff diff_constraints))));
+      Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (String.concat "," (List.map Diff.to_string diff_constraints))));
       let n = List.fold_left (fun acc (v1,v2,_) -> max acc (max v1 v2)) 0 diff_constraints in
       let history = Stack.create () in
       (*initial assignment: 0 to everybody (is it right)*)
@@ -264,7 +265,7 @@ module BasicSolver =
           (List.hd lst)
           (List.tl lst)
       in
-        Message.print Message.Debug (lazy("SatDL: strongest_for_pair " ^ (string_of_diff (x,y,c))));
+        Message.print Message.Debug (lazy("SatDL: strongest_for_pair " ^ (Diff.to_string (x,y,c))));
         (x,y,c)
 
     (*build the successors function for sssp using lazy elements*)
@@ -324,7 +325,7 @@ module BasicSolver =
       failwith "TODO"
 
     let t_propagations t (x, y, c) =
-      Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (string_of_diff (x,y,c))));
+      Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (Diff.to_string (x,y,c))));
       (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
       let size = Array.length t.assignment in
       let successors = lazy_successors t in
@@ -385,7 +386,7 @@ module BasicSolver =
 
     (** Assume only push on a sat system *)
     let push t (v1, v2, c) =
-      Message.print Message.Debug (lazy("SatDL: pushing " ^ (string_of_diff (v1,v2,c))));
+      Message.print Message.Debug (lazy("SatDL: pushing " ^ (Diff.to_string (v1,v2,c))));
       (* check if it is already an active constraint *)
       let already =
         List.exists
@@ -414,7 +415,7 @@ module BasicSolver =
                   else if status = Unassigned && c <= c' then
                     begin
                       let cstr' = (c', Consequence [(v1,v2,c)]) in
-                        Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (string_of_diff (v1,v2,c'))));
+                        Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (Diff.to_string (v1,v2,c'))));
                         ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
                     end
                   else (acc_c, cstr :: acc_e)
@@ -503,18 +504,18 @@ module BasicSolver =
           (fun ((c2,_) as cstr) -> c >= c2 && active_constraint cstr)
           t.edges.(v1).(v2)
       in
-        Message.print Message.Debug (lazy("SatDL: entailed " ^ (string_of_diff (v1,v2,c)) ^ " -> " ^ (string_of_bool res)));
+        Message.print Message.Debug (lazy("SatDL: entailed " ^ (Diff.to_string (v1,v2,c)) ^ " -> " ^ (string_of_bool res)));
         res
 
     let rec get_given t (v1,v2,c) =
-      Message.print Message.Debug (lazy("SatDL: get_given " ^ (string_of_diff (v1,v2,c))));
+      Message.print Message.Debug (lazy("SatDL: get_given " ^ (Diff.to_string (v1,v2,c))));
       let process_edge (c, status) = 
         match status with
         | Unassigned -> failwith "SatDL, get_given: Unassigned"
         | Assigned -> (DiffSet.empty, DiffSet.singleton (v1,v2,c))
         | Consequence antedecents ->
           begin
-            Message.print Message.Debug (lazy("SatDL, get_given: is a Consequence of " ^ (String.concat ", " (List.map string_of_diff antedecents))));
+            Message.print Message.Debug (lazy("SatDL, get_given: is a Consequence of " ^ (String.concat ", " (List.map Diff.to_string antedecents))));
             let d, g = get_given_lst t antedecents in
             let d' = DiffSet.add (v1,v2,c) d in
               (d', g)
@@ -537,7 +538,7 @@ module BasicSolver =
       let ordered = ref [] in
       let inspect_edge (v1,v2,(c,status)) =
         if status = Unassigned && DiffSet.mem (v1,v2,c) set then
-          ordered := pred :: !ordered
+          ordered := (v1,v2,c) :: !ordered
       in
       let inspect (_, _, lst) =
         List.iter inspect_edge lst
@@ -548,18 +549,28 @@ module BasicSolver =
 
     (* returns a set of given equality and deduced constraints *)
     let justify t diff =
-      Message.print Message.Debug (lazy("SatDL: justify " ^ (string_of_diff diff)));
+      Message.print Message.Debug (lazy("SatDL: justify " ^ (Diff.to_string diff)));
       let deductions, given = get_given t diff in
       let ordered_deductions = order_deductions t deductions in
         (given, ordered_deductions)
 
+    (*info: but for the contradiction, cannot do much.
+     * returns core => ~pred
+     *)
+    let unsat_core_with_info t =
+      match t.status with
+      | Sat -> failwith "SatDL: unsat_core_with_info on a SAT system"
+      | UnSat (pred, preds) ->
+        begin
+          let deductions, given = get_given_lst t preds in
+          let odeductions = order_deductions t deductions in
+            (DiffSet.elements given, pred, odeductions)
+        end
   end
 
 module InterfaceLayer =
   struct
-    (*TODO*)
     type kind = Equal | LessEq | LessStrict
-    type strictness = Strict | NonStrict
     type domain = Integer | Real
 
     type t = {
@@ -567,6 +578,8 @@ module InterfaceLayer =
       var_to_id: int StringMap.t;
       id_to_expr: expression IntMap.t;
       solver: BasicSolver.t;
+      mutable partial_push: bool;
+      mutable diff_to_pred: predicate DiffMap.t;
       history: predicate Stack.t
     }
 
@@ -584,15 +597,17 @@ module InterfaceLayer =
         add (BasicSolver.to_string t.solver);
         Buffer.contents buffer
 
+    (*TODO make sure epsilon is small enough w.r.t. the problem constants *)
     let epsilon = 1.e-5
 
-    let adapt_domain domain (kind, v1, v2, c) = match domain with
-      | Integer when kind = LessStrict -> (v1, v2, c -. 1.0)
-      | Integer when kind = LessStrict -> (v1, v2, c -. epsilon)
+    let adapt_domain domain (kind, v1, v2, c) = match (domain, kind) with
+      | (Integer, LessStrict) -> (v1, v2, c -. 1.0)
+      | (Real, LessStrict) -> (v1, v2, c -. epsilon)
+      | (Integer, LessEq) -> (v1, v2, floor c)
       | _ -> (v1, v2, c)
 
     (* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
-    let rec normalize_dl domain map pred =
+    let rec normalize_dl map pred =
       let (kind, e1, e2) = match pred with
         | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
         | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
@@ -638,7 +653,7 @@ module InterfaceLayer =
       in
       let history = Stack.create () in
       let cstrs = PredSet.elements (get_literal_set (And preds)) in
-      let raw_diffs = List.map (normalize_dl domain var_to_id) cstrs in
+      let raw_diffs = List.map (normalize_dl var_to_id) cstrs in
       let all_diffs = List.flatten (List.map expand raw_diffs) in
       let final_diffs = List.map (adapt_domain domain) all_diffs in
       let solver = BasicSolver.create final_diffs in
@@ -648,21 +663,107 @@ module InterfaceLayer =
           var_to_id = var_to_id;
           id_to_expr = id_to_expr;
           history = history;
+          partial_push = false;
+          diff_to_pred = DiffMap.empty;
           solver = solver
         }
+    
+    (* methods to convert from diff to pred ... *)
+    let register t diff pred =
+      if not (DiffMap.mem diff t.diff_to_pred) then
+        t.diff_to_pred <- DiffMap.add diff pred t.diff_to_pred
+
+    let get_pred t diff =
+      try DiffMap.find diff t.diff_to_pred
+      with Not_found ->
+        begin
+          Message.print Message.Debug (lazy("SatDL: get_pred Not_found " ^ (Diff.to_string diff)));
+          let (v1,v2,c) = diff in
+          let v1 = IntMap.find v1 t.id_to_expr in
+          let v2 = IntMap.find v2 t.id_to_expr in
+            Leq(Sum[v1; Coeff (-1.0, v2)], Constant c)
+        end
+
+    let deregister t pred =
+      let raw_diff = normalize_dl t.var_to_id pred in
+      let diff = adapt_domain t.domain raw_diff in
+      let p' = get_pred t diff in
+        if p' = pred then t.diff_to_pred <- DiffMap.remove diff t.diff_to_pred
 
     let push t pred =
-      failwith "TODO"
+      assert(BasicSolver.is_sat t.solver && t.partial_push = false);
+      Message.print Message.Debug (lazy("SatDL: pushing " ^ (print_pred pred)));
+      let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
+        Stack.push pred t.history;
+        match kind with
+        | Equal ->
+          let diff1 = adapt_domain t.domain (LessEq,v1,v2,c) in
+          let res1 = BasicSolver.push t.solver diff1 in
+            register t diff1 pred;
+            if res1 then
+              begin
+                let diff2 = adapt_domain t.domain (LessEq,v2,v1,-.c) in
+                  register t diff2 pred;
+                  BasicSolver.push t.solver diff2
+              end
+            else
+              begin
+                t.partial_push <- true;
+                false
+              end
+        | LessStrict | LessEq ->
+          let diff = adapt_domain t.domain (kind,v1,v2,c) in
+            register t diff pred;
+            BasicSolver.push t.solver diff
 
     let pop t =
-      failwith "TODO"
+      let p = Stack.pop t.history in
+        deregister t p;
+        match p with
+        | Eq _ ->
+          BasicSolver.pop t.solver;
+          if not t.partial_push
+          then BasicSolver.pop t.solver
+          else t.partial_push <- false
+        | _ ->
+          assert(t.partial_push = false);
+          BasicSolver.pop t.solver
 
     let is_sat t = BasicSolver.is_sat t.solver
 
     let propagations t shared =
       failwith "TODO"
-    
-    (* TODO mk_proof, unsat_core, ... *)
+
+    let entailed t pred =
+      Message.print Message.Debug (lazy("SatDL: entailed " ^ (print_pred pred)));
+      let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
+        match kind with
+        | Equal ->
+          let diff1 = adapt_domain t.domain (kind,v1,v2,c) in
+          let diff2 = adapt_domain t.domain (kind,v2,v1,-.c) in
+            BasicSolver.entailed t.solver diff1 &&
+            BasicSolver.entailed t.solver diff2
+        | LessStrict | LessEq ->
+          let diff = adapt_domain t.domain (kind,v1,v2,c) in
+            BasicSolver.entailed t.solver diff
+
+    let justify t pred =
+      Message.print Message.Debug (lazy("SatDL: justify " ^ (print_pred pred)));
+      let raw_diff = normalize_dl t.var_to_id pred in
+      let diff = adapt_domain t.domain raw_diff in
+      let (core, deductions) = BasicSolver.justify t.solver diff in
+      let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) (DiffSet.elements core)) in
+      let deductions_pred = List.map (get_pred t) deductions in
+      let contradiction = normalize (Not pred) in
+        (And core_pred, contradiction, DL, List.map (fun x -> (x,DL)) deductions_pred)
+
+    let unsat_core_with_info t =
+      let (core, diff, deductions) = BasicSolver.unsat_core_with_info t.solver in
+      let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) core) in
+      let deductions_pred = List.map (get_pred t) deductions in
+        (And core_pred, get_pred t diff, DL, List.map (fun x -> (x,DL)) deductions_pred)
+
+    (* TODO mk_proof *)
   end
 
 type potential_fct = float array (*'-satisfying' assignment*)
@@ -689,259 +790,13 @@ type t = {
 let _z_0 = "__ZERO__"
 let z_0 = Variable _z_0
 let z_0_c = Constant 0.0
-
-let to_string t =
-  let buffer = Buffer.create 1000 in
-  let add = Buffer.add_string buffer in
-    add ("DL solver over "^(if t.domain = Real then "R" else "Z")^" :\n");
-    add "  variables: ";
-    StringMap.iter (fun k v -> add (k^"("^(string_of_int v)^"),")) t.var_to_id;
-    add "\n";
-    begin
-      match t.status with
-      | Sat ->
-        begin
-          add "  status: sat\n";
-          add "  assignment: sat\n";
-          Array.iteri
-            (fun i v ->
-              add ((print_expr (IntMap.find i t.id_to_expr))^"="^(string_of_float (v -. t.assignment.(0)))^",")
-            )
-            t.assignment;
-          add "\n";
-        end
-      | UnSat (ctr, core) ->
-        begin
-          add "  status: unsat\n";
-          add ("    contradiction: "^(print_pred ctr)^"\n");
-          add ("    reason: "^(String.concat ", " (List.map print_pred core))^"\n")
-        end
-    end;
-    add "  constraints:  ";
-    Array.iteri
-      (fun x row ->
-        Array.iteri
-          (fun y lst ->
-            let xs = print_expr (IntMap.find x t.id_to_expr) in
-            let ys = print_expr (IntMap.find y t.id_to_expr) in
-            let print (c,str,status,pred) = match status with
-              | Unassigned -> ()
-              | Assigned -> add ("(Given)"^xs^" - "^ys^" <="^(string_of_float c)^", ")
-              | Consequence _ -> add ("(Conseq.)"^xs^" - "^ys^" <="^(string_of_float c)^", ")
-            in
-              List.iter print lst
-          )
-          row
-      )
-      t.edges;
-    add "\n";
-    Buffer.contents buffer
-
-(*TODO if use integers then no need for strict constraint.*)
-(*
- natively support:
-   x <= y + c and x < y + c
- in addition:
-   x = y + c  -->  x <= y + c /\ y <= x - c
-*)
-
-let adapt_domain domain (kind, v1, v2, c) = match domain with
-  | Integer when kind = LessStrict -> (LessEq, v1, v2, c -. 1.0)
-  | _ -> (kind, v1, v2, c)
-
-(* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
-let rec normalize_dl domain map pred =
-  let (kind, e1, e2) = match pred with
-    | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
-    | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
-    | Leq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessEq, Variable v1, Sum [Variable v2; Constant c])
-    | Eq(e1, e2) -> (Equal, e1, e2)
-    | Lt(e1, e2) -> (LessStrict, e1, e2)
-    | Leq(e1, e2) -> (LessEq, e1, e2)
-    | err -> failwith ("SatDL expected DL predicate: "^(print_pred err))
-  in
-  let decompose_expr e = match e with
-    | Variable x -> (x, 0.0)
-    | Constant c -> (_z_0, c)
-    | Sum [Variable x; Constant c] | Sum [Constant c; Variable x] -> (x, c)
-    | err -> failwith ("SatDL, expected DL expression: "^(print_expr err))
-  in
-  let (v1,c1) = decompose_expr e1 in
-  let (v2,c2) = decompose_expr e2 in
-  let id1 = StringMap.find v1 map in
-  let id2 = StringMap.find v2 map in
-    adapt_domain domain (kind, id1, id2, c2 -. c1)
-
-(*assume purified formula*)
-let create domain preds =
-  Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (print_pred (And preds))));
-  let vars = get_var (And preds) in
-  let vars =
-    List.map
-      (fun x -> match x with
-        | Variable v -> v
-        | _ -> failwith "SatDL: get_vars returned smth else")
-      vars
-  in
-  let (n, var_to_id, id_to_expr) = (*n is #vars + 1*)
-    List.fold_left
-      (fun (i, acc, acc2) v -> (i+1, StringMap.add v i acc, IntMap.add i (Variable v) acc2))
-      (1, StringMap.add _z_0 0 StringMap.empty, IntMap.add 0 z_0_c IntMap.empty)
-      vars
-  in
-  let history = Stack.create () in
-  (*initial assignment: 0 to everybody (is it right)*)
-  let first_assign = Array.make n 0.0 in
-  let edges = Array.make_matrix n n [] in
-    (* fill edges *)
-    PredSet.iter
-      (fun p -> match normalize_dl domain var_to_id p with
-        | (Equal, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, NonStrict, Unassigned, p) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned, p) :: edges.(v2).(v1)
-          (*No negation for =*)
-        | (LessEq, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, NonStrict, Unassigned, p) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, Strict, Unassigned, normalize_only (Not p)) :: edges.(v2).(v1) (*negation*)
-        | (LessStrict, v1, v2, c) ->
-          edges.(v1).(v2) <- (  c, Strict, Unassigned, p) :: edges.(v1).(v2);
-          edges.(v2).(v1) <- (-.c, NonStrict, Unassigned, normalize_only (Not p)) :: edges.(v2).(v1) (*negation*)
-      )
-      (get_literal_set (And preds));
-    (* z_0 = 0 ? *)
-    {
-      domain = domain;
-      var_to_id = var_to_id;
-      id_to_expr = id_to_expr;
-      status = Sat;
-      assignment = first_assign;
-      history = history;
-      edges = edges
-    }
-
 let active_constraint (_,_,status,_) = match status with Unassigned -> false | _ -> true
-
-let get_successors edges x =
-  let succ = ref [] in
-    Array.iteri
-      (fun y lst ->
-        let new_succ = List.filter active_constraint lst in
-        let new_succ = List.map (fun c -> (y,c)) new_succ in
-          succ := new_succ @ !succ
-      )
-      edges.(x);
-    !succ
-
-let eval potential_fct x = potential_fct.(x)
-
-let is_sat t = match t.status with Sat -> true | _ -> false
-
-(*single source shortest path (default = dijkstra) (returns all the shortest path in pred)*)
-let sssp size successors source =
-  Message.print Message.Debug (lazy("SatDL: sssp from " ^ (string_of_int source)));
-  let dist = Array.make size max_float in
-  let pred = Array.make size (-1) in
-  let pq = PQueue.empty max_float in
-    PQueue.add pq source 0.0 ;
-    dist.(source) <- 0.0;
-    while not (PQueue.is_empty pq) do
-      let (d, idx) = PQueue.get_min pq in
-        PQueue.remove pq idx;
-        List.iter
-          (fun (c, idx') ->
-            let d' = d +. c in
-              if d' < dist.(idx') then
-                begin
-                  dist.(idx') <- d';
-                  pred.(idx') <- idx;
-                  PQueue.add pq idx' d'
-                end
-          )
-          (successors idx)
-    done;
-    (dist, pred)
-
-let strongest lst =
-  (* TODO if strict && domain = Real then put some small k *)
-  let is_stronger (d1, _, _, _) d2 = min d1 d2 in
-  let dist (d, _, _, _) = d in
-    List.fold_left
-      (fun acc x -> match acc with
-        | Some y -> Some (is_stronger x y)
-        | None -> Some (dist x)
-      )
-      None
-      (List.filter active_constraint lst)
-
-let rec path_from_to_rev pred source target =
-  Message.print Message.Debug (lazy("SatDL: path from '" ^ (string_of_int source) ^ "' to '" ^ (string_of_int target)^"'"));
-  if pred.(target) <> -1
-  then target :: (path_from_to_rev pred source (pred.(target)))
-  else [source]
+let sssp size successors source = failwith "TODO reomve"
+let rec path_from_to_rev pred source target = failwith "TODO remove"
 let rec path_from_to pred source target = List.rev (path_from_to_rev pred source target)
-        
-let strongest_for_pair t (x,y) =
-  let lst = List.filter active_constraint t.edges.(x).(y) in
-  let (_,_,_,p) =
-    List.fold_left
-      (fun ((c,_,_,_) as c1) ((c',_,_,_) as c2) -> if c' < c then c2 else c1)
-      (List.hd lst)
-      (List.tl lst)
-  in
-    Message.print Message.Debug (lazy("SatDL: strongest_for_pair '" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y)^"' is "^(print_pred p)));
-    p
-
-(*build the successors function for sssp using lazy elements*)
-let lazy_successors t =
-  let size = Array.length t.assignment in
-  let successors_lists =
-    Array.init
-      size
-      (fun idx ->
-        lazy (
-          snd (Array.fold_left
-            (fun (idx', acc) lst ->
-              ( idx' + 1,
-                Utils.maybe
-                  (* use assign to speed-up the process (Johnson algorithm):
-                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
-                  (fun x -> (t.assignment.(idx) +. x -. t.assignment.(idx'), idx')::acc)
-                  (lazy acc)
-                  (strongest lst)
-              )
-            )
-            (0, [])
-            (t.edges.(idx)))
-        )
-      )
-  in
-    (fun x -> Lazy.force successors_lists.(x))
-
-(*build the predecessor function for sssp using lazy elements*)
-let lazy_predecessors t =
-  let size = Array.length t.assignment in
-  let preds_lists =
-    Array.init
-      size
-      (fun idx ->
-        lazy (
-          snd (Array.fold_left
-            (fun (idx', acc) lst ->
-              ( idx' + 1,
-                Utils.maybe
-                  (* use assign to speed-up the process (Johnson algorithm):
-                   * new weight are for x -c-> y is pi(x) + c - pi(y) *)
-                  (fun x -> ((* -1. *. *) (t.assignment.(idx) +. x -. t.assignment.(idx')), idx')::acc) (*keep the edges positive ??*)
-                  (lazy acc)
-                  (strongest lst.(idx))
-              )
-            )
-            (0, [])
-            (t.edges))
-        )
-      )
-  in
-    (fun x -> Lazy.force preds_lists.(x))
+let strongest_for_pair t (x,y) = failwith "TODO remove"
+let lazy_successors t = failwith "TODO remove"
+let lazy_predecessors t = failwith "TODO remove"
 
 (*propagating equalities for NO*)
 let propagations t shared =
@@ -1019,267 +874,3 @@ let t_propagations t (x, y, c) pred =
       t.edges;
     !changed
 
-(*undo changes (stored in stack)*)
-let pop t =
-  Message.print Message.Debug (lazy("SatDL: pop"));
-  let (_, assign, changes) = Stack.pop t.history in 
-    t.assignment <- assign;
-    List.iter
-      (fun (v1, v2, (c, strict, status, p)) ->
-        let current = t.edges.(v1).(v2) in
-        let old =
-          List.map
-            (fun (c', strict', status', p') -> if c = c' && strict = strict' && p = p' then (c, strict, status, p) else (c', strict', status', p') )
-            current
-        in
-          t.edges.(v1).(v2) <- old
-      )
-      changes;
-    t.status <- Sat
-
-(** Assume only push on a sat system *)
-(* TODO strange thing happens when pushing = ... *)
-let push t pred =
-  Message.print Message.Debug (lazy("SatDL: pushing " ^ (print_pred pred)));
-  let (kind, v1, v2, c) = normalize_dl t.domain t.var_to_id pred in
-  let set_true old_assign v1 v2 c strictness =
-    Message.print Message.Debug (lazy("SatDL: set_true '" ^ (string_of_int v1) ^ "' - '" ^ (string_of_int v2) ^ "' <= " ^(string_of_float c)));
-    (* check if it is already an active constraint *)
-    let already =
-      List.exists
-        (fun ((c2,_,_,p) as cstr) -> c = c2 && p = pred && active_constraint cstr)
-        t.edges.(v1).(v2)
-    in
-      if already then (true, t.assignment, [])
-      else
-        begin
-          Message.print Message.Debug (lazy("SatDL: new constraint "));
-          let new_assign = Array.copy old_assign in
-          let pq = PQueue.empty 0.0 in
-          let pi = eval old_assign in
-          let pi' = eval new_assign in
-          (* set the constraint status (and weaker constraints as consequences (trivial propagation))*)
-          let changes, new_edges =
-            List.fold_left
-              (fun (acc_c, acc_e) ((c', strictness', status, p) as cstr) ->
-                if p = pred && c = c' then
-                  begin
-                    Message.print Message.Debug (lazy("SatDL: assign " ^ (print_pred p)));
-                    let cstr' = (c', strictness', Assigned, p) in
-                      ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
-                  end
-                else if status = Unassigned && (c < c' || (c = c' && (strictness = Strict || strictness' <> Strict))) then
-                  begin
-                    (*TODO something is wrong. p <= y has p = y for direct consequence, should print/store edge/pred differently *)
-                    let cstr' = (c', strictness', Consequence [pred], p) in
-                      Message.print Message.Debug (lazy("SatDL: direct consequence " ^ (print_pred p)));
-                      ((v1, v2, cstr) :: acc_c, cstr' :: acc_e)
-                  end
-                else (acc_c, cstr :: acc_e)
-              )
-              ([], [])
-              t.edges.(v1).(v2)
-          in
-            t.edges.(v1).(v2) <- new_edges;
-            PQueue.add pq v2 (pi v1 +. c -. pi v2);
-            while not (PQueue.is_empty pq) && PQueue.get_priority pq v1 = 0.0 do
-              let (gamma_s, s) = PQueue.get_min pq in
-                new_assign.(s) <- pi s +. gamma_s;
-                PQueue.add pq s 0.0;
-                List.iter
-                  (fun (t,(c,strict,status,_)) ->
-                    (* TODO if strict && domain = Real then put some small k *)
-                    if status <> Unassigned && pi t = pi' t then
-                      let gamma' = pi' s +. c -. pi t in
-                        if gamma' < (PQueue.get_priority pq t) then
-                          PQueue.add pq t gamma'
-                  )
-                  (get_successors t.edges s)
-            done;
-            let v1_p = PQueue.get_priority pq v1 in
-              Message.print Message.Debug (lazy("SatDL: priority of v1 = " ^ (string_of_float v1_p)));
-              if v1_p >= 0.0
-              then (true, new_assign, changes)
-              else (false, new_assign, changes)
-        end
-  in
-  let process_pred () = match kind with
-    | Equal ->
-      begin
-        let (sat, fct, changes) = set_true t.assignment v1 v2 c NonStrict in
-          if sat then
-            let (sat', fct', changes') = set_true fct v2 v1 (-1. *. c) NonStrict in
-              (sat', fct', changes' @ changes)
-          else
-            (sat, fct, changes)
-      end
-    | LessEq -> set_true t.assignment v1 v2 c NonStrict
-    | LessStrict -> set_true t.assignment v1 v2 c Strict
-  in
-  let sat, fct, changes = process_pred () in
-  (*TODO check that the strict constraint are OK (and do the propagation) *)
-  let old_assign = t.assignment in
-    t.assignment <- fct;
-    (* Do the propagation *)
-    let changes' =
-      if sat then
-        match kind with
-        | Equal -> (t_propagations t (v1, v2, c) pred) @ (t_propagations t (v2, v1, -1. *.c) pred)
-        | _ -> t_propagations t (v1, v2, c) pred
-      else []
-    in
-      (* store stuff on the stack *)
-      Stack.push (pred, old_assign, changes @ changes') t.history;
-      (* if unsat then find a small explanation *)
-      if not sat then
-        begin
-          (* if there is a contradiction when adding x -c-> y then
-           * there must be an negative cycle that goes though the x -c-> y edge.
-           * We need to find that cycle.
-           * let x -c'-> y the new edge where c has be modified according to the old assigment.
-           * c' must be the only negative edge in the reweighted graph.
-           * we must find a path from y to x, such that the weight of that path is strictly less than c'. *)
-          (* restore previous graph*)
-          pop t;
-          (* get the shortest path from y to x *)
-          let successors = lazy_successors t in
-          let size = Array.length t.assignment in
-          let find_path v1 v2 c =
-            let shortest_y, pred_y = sssp size successors v2 in
-            let path = path_from_to pred_y v2 v1 in
-            let y_to_x = List.map (strongest_for_pair t) (path_to_edges path) in
-              (* check that the distance y to x is less then x to y. *)
-              Message.print Message.Debug (lazy("SatDL: path from "^(string_of_int v2)^" to "^(string_of_int v1)^" is " ^ (String.concat "-" (List.map string_of_int path))));
-              Message.print Message.Debug (lazy("SatDL: shortest_y "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) shortest_y)) ))));
-              Message.print Message.Debug (lazy("SatDL: assignment "^(String.concat ", " (List.map (fun (i,d) -> (string_of_int i)^"->"^(string_of_float d)) (Array.to_list (Array.mapi (fun i x -> (i,x)) old_assign)) ))));
-              Message.print Message.Debug (lazy("SatDL: c = "^(string_of_float c)));
-              Message.print Message.Debug (lazy("SatDL: old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c = "^(string_of_float (old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c))));
-              if old_assign.(v1) +. shortest_y.(v1) -. old_assign.(v2) +. c < 0.0
-              then Some (y_to_x)
-              else None
-          in
-          let y_to_x = match kind with
-            | Equal -> maybe (fun x -> x) (lazy (remove_some_once (find_path v2 v1 (-.c)))) (find_path v1 v2 c)
-            | _ -> maybe (fun x -> x) (lazy (failwith "SatDL: find_path")) (find_path v1 v2 c)
-          in
-          (*redo the changes (but no propagation)*)
-          let sat, fct, changes = process_pred () in
-          let old_assign = t.assignment in
-            t.assignment <- fct;
-            Stack.push (pred, old_assign, changes @ changes') t.history;
-            t.status <- UnSat (pred, y_to_x)
-        end;
-      Message.print Message.Debug (lazy("SatDL: after push -> " ^ (string_of_bool sat)));
-      sat
-
-(* test if a predicate is entailed by the current model
- * this is for NO only and it assumes there are 'edges' between
- * the nodes in p.
- *)
-let entailed t p =
-  let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in
-  let test v1 v2 c =
-    List.exists
-      (fun ((c2,_,_,_) as cstr) -> c >= c2 && active_constraint cstr) (*TODO strictness ...*)
-      t.edges.(v1).(v2)
-  in
-  let res = match k with
-    | Equal -> test v1 v2 c && test v2 v1 (-.c)
-    | _ -> test v1 v2 c
-  in
-    Message.print Message.Debug (lazy("SatDL: entailed " ^ (print_pred p) ^ " -> " ^ (string_of_bool res)));
-    res
-
-let rec get_given t p =
-  Message.print Message.Debug (lazy("SatDL: get_given " ^ (print_pred p)));
-  let (k, v1, v2, c) = normalize_dl t.domain t.var_to_id p in
-  let process_edge (c, strict, status, p) = 
-    match status with
-    | Unassigned -> failwith "SatDL, get_given: Unassigned"
-    | Assigned -> (PredSet.empty, PredSet.singleton p)
-    | Consequence antedecents ->
-      begin
-        Message.print Message.Debug (lazy("SatDL, get_given: is a Consequence of " ^ (String.concat ", " (List.map print_pred antedecents))));
-        let d, g = get_given_lst t antedecents in
-        let d' = PredSet.add p d in
-          (d', g)
-      end
-  in
-  let edges = match k with
-    | Equal ->
-      [ List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2)) ;
-        List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v2).(v1)) ]
-    | _ -> [List.find (fun (_,_,_,p') -> p = p' ) (t.edges.(v1).(v2))]
-  in
-  (*TODO why is this method called whith p s.t. status is unassigned
-   * there is something wrong with the Consequence ... *)
-  let processed_edges = List.map process_edge edges in
-    List.fold_left
-      (fun (a1, a2) (b1, b2) -> (PredSet.union a1 b1, PredSet.union a2 b2))
-      (PredSet.empty, PredSet.empty)
-      processed_edges
-
-and get_given_lst t lst =
-  List.fold_left
-    (fun (acc1, acc2) p ->
-      let d, g = get_given t p in
-        (PredSet.union acc1 d, PredSet.union acc2 g)
-      )
-    (PredSet.empty, PredSet.empty)
-    lst
-
-(* order the deductions by looking into the stack *)
-let order_deductions t set =
-  let ordered = ref [] in
-  let inspect_edge (_,_,(_,_,status,pred)) =
-    if status = Unassigned && PredSet.mem pred set then
-      ordered := pred :: !ordered
-  in
-  let inspect (_, _, lst) =
-    List.iter inspect_edge lst
-  in
-  (*when there are equalities, only keep the last*)
-  let rec eq_both_direction acc lst = match lst with
-    | ((Eq (e1,e2)) as x)::xs ->
-      begin
-        let (ys, seen) = eq_both_direction (PredSet.add x acc) xs in
-        let zs =
-          if PredSet.mem x seen
-          then (assert(not (PredSet.mem x acc)); x::ys)
-          else ys
-        in
-          (zs, PredSet.add x seen)
-      end
-    | x::xs ->
-      begin
-        let (ys, seen) = eq_both_direction acc xs in
-          (x::ys, seen)
-      end
-    | [] -> ([], PredSet.empty)
-  in
-    Stack.iter inspect t.history;
-    let single, _ = eq_both_direction PredSet.empty !ordered in
-    assert(List.length single = PredSet.cardinal set);
-    single
-
-let justify t pred =
-  Message.print Message.Debug (lazy("SatDL: justify " ^ (print_pred pred)));
-  let deductions, given = get_given t pred in
-  let odeductions = order_deductions t deductions in
-  let contradiction = normalize (Not pred) in
-    (And (PredSet.elements given), contradiction, DL, List.map (fun x -> (x,DL)) odeductions)
-
-(*info: but for the contradiction, cannot do much.
- * returns core => ~pred
- *)
-let unsat_core_with_info t =
-  match t.status with
-  | Sat -> failwith "SatDL: unsat_core_with_info on a SAT system"
-  | UnSat (pred, preds) ->
-    begin
-        let deductions, given = get_given_lst t preds in
-        let odeductions = order_deductions t deductions in
-          (And (PredSet.elements given), pred, DL, List.map (fun x -> (x,DL)) odeductions)
-    end
-
-let unsat_core t = let (p,_,_,_) = unsat_core_with_info t in p
