@@ -320,9 +320,39 @@ module BasicSolver =
       in
         (fun x -> Lazy.force preds_lists.(x))
 
+    (* test if a predicate is entailed by the current model
+     * this is for NO only and it assumes there are 'edges' between
+     * the nodes in p.
+     *)
+    let entailed t (v1, v2, c) =
+      let res =
+        List.exists
+          (fun ((c2,_) as cstr) -> c >= c2 && active_constraint cstr)
+          t.edges.(v1).(v2)
+      in
+        Message.print Message.Debug (lazy("SatDL: entailed " ^ (Diff.to_string (v1,v2,c)) ^ " -> " ^ (string_of_bool res)));
+        res
+
     (*propagating equalities for NO*)
     let propagations t shared =
-      failwith "TODO"
+      (* Assume the equalities are given at the beginning, just need to check if they are marked as Consequence
+       * which means no sssp. *)
+      (*look at the stack, get the changes from the last assignments *)
+      if Stack.is_empty t.history then []
+      else
+        begin
+          (*TODO go further ?? *)
+          let (_, _, old_edges) = Stack.top t.history in
+          let relevent_changes = (* pairs of a,b such that a <= b *)
+            Utils.map_filter
+              (fun (a, b, (c, _)) ->
+                  if c = 0.0 && List.mem a shared && List.mem b shared then Some (a, b) else None
+              )
+              old_edges
+          in
+          let equals = List.filter (fun (a,b) -> entailed t (b, a, 0.0)) relevent_changes in
+            OrdSet.remove_duplicates equals
+        end
 
     let t_propagations t (x, y, c) =
       Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (Diff.to_string (x,y,c))));
@@ -493,19 +523,6 @@ module BasicSolver =
             end;
           Message.print Message.Debug (lazy("SatDL: after push -> " ^ (string_of_bool sat)));
           sat
-
-    (* test if a predicate is entailed by the current model
-     * this is for NO only and it assumes there are 'edges' between
-     * the nodes in p.
-     *)
-    let entailed t (v1, v2, c) =
-      let res =
-        List.exists
-          (fun ((c2,_) as cstr) -> c >= c2 && active_constraint cstr)
-          t.edges.(v1).(v2)
-      in
-        Message.print Message.Debug (lazy("SatDL: entailed " ^ (Diff.to_string (v1,v2,c)) ^ " -> " ^ (string_of_bool res)));
-        res
 
     let rec get_given t (v1,v2,c) =
       Message.print Message.Debug (lazy("SatDL: get_given " ^ (Diff.to_string (v1,v2,c))));
@@ -732,7 +749,15 @@ module InterfaceLayer =
     let is_sat t = BasicSolver.is_sat t.solver
 
     let propagations t shared =
-      failwith "TODO"
+      Message.print Message.Debug (lazy("SatDL: propagations on " ^ (String.concat "," (List.map print_expr shared))));
+      let indexes =
+        List.map
+          (fun x -> match x with Variable s -> StringMap.find s t.var_to_id | _ -> failwith "SatDL, propagations: expected Variable")
+          shared
+      in
+      let propagated = BasicSolver.propagations t.solver indexes in
+        List.map (fun (a,b) -> normalize_only (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr))) propagated
+
 
     let entailed t pred =
       Message.print Message.Debug (lazy("SatDL: entailed " ^ (print_pred pred)));
@@ -765,112 +790,4 @@ module InterfaceLayer =
 
     (* TODO mk_proof *)
   end
-
-type potential_fct = float array (*'-satisfying' assignment*)
-type status = Unassigned
-            | Assigned (* but not propagated *)
-            | Consequence of predicate list (* a consequence of an Assigned constraints *)
-type kind = Equal | LessEq | LessStrict
-type strictness = Strict | NonStrict
-type domain = Integer | Real
-type edge_content = float * strictness * status * predicate
-type edge = int * int * edge_content
-type sat = Sat | UnSat of predicate * predicate list (* contradiction, predicate (given + T deduction) that are required to derive Not contradiction *)
-
-type t = {
-  domain: domain;
-  var_to_id: int StringMap.t;
-  id_to_expr: expression IntMap.t;
-  mutable status: sat;
-  mutable assignment: potential_fct;
-  history: (predicate * potential_fct * (edge list)) Stack.t;
-  edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
-}
-
-let _z_0 = "__ZERO__"
-let z_0 = Variable _z_0
-let z_0_c = Constant 0.0
-let active_constraint (_,_,status,_) = match status with Unassigned -> false | _ -> true
-let sssp size successors source = failwith "TODO reomve"
-let rec path_from_to_rev pred source target = failwith "TODO remove"
-let rec path_from_to pred source target = List.rev (path_from_to_rev pred source target)
-let strongest_for_pair t (x,y) = failwith "TODO remove"
-let lazy_successors t = failwith "TODO remove"
-let lazy_predecessors t = failwith "TODO remove"
-
-(*propagating equalities for NO*)
-let propagations t shared =
-  Message.print Message.Debug (lazy("SatDL: propagations on " ^ (String.concat "," (List.map print_expr shared))));
-  (* Assume the equalities are given at the beginning, just need to check if they are marked as Consequence
-   * which means no sssp. *)
-  (*look at the stack, get the changes from the last assignments *)
-  if Stack.is_empty t.history then []
-  else
-    begin
-      let (_, _, old_edges) = Stack.top t.history in
-      let relevent_changes = (* pairs of a,b such that a <= b *)
-        Utils.map_filter
-          (fun (a, b, (c, _, _, _)) ->
-            let a' = IntMap.find a t.id_to_expr in
-            let b' = IntMap.find b t.id_to_expr in
-              if c = 0.0 && List.mem a' shared && List.mem b' shared then Some (a, b) else None
-          )
-          old_edges
-      in
-      (*check that b <= a holds *)
-      let check_entailed b a =
-        let active_lst = List.filter active_constraint t.edges.(b).(a) in
-        let equal_lst = List.filter (fun (c,_,_,_) -> c = 0.0) active_lst in
-          equal_lst <> []
-      in
-      let equals = List.filter (fun (a,b) -> check_entailed b a) relevent_changes in
-      let equalities =
-        List.map
-          (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr)))
-          equals
-      in
-        PredSet.elements (List.fold_left (fun acc x -> PredSet.add x acc) PredSet.empty equalities)
-    end
-
-let t_propagations t (x, y, c) pred =
-  Message.print Message.Debug (lazy("SatDL: t_propagations after " ^ (print_pred pred)));
-  (*only 2 sssp: when x -c-> y is added, only compute sssp from y and to x (reverse) *)
-  let size = Array.length t.assignment in
-  let successors = lazy_successors t in
-  let predecessors = lazy_predecessors t in
-  let shortest_x, pred_x = sssp size predecessors x in
-  let shortest_y, pred_y = sssp size successors y in
-  (*test for each unassigned constraints test*)
-  let changed = ref [] in
-    Array.iteri
-      (fun i row ->
-        Array.iteri
-          (fun j lst ->
-            let modif = ref false in
-            let lst' =
-              List.map
-                (fun ((d, strict, status, p) as cstr) ->
-                  if status = Unassigned && strict = Strict && shortest_x.(i) +. c +. shortest_y.(j) <= d then
-                    begin
-                      (*x -> i, j -> y, pred*)
-                      let mk_path lst = List.map (strongest_for_pair t) (path_to_edges lst) in 
-                      Message.print Message.Debug (lazy("SatDL: x_to_i"));
-                      let x_to_i = mk_path (path_from_to_rev pred_x x i) in
-                      Message.print Message.Debug (lazy("SatDL: j_to_y"));
-                      let j_to_y = mk_path (path_from_to pred_y y j) in
-                      (*TODO check that path implies the constraint *)
-                      let path = pred :: (x_to_i @ j_to_y) in
-                        changed := (i, j, cstr) :: !changed;
-                        (d, strict, Consequence path, p)
-                    end
-                  else
-                     cstr
-                )
-                lst
-            in
-              if !modif then t.edges.(i).(j) <- lst'
-          )
-          row)
-      t.edges;
-    !changed
 
