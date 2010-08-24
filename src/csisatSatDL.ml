@@ -181,7 +181,7 @@ module BasicSolver =
     (* WARNING diff_constraint should ideally contains the constraints and their negation ? (how to deal with Int vs Real) *)
     let create diff_constraints =
       Message.print Message.Debug (lazy("SatDL: creating solver with " ^ (String.concat "," (List.map Diff.to_string diff_constraints))));
-      let n = List.fold_left (fun acc (v1,v2,_) -> max acc (max v1 v2)) 0 diff_constraints in
+      let n = (List.fold_left (fun acc (v1,v2,_) -> max acc (max v1 v2)) 0 diff_constraints) + 1 in
       let history = Stack.create () in
       (*initial assignment: 0 to everybody (is it right)*)
       let first_assign = Array.make n 0.0 in
