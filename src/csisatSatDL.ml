@@ -98,8 +98,8 @@ module PQueue =
   end
 
 
-(* TODO
- * divide this into 2 parts:
+(* 
+ * divided into 2 parts:
  * ( i) basic solver only nonstrict, no equal, don't care oabout domain, ... 
  * (ii) layer to take care of ==, leq in Integer/Real domain, proof rewriting, ...
  *
@@ -123,7 +123,7 @@ module BasicSolver =
     type diff_constraint = Diff.t
     type potential_fct = float array (*'-satisfying' assignment*)
     type status = Unassigned
-                | Assigned (* but not propagated *)
+                | Assigned
                 | Consequence of diff_constraint list (* a consequence of an Assigned constraints *)
     type edge_content = float * status
     type edge = int * int * edge_content
@@ -137,6 +137,11 @@ module BasicSolver =
       history: (diff_constraint * potential_fct * (edge list)) Stack.t;
       edges: edge_content list array array; (*edges.(x).(y) = c is the edge x - y \leq c *)
     }
+
+    let string_of_status s = match s with
+      | Unassigned -> "Unassigned"
+      | Assigned -> "Assigned"
+      | Consequence lst -> "Consequence of " ^ (String.concat "," (List.map Diff.to_string lst))
 
     let to_string t =
       let buffer = Buffer.create 1000 in
@@ -190,6 +195,11 @@ module BasicSolver =
         List.iter
           (fun (v1,v2,c) -> edges.(v1).(v2) <- (c, Unassigned) :: edges.(v1).(v2) )
           diff_constraints;
+        for i = 0 to n-1 do
+          for j = 0 to n-1 do
+            edges.(i).(j) <- OrdSet.remove_duplicates edges.(i).(j)
+          done
+        done;
         {
           status = Sat;
           assignment = first_assign;
@@ -197,7 +207,9 @@ module BasicSolver =
           edges = edges
         }
 
-    let active_constraint (_,status) = match status with Unassigned -> false | _ -> true
+    (*TODO this is an HACK ... Consequence makes the sssp loop forever *)
+    (*let active_constraint (_,status) = match status with Unassigned -> false | _ -> true*)
+    let active_constraint (_,status) = match status with Assigned -> true | _ -> false
 
     let get_successors edges x =
       let succ = ref [] in
@@ -265,7 +277,7 @@ module BasicSolver =
           (List.hd lst)
           (List.tl lst)
       in
-        Message.print Message.Debug (lazy("SatDL: strongest_for_pair " ^ (Diff.to_string (x,y,c))));
+        (*Message.print Message.Debug (lazy("SatDL: strongest_for_pair " ^ (Diff.to_string (x,y,c))));*)
         (x,y,c)
 
     (*build the successors function for sssp using lazy elements*)
@@ -345,6 +357,7 @@ module BasicSolver =
           let (_, _, old_edges) = Stack.top t.history in
           let relevent_changes = (* pairs of a,b such that a <= b *)
             Utils.map_filter
+              (*TODO is it right not to check the status ?? *)
               (fun (a, b, (c, _)) ->
                   if c = 0.0 && List.mem a shared && List.mem b shared then Some (a, b) else None
               )
@@ -368,7 +381,6 @@ module BasicSolver =
           (fun i row ->
             Array.iteri
               (fun j lst ->
-                let modif = ref false in
                 let lst' =
                   List.map
                     (fun ((d, status) as cstr) ->
@@ -390,7 +402,7 @@ module BasicSolver =
                     )
                     lst
                 in
-                  if !modif then t.edges.(i).(j) <- lst'
+                  t.edges.(i).(j) <- lst'
               )
               row)
           t.edges;
@@ -525,7 +537,9 @@ module BasicSolver =
           sat
 
     let rec get_given t (v1,v2,c) =
+      (*TODO Unassigned ... are there duplicate edges ??? *)
       Message.print Message.Debug (lazy("SatDL: get_given " ^ (Diff.to_string (v1,v2,c))));
+      Message.print Message.Debug (lazy("SatDL, get_given: edges = " ^ (String.concat ", " (List.map (fun (a,b) -> "("^(string_of_float a)^","^(string_of_status b)^")") t.edges.(v1).(v2)))));
       let process_edge (c, status) = 
         match status with
         | Unassigned -> failwith "SatDL, get_given: Unassigned"
@@ -570,17 +584,6 @@ module BasicSolver =
       let deductions, given = get_given t diff in
       let ordered_deductions = order_deductions t deductions in
         (given, ordered_deductions)
-
-    (* TODO Bug:
-      & [ = x p = q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = p q = f [ y ] 1 ]
-      Fatal error: exception Failure("CoreSolver: push called on an already unsat system.")
-      -------------------------------------------------------------------------------------
-      CoreSolver: justification of fresh_split_var1 = fresh_split_var3 is (fresh_split_var1 = fresh_split_var2 & fresh_split_var2 = f(z) & fresh_split_var3 = fresh_split_var4 & fresh_split_var4 = f(y) & p = x & p = y & x = z)
-      DPLL, adding (not 0 = f(z) | not 1 = f(y) | not p = x | not p = y | not x = z)
-      DPLL, resizing from 9 to 11
-      -------------------------------------------------------------------------------------
-      p = y and x = z are not part of the given predicates ...
-    *)
 
     (*info: but for the contradiction, cannot do much.
      * returns core => ~pred
@@ -767,7 +770,7 @@ module InterfaceLayer =
           shared
       in
       let propagated = BasicSolver.propagations t.solver indexes in
-        List.map (fun (a,b) -> normalize_only (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr))) propagated
+        List.map (fun (a,b) -> order_eq (Eq (IntMap.find a t.id_to_expr, IntMap.find b t.id_to_expr))) propagated
 
 
     let entailed t pred =
@@ -785,9 +788,19 @@ module InterfaceLayer =
 
     let justify t pred =
       Message.print Message.Debug (lazy("SatDL: justify " ^ (print_pred pred)));
-      let raw_diff = normalize_dl t.var_to_id pred in
-      let diff = adapt_domain t.domain raw_diff in
-      let (core, deductions) = BasicSolver.justify t.solver diff in
+      let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
+      let (core, deductions) =
+        match kind with
+        | Equal ->
+          let diff1 = adapt_domain t.domain (kind,v1,v2,c) in
+          let diff2 = adapt_domain t.domain (kind,v2,v1,-.c) in
+          let (core1, deductions1) = BasicSolver.justify t.solver diff1 in
+          let (core2, deductions2) = BasicSolver.justify t.solver diff2 in
+            (DiffSet.union core1 core2, deductions1 @ deductions2)
+        | LessStrict | LessEq ->
+          let diff = adapt_domain t.domain (kind,v1,v2,c) in
+          BasicSolver.justify t.solver diff
+      in
       let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) (DiffSet.elements core)) in
       let deductions_pred = List.map (get_pred t) deductions in
       let contradiction = normalize (Not pred) in

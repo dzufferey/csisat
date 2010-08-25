@@ -312,6 +312,28 @@ let theory_lemma t =
     | DL -> SatDL.justify t.dl pred
     | _ -> failwith "CoreSolver, theory_lemma: more theory"
   in
+  let no =
+    let no = ref PredMap.empty in
+      Stack.iter
+        (fun s -> match s with
+          | StackNO (a, b) -> no := PredMap.add a b !no
+          | _ -> () )
+        t.stack;
+      let debug = lazy (
+        let lst = PredMap.fold (fun a b acc -> (a,b) :: acc) !no [] in
+          "CoreSolver, justify_pred: NO are: "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") lst)) )
+      in
+        Message.print Message.Debug debug;
+        !no
+  in
+  let split_shared_NO core =
+    let core = get_literal core in
+    let nos, rest = List.partition (fun x -> PredMap.mem x no) core in
+    let nos = List.map (fun p -> (p, PredMap.find p no)) nos in
+      Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") nos))));
+      Message.print Message.Debug (lazy("CoreSolver: given are "^(print_pred (And rest))));
+      (nos, rest)
+  in
   let rec justify justified core deduction =
     if PredSet.mem (fst deduction) justified then (justified, core)
     else
@@ -320,32 +342,13 @@ let theory_lemma t =
           Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
         (*must look at ded_core to find further NO *)
         let (no_to_justify, lst) = split_shared_NO ded_core in
-        let lst = match ded_core with And lst -> lst | _ -> failwith "CoreSolver, theory_lemma" in
+        (*let lst = match ded_core with And lst -> lst | _ -> failwith "CoreSolver, theory_lemma" in*)
         let core' = List.fold_left (fun acc x -> PredSet.add x acc) core lst in
         let justified' = PredSet.add (fst deduction) justified in
           justify_list justified' core' no_to_justify
       end
   and justify_list justified core lst =
     List.fold_left (fun (a, b) c -> justify a b c) (justified, core) lst
-  (* returns the propagated (recent to old) *)
-  and split_shared_NO core =
-    let core = get_literal_set core in
-    let used_no = ref [] in
-    let used_pred = ref PredSet.empty in
-      Stack.iter
-        (fun s -> match s with
-          | StackNO (a, b) ->
-            if PredSet.mem a core then
-              begin
-                used_no := (a,b) :: !used_no;
-                used_pred := PredSet.add a !used_pred
-              end
-          | _ -> ()
-        )
-        t.stack;
-      let nos = List.rev !used_no in
-      let rest = PredSet.elements (PredSet.diff core !used_pred) in
-        (nos, rest)
   in
   let (core, pred, th, deductions) = 
     match (is_euf_sat t, is_dl_sat t) with
@@ -359,7 +362,6 @@ let theory_lemma t =
   Message.print Message.Debug (lazy("CoreSolver: contradiction in "^(string_of_theory th)^" with " ^ (print_pred pred)));
   Message.print Message.Debug (lazy("CoreSolver: given core is "^(print_pred (And core))));
   Message.print Message.Debug (lazy("CoreSolver: deductions are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^"("^(string_of_theory b)^")") deductions))));
-  Message.print Message.Debug (lazy("CoreSolver: NO to justify are "^(String.concat ", " (List.map (fun (a,b) -> (print_pred a)^" ("^(string_of_theory b)^")") no_to_justify))));
   let (_, core') = justify_list PredSet.empty PredSet.empty no_to_justify in
   let full_core = normalize (And (core @ (PredSet.elements core'))) in
   let explanation =

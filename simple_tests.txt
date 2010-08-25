@@ -11,9 +11,8 @@ x = y + 1 ; y = z + 1 ; x = 0 ; z = 0
 & [ ~= x 1 ]; & [ = x 1]
 & [ = f [ x ] 0 = f [ y ] 1]; & [ = x y ]
 & [ ~<= f [x] 0 = x y ]; & [ <= f [y] 0 ]
-
-Failure("SatDL, unsat_core_with_info: Unassigned"):
 & [ = x p = q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = p q = f [ y ] 1 ]
+
 Satisfiable:
 & [ <= x p <= q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = f [ y ] 1 ]
 Failure("CoreSolver: Lt not in DL ??")
