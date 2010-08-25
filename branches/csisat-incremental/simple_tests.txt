@@ -15,6 +15,6 @@ x = y + 1 ; y = z + 1 ; x = 0 ; z = 0
 
 Satisfiable:
 & [ <= x p <= q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = f [ y ] 1 ]
-Failure("CoreSolver: Lt not in DL ??")
+Satisfiable:
 & [ = g[a] + [ c 5 ] <= + [ c 1 ] f [ g [ a ] ]]; &[ = h [ b ] + [ d 4 ] = d + [ c 1 ] ~<= + [ c 1 ] f [ h [ b ] ] ]
 

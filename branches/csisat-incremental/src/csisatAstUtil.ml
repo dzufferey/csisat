@@ -851,7 +851,7 @@ let put_theory_split_variables rev_defs pred =
   (*rev_defs it a mapping from theory expressions to variables*)
   let fct_expr x = if ExprMap.mem x rev_defs then ExprMap.find x rev_defs else x in
   let fct_pred x = x in
-    map_all_bottom_up fct_pred fct_expr pred
+    map_all_top_down fct_pred fct_expr pred
 
 let theory_split_prefix = "fresh_split_var"
 
