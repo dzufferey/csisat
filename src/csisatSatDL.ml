@@ -571,6 +571,17 @@ module BasicSolver =
       let ordered_deductions = order_deductions t deductions in
         (given, ordered_deductions)
 
+    (* TODO Bug:
+      & [ = x p = q x = f [ z ] 0 <= x z <= z x]; &[ <= p y <= y q = p q = f [ y ] 1 ]
+      Fatal error: exception Failure("CoreSolver: push called on an already unsat system.")
+      -------------------------------------------------------------------------------------
+      CoreSolver: justification of fresh_split_var1 = fresh_split_var3 is (fresh_split_var1 = fresh_split_var2 & fresh_split_var2 = f(z) & fresh_split_var3 = fresh_split_var4 & fresh_split_var4 = f(y) & p = x & p = y & x = z)
+      DPLL, adding (not 0 = f(z) | not 1 = f(y) | not p = x | not p = y | not x = z)
+      DPLL, resizing from 9 to 11
+      -------------------------------------------------------------------------------------
+      p = y and x = z are not part of the given predicates ...
+    *)
+
     (*info: but for the contradiction, cannot do much.
      * returns core => ~pred
      *)

@@ -180,10 +180,27 @@ let rec propagate t sat =
     then propagate t euf_to_dl
     else euf_to_dl
 
-(*TODO make code cleaner with 'maybe' *)
-(* push with ot without purfying the terms *)
+(*TODO make code cleaner *)
+(* push with or without purfying the terms *)
 let push_abs dag pred abstract =
   (* abstract pred since it did not get through the theory split *)
+  (*TODO: put_theory_split_variables is only partial ...
+      UF = d = fresh_split_var1, fresh_split_var2 = g(a), fresh_split_var3 = g(a), fresh_split_var4 = h(b), fresh_split_var5 = h(b), fresh_split_var6 = f(h(b)), fresh_split_var7 = f(g(a))
+      LA  = d = fresh_split_var1, d = (1 + c), fresh_split_var1 = (1 + c), fresh_split_var2 = (5 + c), fresh_split_var3 = (5 + c), fresh_split_var4 = (4 + d), fresh_split_var5 = (4 + d), fresh_split_var6 < (1 + c), (1 + c) <= fresh_split_var7
+      defs= fresh_split_var7->f(g(a)), fresh_split_var6->f(h(b)), fresh_split_var5->h(b), fresh_split_var4->(4 + d), fresh_split_var3->g(a), fresh_split_var2->(5 + c), fresh_split_var1->(1 + c)
+      -------------------------------------------------------------------------
+      CoreSolver: push f(h(b)) < (1 + c)
+      CoreSolver: add_and_test_euf not f(fresh_split_var5) = fresh_split_var1
+      SatEUF: push not f(fresh_split_var5) = fresh_split_var1
+      CoreSolver: add_and_test_dl f(fresh_split_var5) < fresh_split_var1
+      SatDL: pushing f(fresh_split_var5) < fresh_split_var1
+      Fatal error: exception Failure("CoreSolver: Lt not in DL ??")
+      ------------------------------------------------------------------------
+      fresh_split_var7->f(g(a))  ==> fresh_split_var7->f(fresh_split_var3)
+      fresh_split_var6->f(h(b))  ==> fresh_split_var6->f(fresh_split_var5)
+      fresh_split_var5->h(b)
+      fresh_split_var3->g(a)
+   *)
   let pred' = if abstract then put_theory_split_variables dag.rev_definitions pred else pred in
   (*TODO other theories *)
   Message.print Message.Debug (lazy("CoreSolver: push " ^ (print_pred pred)));
