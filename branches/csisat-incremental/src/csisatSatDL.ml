@@ -114,6 +114,10 @@ module Diff =
     type t = int * int * float (* a - b <= c *)
     let compare = Pervasives.compare
     let to_string (x,y,c) = "'" ^ (string_of_int x) ^ "' - '" ^ (string_of_int y) ^ "' <= " ^ (string_of_float c)
+    let a (a,_,_) = a
+    let b (_,b,_) = b
+    let c (_,_,c) = c
+    let weaker (a,b,c) (a',b',c') = if a <> a' || b <> b' then failwith "Invalid Argument" else c >= c'
   end
 module DiffSet = Set.Make(Diff)
 module DiffMap = Map.Make(Diff)
@@ -130,6 +134,28 @@ module BasicSolver =
     type sat = Sat
              | UnSat of diff_constraint * diff_constraint list (* contradiction, predicate (given + T deduction) that are required to derive Not contradiction *)
 
+    module Proof =
+      struct
+        type t = Diff.t * Diff.t list
+
+        let compact_path prf =
+          let a = Diff.a (List.hd prf) in
+          let b = Diff.b (List.nth prf (List.length prf -1)) in
+          let c = List.fold_left (fun acc diff -> acc +. Diff.c diff) 0.0 prf in
+            (a,b,c)
+
+        let create prf = (compact_path prf, prf)
+        
+        let what prf = fst prf
+        let path prf = snd prf
+        let strongest_consequence prf = compact_path (path prf)
+        
+        let well_formed (goal, prf) = 
+          let a = List.tl (List.map Diff.a prf) in
+          let b = List.rev (List.tl (List.rev (List.map Diff.b prf))) in
+            (List.for_all2 (=) a b) && Diff.weaker goal (strongest_consequence (goal, prf))
+
+      end
 
     type t = {
       mutable status: sat;
@@ -207,7 +233,10 @@ module BasicSolver =
           edges = edges
         }
 
-    (*TODO this is an HACK ... Consequence makes the sssp loop forever *)
+    (*TODO this is an HACK ...
+     * Consequence makes the sssp loop forever
+     * once this is fixed, put them back.
+     *)
     (*let active_constraint (_,status) = match status with Unassigned -> false | _ -> true*)
     let active_constraint (_,status) = match status with Assigned -> true | _ -> false
 
@@ -597,6 +626,13 @@ module BasicSolver =
           let odeductions = order_deductions t deductions in
             (DiffSet.elements given, pred, odeductions)
         end
+    
+
+    let make_proof t (a,b,c) =
+      (* If the diff already exists in the edges, then it is moslty like call to justify.
+       * Otherwise, must go through the sssp computation like t_propagations. *)
+      failwith "TODO"
+
   end
 
 module InterfaceLayer =
