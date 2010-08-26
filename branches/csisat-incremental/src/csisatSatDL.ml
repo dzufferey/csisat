@@ -736,7 +736,7 @@ module InterfaceLayer =
           vars
       in
       let expand p = match p with
-        | (Equal, v1, v2, c) -> (LessEq, v1, v2,  c) :: (LessEq, v2, v1, -.c) :: []
+        | (Equal, v1, v2, c) -> (LessEq, v1, v2,  c) :: (LessEq, v2, v1, -.c) :: (LessStrict, v1, v2,  c) :: (LessStrict, v2, v1, -.c) :: []
         | (LessEq, v1, v2, c) -> (LessEq, v1, v2,  c) :: (LessStrict, v2, v1, -.c) :: []
         | (LessStrict, v1, v2, c) -> (LessStrict, v1, v2,  c) :: (LessEq, v2, v1, -.c) :: []
       in
