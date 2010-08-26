@@ -141,44 +141,52 @@ let rec insert_changes dag changes = match Stack.top dag.stack with
     end
 
 
-let rec propagate t sat =
+let propagate t sat =
   Message.print Message.Debug (lazy("CoreSolver: NO ("^(string_of_bool sat)^")"));
+  (*what is left to propagate*)
+  let queue = Queue.create () in
   (* ask EUF for new EQ *)
-  let euf_deductions = euf_propagations t t.shared in
-  let euf_deductions = List.filter (fun x -> not (SatDL.entailed t.dl x)) euf_deductions in
+  let euf_deductions () = List.filter (fun x -> not (SatDL.entailed t.dl x)) (euf_propagations t t.shared) in
   (* ask DL for new EQ *)
-  let dl_deductions = SatDL.propagations t.dl t.shared in
-  let dl_deductions = List.filter (fun x -> not (SatEUF.entailed t.euf x)) dl_deductions in
+  let dl_deductions () = List.filter (fun x -> not (SatEUF.entailed t.euf x)) (SatDL.propagations t.dl t.shared) in
   (* Nelson Oppen: *)
-  let t1_to_t2 th1 fct2 lst acc =
-    List.fold_left
-      (fun sat pred ->
-        if sat then
+  let add_and_push_new (pred, th) =
+    Stack.push (StackNO (pred, th)) t.stack;
+    match th with
+    | DL ->
+      begin
+        match add_and_test_euf t pred with
+        | Some (sat, change) ->
           begin
-            (*push on stack first *)
-            Stack.push (StackNO (pred, th1)) t.stack;
-            match fct2 pred with
-            | Some (sat, change) ->
-              begin
-                insert_changes t (StackChanges [change]);
-                sat
-              end
-            | None -> failwith "CoreSolver: shared variables not shared ?!"
+            insert_changes t (StackChanges [change]);
+            List.iter (fun x -> Queue.push (x,EUF) queue) (euf_deductions ());
+            sat
           end
-        else
-          false
-      )
-      acc
-      lst
+        | None -> failwith "CoreSolver: shared variables not shared ?!"
+      end
+    | EUF ->
+      begin
+        match add_and_test_dl t pred with
+        | Some (sat, change) ->
+          begin
+            insert_changes t (StackChanges [change]);
+            List.iter (fun x -> Queue.push (x,DL) queue) (dl_deductions ());
+            sat
+          end
+        | None -> failwith "CoreSolver: shared variables not shared ?!"
+      end
+    | LA -> failwith "TODO"
   in
-  (* first DL -> EUF *)
-  let dl_to_euf = t1_to_t2 DL (add_and_test_euf t) dl_deductions sat in
-  (* then EUF -> DL *)
-  let euf_to_dl = t1_to_t2 EUF (add_and_test_dl t) euf_deductions dl_to_euf in
-    (* if there was some propagation -> rec call *)
-    if euf_to_dl && (dl_deductions <> [] || euf_deductions <> [])
-    then propagate t euf_to_dl
-    else euf_to_dl
+    (*fill queue*)
+    List.iter (fun x -> Queue.push (x,DL) queue) (dl_deductions ());
+    List.iter (fun x -> Queue.push (x,EUF) queue) (euf_deductions ());
+    (* do it *)
+    let rec process sat =
+      if sat && not (Queue.is_empty queue)
+      then process (add_and_push_new (Queue.take queue))
+      else sat && (Queue.is_empty queue)
+    in
+      process sat
 
 (*TODO make code cleaner *)
 (* push with or without purfying the terms *)
