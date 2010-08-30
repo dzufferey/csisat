@@ -659,33 +659,12 @@ module BasicSolver =
 
 module InterfaceLayer =
   struct
-    type kind = Equal | LessEq | LessStrict
     type domain = Integer | Real
-
-    type t = {
-      domain: domain;
-      var_to_id: int StringMap.t;
-      id_to_expr: expression IntMap.t;
-      solver: BasicSolver.t;
-      mutable partial_push: bool;
-      mutable diff_to_pred: predicate DiffMap.t;
-      history: predicate Stack.t
-    }
-
+    type kind = Equal | LessEq | LessStrict
+    
     let _z_0 = "__ZERO__"
     let z_0 = Variable _z_0
     let z_0_c = Constant 0.0
-
-    let to_string t =
-      let buffer = Buffer.create 1000 in
-      let add = Buffer.add_string buffer in
-        add ("DL solver over "^(if t.domain = Real then "R" else "Z")^" :\n");
-        add "  variables: ";
-        StringMap.iter (fun k v -> add (k^"("^(string_of_int v)^"),")) t.var_to_id;
-        add "\n";
-        add (BasicSolver.to_string t.solver);
-        Buffer.contents buffer
-
     (*TODO make sure epsilon is small enough w.r.t. the problem constants *)
     let epsilon = 1.e-5
 
@@ -696,7 +675,7 @@ module InterfaceLayer =
       | _ -> (v1, v2, c)
 
     (* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
-    let rec normalize_dl map pred =
+    let dl_edge pred =
       let (kind, e1, e2) = match pred with
         | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
         | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
@@ -714,9 +693,93 @@ module InterfaceLayer =
       in
       let (v1,c1) = decompose_expr e1 in
       let (v2,c2) = decompose_expr e2 in
+        (kind, v1, v2, c2 -. c1)
+
+    module Proof =
+      struct
+        type diff = predicate * expression * expression * float (* given predicate + edge (a - b <= c) *)
+        type t = LEQ of predicate * domain * diff list
+               | LT of predicate * domain * diff list
+               | EQ of predicate * domain * diff list * diff list (* two LEQ paths, a<=b /\ a>=b *)
+               | NEQ of predicate * domain * diff list (*actually is the same as an LT proof*)
+
+
+        let mk_diff domain pred =
+          let (v1, v2, c) = adapt_domain domain (dl_edge pred) in
+            (pred, Variable v1, Variable v2, c)
+
+        let well_formed prf =
+          let diff_well_formed domain (pred, e1, e2, c) =
+            let (_,e1',e2',c') = mk_diff domain pred in
+              e1 = e1' && e2 = e2' && c >= c'
+          in
+          let sum_path lst = List.fold_left (fun acc (_,_,_,c) -> acc +. c) 0.0 lst in
+          let is_path e1 e2 path =
+            let a = (List.map (fun (_,a,_,_) -> a) path) @ [e2] in
+            let b = e1 :: (List.map (fun (_,_,b,_) -> b) path) in
+              (List.for_all2 (=) a b)
+          in
+          (*check path continuity and extremities*)
+            match prf with
+            | LEQ (pred, domain, path) ->
+              begin
+                let (_,e1,e2,c) = mk_diff domain pred in
+                let c' = sum_path path in
+                  (List.for_all (diff_well_formed domain) path) &&
+                  (is_path e1 e2 path) &&
+                  (c' <= c) 
+              end
+            | LT (pred, domain, path)
+            | NEQ (pred, domain, path) ->
+              begin
+                let (_,e1,e2,c) = mk_diff domain pred in
+                let c' = sum_path path in
+                  (List.for_all (diff_well_formed domain) path) &&
+                  (is_path e1 e2 path) &&
+                  (c' < c) 
+              end
+            | EQ (pred, domain, path1, path2) ->
+              begin
+                let (_,e1,e2,c) = mk_diff domain pred in
+                let c1 = sum_path path1 in
+                let c2 = sum_path path2 in
+                  (List.for_all (diff_well_formed domain) path1) &&
+                  (List.for_all (diff_well_formed domain) path2) &&
+                  (is_path e1 e2 path1) &&
+                  (is_path e2 e1 path2) &&
+                  (c1 = c) && ((-.c) = c2)
+              end
+
+
+        (*TODO*)
+      end
+    
+
+    type t = {
+      domain: domain;
+      var_to_id: int StringMap.t;
+      id_to_expr: expression IntMap.t;
+      solver: BasicSolver.t;
+      mutable partial_push: bool;
+      mutable diff_to_pred: predicate DiffMap.t;
+      history: predicate Stack.t
+    }
+
+    let to_string t =
+      let buffer = Buffer.create 1000 in
+      let add = Buffer.add_string buffer in
+        add ("DL solver over "^(if t.domain = Real then "R" else "Z")^" :\n");
+        add "  variables: ";
+        StringMap.iter (fun k v -> add (k^"("^(string_of_int v)^"),")) t.var_to_id;
+        add "\n";
+        add (BasicSolver.to_string t.solver);
+        Buffer.contents buffer
+
+    let normalize_dl map pred =
+      let (kind, v1, v2, c) = dl_edge pred in
       let id1 = StringMap.find v1 map in
       let id2 = StringMap.find v2 map in
-        (kind, id1, id2, c2 -. c1)
+        (kind, id1, id2, c)
 
     (*assume purified formula*)
     let create domain preds =
