@@ -48,7 +48,7 @@ type change = StackSat of predicate (* predicate given by sat solver *)
             | StackNO of predicate * theory
             | StackChanges of (theory * predicate) list (*what was sent to which theory*)
 type explanation = ProofEUF of SatEUF.congruence_proof
-                 | ProofDL of predicate (*TODO more complex *)
+                 | ProofDL of SatDL.Proof.t
                  | NoProof (*TODO remove when everything is done *)
 
 let string_of_explanation e = match e with
@@ -91,9 +91,9 @@ let euf_propagations dag        = SatEUF.propagations dag.euf
 (* end of EUF *)
 
 (* DL *)
-let dl_lemma_with_info_for t pred = SatDL.justify t.dl pred
-let dl_lemma_with_info t = SatDL.unsat_core_with_info t.dl
-let is_dl_sat t = SatDL.is_sat t.dl
+let dl_lemma_with_info_for t pred   = SatDL.justify t.dl pred
+let dl_lemma_with_info t            = SatDL.unsat_core_with_info t.dl
+let is_dl_sat t                     = SatDL.is_sat t.dl
 (* end of DL *)
 
 let is_theory_consistent t =
@@ -329,7 +329,7 @@ let theory_lemma t =
     if PredSet.mem (fst deduction) justified then (justified, core)
     else
       begin
-        let (ded_core, npred, _, _) = justify_pred deduction in
+        let (ded_core, npred, _, _) = justify_pred deduction in 
           Message.print Message.Debug (lazy("CoreSolver: justification of "^(print_pred (fst deduction))^" is "^(print_pred ded_core)));
         (*must look at ded_core to find further NO *)
         let (no_to_justify, lst) = split_shared_NO ded_core in
@@ -359,6 +359,7 @@ let theory_lemma t =
     if th = EUF && no_to_justify = []
     then [ProofEUF (SatEUF.mk_proof t.euf (contra pred))]
     else [NoProof] (*TODO explanation: needs to accumulate deductions (for later interpolation)*)
+    (*TODO needs to define a NO proof*)
   in
     (full_core, pred, th, explanation)
 
