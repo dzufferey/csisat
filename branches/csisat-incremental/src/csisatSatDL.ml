@@ -648,12 +648,12 @@ module BasicSolver =
         lst
 
     (*info: but for the contradiction, cannot do much.
-     * returns core => ~pred
+     * returns proof => ~pred
      *)
     let unsat_core_with_info t =
       match t.status with
       | Sat -> failwith "SatDL: unsat_core_with_info on a SAT system"
-      | UnSat (pred, proof) -> (Proof.path proof, pred, proof)
+      | UnSat (pred, proof) -> (pred, proof)
 
   end
 
@@ -907,7 +907,8 @@ module InterfaceLayer =
           let diff = adapt_domain t.domain (kind,v1,v2,c) in
             BasicSolver.entailed t.solver diff
 
-    (*TODO make a real proof *)
+
+    (* core => Not contradiction *)
     let justify t pred =
       Message.print Message.Debug (lazy("SatDL: justify " ^ (print_pred pred)));
       let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
@@ -928,16 +929,56 @@ module InterfaceLayer =
             (given, [])
       in
       let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) (DiffSet.elements core)) in
-      let deductions_pred = List.map (get_pred t) deductions in
       let contradiction = normalize (Not pred) in
-        (And core_pred, contradiction, DL, List.map (fun x -> (x,DL)) deductions_pred)
+        (And core_pred, contradiction, DL, deductions)
 
     let unsat_core_with_info t =
-      let (core, diff, proof) = BasicSolver.unsat_core_with_info t.solver in
+      let (diff, proof) = BasicSolver.unsat_core_with_info t.solver in (* proof |= ~diff *)
+      let contradiction = get_pred t diff in
+      let core = BasicSolver.Proof.path proof in
       let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) core) in
-      let pred_proof = [] in (*TODO return a proof*)
-        (And core_pred, get_pred t diff, DL, pred_proof)
+        (And core_pred, contradiction, DL, [])
 
-    (* TODO mk_proof *)
+    
+    (*transform a proof from the BasicSolver to a partial proof of the InterfaceLayer
+     *this transform returns a predicate (implied by the proof), domain, and diff list. *)
+    let transform_proof t prf =
+      let proven = get_pred t (BasicSolver.Proof.what prf) in
+      let proof = BasicSolver.Proof.path prf in
+      let diff_to_diff diff =
+        let pred = get_pred t diff in
+        let a = IntMap.find (Diff.a diff) t.id_to_expr in
+        let b = IntMap.find (Diff.b diff) t.id_to_expr in
+        let c = Diff.c diff in
+          (pred, a, b, c)
+      in
+        (proven, t.domain, List.map diff_to_diff proof)
+
+    let mk_proof t pred =
+      Message.print Message.Debug (lazy("SatDL: mk_proof" ^ (print_pred pred)));
+      let (kind, v1, v2, c) = normalize_dl t.var_to_id pred in
+      let proof =
+        match kind with
+        | Equal ->
+          let diff1 = adapt_domain t.domain (kind,v1,v2,c) in
+          let diff2 = adapt_domain t.domain (kind,v2,v1,-.c) in
+          let proof1 = BasicSolver.mk_proof t.solver diff1 in
+          let proof2 = BasicSolver.mk_proof t.solver diff2 in
+          let (_, _, proof1') = transform_proof t proof1 in
+          let (_, _, proof2') = transform_proof t proof2 in
+            Proof.EQ (pred, t.domain, proof1', proof2')
+        | LessStrict ->
+          let diff = adapt_domain t.domain (kind,v1,v2,c) in
+          let proof = BasicSolver.mk_proof t.solver diff in
+          let (_, _, proof') = transform_proof t proof in
+            Proof.LEQ (pred, t.domain, proof')
+        | LessEq ->
+          let diff = adapt_domain t.domain (kind,v1,v2,c) in
+          let proof = BasicSolver.mk_proof t.solver diff in
+          let (_, _, proof') = transform_proof t proof in
+            Proof.LT (pred, t.domain, proof')
+      in
+        proof
+
   end
 

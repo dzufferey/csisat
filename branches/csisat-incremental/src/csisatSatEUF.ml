@@ -521,8 +521,7 @@ let mk_proof dag pred =
 (*TODO clean up the mess with all these methods that do not quite the same ... *)
 
 (* TODO mk_lemma should return the 'proof' of an equality (congruence or not) using only elements.
- * use the mk_proof method and extract the predicate from there.
- *)
+ * use the mk_proof method and extract the predicate from there. *)
 let mk_lemma dag n1 n2 =
   Message.print Message.Debug (lazy("SatEUF: mk_lemma for " ^ (print_pred (Node.mk_eq n1 n2))));
   let proof = mk_proof dag (Node.mk_eq n1 n2) in
