@@ -55,9 +55,19 @@ let print_lambda lambda = match lambda with
   | Lambda(i,b,EQ) ->  Message.print Message.Debug (lazy("L"^(string_of_int i)^" of block "^(string_of_int b)^" with ="))
 let print_lambdas lambdas = List.iter print_lambda lambdas
 
+(* a Farcas/Motzkin prrof of unsat for a system of linear inequalities *)
+module Proof =
+  struct
+    type lambas_def = l_info list
+    type lambas_val = float array * int (*value of lambdas + number of non strict interpolant*)
+    type constraints = predicate array
+    (*the index in the λ gives the position in the arrays *)
+    type t = lambas_def * lambas_val * constraints
 
-(** Separates strict, non-strict, and equlity constraints
- *)
+    (*TODO compute the interpolant from the proof and get rid of interpolate_clp*)
+  end
+
+(** Separates strict, non-strict, and equlity constraints *)
 let split_eq_lt pred =
   let rec process (accLt, accLeq, accEq) pred = match pred with
     | And [] -> (accLt, (Leq(Constant 0.0, Constant 1.0))::accLeq, accEq)
@@ -117,13 +127,12 @@ let extract_answer lp lambdas =
                 else split_lambdas cur_block start (len+1) acc xs
               end
             | x::xs -> failwith "extract_answer: expect only lambda's"
-            | [] -> List.rev acc (*this does not return the last \'s (they are not needed)*)
+            | [] -> List.rev acc (*this does not return the last λ's (they are not needed)*)
           in
             split_lambdas 0 0 0 [] lambdas
       end
 
-(** compute i = \*A and d = \*a
- *)
+(** compute i = λA and d = λa *)
 let compute_interpolant vars_size blocks results =
   let i_acc = Array.make vars_size 0.0 in
   let d_acc = ref 0.0 in
@@ -149,8 +158,7 @@ let compute_interpolant vars_size blocks results =
 
 (** Fills the Main matrix with the different sub-matrixes.
  *  Assume the GLPK problem is big enough.
- *  Implicitely preform the problem transposition.
- *)
+ *  Implicitely preform the problem transposition.*)
 let rec fill_glpk_problem lp nb_vars block index acc lst = match lst with
   | (size_lt,size_leq,size_eq,mat,_)::xs ->
     begin
@@ -180,7 +188,73 @@ let rec fill_glpk_problem lp nb_vars block index acc lst = match lst with
         fill_glpk_problem lp nb_vars (block + 1) !new_index !new_acc xs
     end
   | [] -> acc
-    
+
+(* to make a proof: the lambda part *)
+let rec extract_lamdas_def block index acc lst = match lst with
+  | (size_lt,size_leq,size_eq,mat,_)::xs ->
+    begin
+      let new_acc = ref acc in
+      let new_index = ref index in
+        for i = 0 to  size_lt - 1 do
+          new_acc := (Lambda (!new_index, block, LT))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt to  size_lt + size_leq - 1 do
+          new_acc := (Lambda (!new_index, block, LEQ))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt + size_leq to  size_lt + size_leq + size_eq - 1 do
+          new_acc := (Lambda (!new_index, block, EQ))::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        extract_lamdas_def (block + 1) !new_index !new_acc xs
+    end
+  | [] -> List.rev acc
+
+let rec extract_constraints block index acc lst = match lst with
+  | (size_lt,size_leq,size_eq,mat)::xs ->
+    begin
+      let new_acc = ref acc in
+      let new_index = ref index in
+        for i = 0 to  size_lt - 1 do
+          new_acc := mat.(i)::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt to  size_lt + size_leq - 1 do
+          new_acc := mat.(i)::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        for i = size_lt + size_leq to  size_lt + size_leq + size_eq - 1 do
+          new_acc := mat.(i)::(!new_acc);
+          new_index := !new_index + 1
+        done;
+        extract_constraints (block + 1) !new_index !new_acc xs
+    end
+  | [] -> Array.of_list (List.rev acc)
+
+(** extract the lambdas value for the proof *)
+let extract_lamdas_val lp lambdas_def =
+  let rec count_non_strict results lambdas = match lambdas with
+    | (Lambda (index,block,LT))::xs -> if results.(index) > !solver.solver_error then block else count_non_strict results xs
+    | (Lambda (_,_,_))::xs -> count_non_strict results xs
+    | x::xs -> failwith "extract_answer: expect only lambda's"
+    | [] -> failwith "extract_answer: reached the end before a non-0 \\^lt"
+  in
+  let value = !solver.obj_val lp in
+    if value >= (2.0 -. !solver.solver_error) then raise SAT
+    else
+      begin
+        let last_lambda_index = List.length lambdas_def in
+        let result = Array.make last_lambda_index 0.0 in
+          !solver.cols_primal lp last_lambda_index result;
+          (*the solver precision is 10e-7 => filter all term that are less than !solver.solver_error*)
+          Array.iteri (fun i x -> if (abs_float x) < !solver.solver_error then result.(i) <- 0.0) result;
+          let count = (*count is the number of non-strict interpolant*)
+            if value < (1.0 -. !solver.solver_error) then last_lambda_index (*is bigger than the number of interpolant, but not important*)
+            else count_non_strict result lambdas_def
+          in
+            (result, count)
+      end
 
 (** Prepare the constraints ->  split eq/leq/lt and creates a matrix/vector. *)
 let prepare vars cnf =
@@ -190,6 +264,15 @@ let prepare vars cnf =
   let size_eq = List.length eq in
   let (mat,vect) = conj_to_matrix (lt @ leq @ eq) vars in
     (size_lt,size_leq,size_eq,mat,vect)
+
+(** use this method to prepare the argument of extract_constraints*)
+let prepare2 cnf =
+  let (lt,leq,eq) = split_eq_lt cnf in
+  let size_lt = List.length lt in
+  let size_leq = List.length leq in
+  let size_eq = List.length eq in
+  let preds = Array.of_list (lt @ leq @ eq) in
+    (size_lt,size_leq,size_eq,preds)
 
 (** Collects the a's for minimization constraints*)
 let rec get_all_as index target_array lst = match lst with
@@ -210,8 +293,7 @@ let rec get_lt_lambdas target_array lambdas = match lambdas with
   | [] -> ()
     
 
-(** compute a series of |lst| -1 (inductive) interpolant
- *)
+(** compute a series of |lst| -1 (inductive) interpolant *)
 let interpolate_clp lst =
   Message.print Message.Debug (lazy("interpolate_clp called: " ^ (String.concat ", " (List.map print lst))));
   let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
@@ -295,6 +377,61 @@ let interpolate_clp lst =
                 Camlglpk.delete lp;
                 raise LP_SOLVER_FAILURE
               end
+
+(** Make a Farcas/Motzkin proof of unsat.
+ *  Assumes non trivial case *)
+let mk_proof lst =
+  Message.print Message.Debug (lazy("interpolate_clp called: " ^ (String.concat ", " (List.map print lst))));
+  let vars_set = List.fold_left (fun acc x -> ExprSet.add x acc) ExprSet.empty (List.flatten (List.map collect_li_vars lst)) in
+  let vars = exprSet_to_ordSet vars_set in
+  let nb_vars = List.length vars in
+    Message.print Message.Debug (lazy("Variables are: " ^ (String.concat ", " (List.map print_expr vars))));
+    assert (Global.is_off_assert() || nb_vars > 0 );
+    let prepared = List.map (prepare vars) lst in
+    let lp = Camlglpk.create () in
+      Camlglpk.add_row lp nb_vars;
+      for i = 0 to nb_vars -1 do (*Sum l*A = 0*)
+        Camlglpk.set_row_bnd_fixed lp i 0.0
+      done;
+      let lambda1 = fill_glpk_problem lp nb_vars 0 0 [] prepared in
+      let last_lambda_index = index_of (List.hd lambda1) in
+      let l_index = last_lambda_index + 1 in
+      let t_index = last_lambda_index + 2 in
+      let lambda2 = (L l_index)::lambda1 in
+      let lambdas = (T t_index)::lambda2 in
+        print_lambdas lambdas;
+        Camlglpk.add_col lp 2;(* for L and T *)
+        Camlglpk.set_col_bnd_upper lp l_index 1.0; (*L <= 1*)
+        Camlglpk.set_col_bnd_lower lp t_index 0.0; (*T >= 0*)
+        Camlglpk.add_row lp 2;(* min cstr *)
+        let all_as = Array.make (last_lambda_index + 3) 0.0 in
+          get_all_as 0 all_as prepared;
+          all_as.(l_index) <- (-1.0);
+          all_as.(t_index) <- (-1.0);
+          Camlglpk.set_mat_row lp  nb_vars  (Array.length all_as) all_as;
+          Camlglpk.set_row_bnd_upper lp nb_vars (-2.0);
+          Array.fill all_as 0 (Array.length all_as) 0.0;
+          get_lt_lambdas all_as lambdas;
+          all_as.(l_index) <- 1.0;
+          Camlglpk.set_mat_row lp (nb_vars + 1) (Array.length all_as) all_as;
+          Camlglpk.set_row_bnd_upper lp (nb_vars + 1) (0.0);
+          (*objective function*)
+          Camlglpk.set_minimize lp;
+          Camlglpk.set_obj_coef lp t_index 1.0;
+          if !solver.solve lp then
+            begin
+              let lambdas_def = List.rev lambda1 in
+              let constraints = extract_constraints 0 0 [] (List.map prepare2 lst) in
+              let lambas_val = extract_lamdas_val lp (List.rev lambda1) in
+                 Camlglpk.delete lp;
+                 (lambdas_def, lambas_val, constraints)
+            end
+          else
+            begin 
+              Camlglpk.dump_problem lp;
+              Camlglpk.delete lp;
+              raise LP_SOLVER_FAILURE
+            end
         
 
 (** Returns an over-approximation of the unsat core for a formula.
