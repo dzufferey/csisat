@@ -42,6 +42,7 @@ module DpllProof = CsisatDpllProof
 module SatDL   = CsisatSatDL.InterfaceLayer
 module SatEUF  = CsisatSatEUF
 module Node    = CsisatSatEUF.Node
+module ClpLI   = CsisatClpLI
 (**/**)
 
 type change = StackSat of predicate (* predicate given by sat solver *)
@@ -49,7 +50,15 @@ type change = StackSat of predicate (* predicate given by sat solver *)
             | StackChanges of (theory * predicate) list (*what was sent to which theory*)
 type explanation = ProofEUF of SatEUF.congruence_proof
                  | ProofDL of SatDL.Proof.t
+                 | ProofLA of ClpLI.Proof.t
                  | NoProof (*TODO remove when everything is done *)
+
+(* Nelson Oppen proof of unsat *)
+module Proof =
+  struct
+    (*TODO foreach propagated equality, there should be an explanation*)
+  end
+
 
 let string_of_explanation e = match e with
   | ProofEUF path -> SatEUF.string_of_proof path
