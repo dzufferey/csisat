@@ -203,6 +203,9 @@ module Proof =
       let part_of_core = List.filter (fun l -> lambdas_val.(index_of l) <> 0.0) lambdas_def in
         List.map (fun l -> constraints.(index_of l)) part_of_core
       
+     let contains prf pred =
+       let (_,_,cstrs) = prf in
+         Array.fold_left (fun acc p -> acc || p = pred) false cstrs
   end
 
 (** Fills the Main matrix with the different sub-matrixes.

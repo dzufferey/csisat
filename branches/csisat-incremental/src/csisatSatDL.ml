@@ -750,8 +750,18 @@ module InterfaceLayer =
                   (c1 = c) && ((-.c) = c2)
               end
 
+        (* only for eq given to the sovler.
+         * TODO more: path 1 and path 2 form a cycle (that sums to 0).
+         * for any to expression a,b in the path,
+         * it possible to compute a predicate a = b + c, for some constant c *)
+        let contains prf pred = match prf with
+          | EQ (pred, domain, path1, path2) ->
+            List.exists (fun (p,_,_,_) -> p = pred) (path1 @ path2)
+          | _ -> false
 
-        (*TODO*)
+        (** proof of what ? *)
+        let of_what prf = match prf with
+          | LEQ (p,_,_) | LT (p,_,_) | EQ (p,_,_,_) | NEQ (p,_,_) -> p
       end
     
 

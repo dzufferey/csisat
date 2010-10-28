@@ -48,7 +48,7 @@ module ClpLI   = CsisatClpLI
 type change = StackSat of predicate (* predicate given by sat solver *)
             | StackNO of predicate * theory
             | StackChanges of (theory * predicate) list (*what was sent to which theory*)
-type explanation = ProofEUF of SatEUF.congruence_proof
+type explanation = ProofEUF of SatEUF.Proof.t
                  | ProofDL of SatDL.Proof.t
                  | ProofLA of ClpLI.Proof.t
                  | NoProof (*TODO remove when everything is done *)
@@ -56,12 +56,67 @@ type explanation = ProofEUF of SatEUF.congruence_proof
 (* Nelson Oppen proof of unsat *)
 module Proof =
   struct
-    (*TODO foreach propagated equality, there should be an explanation*)
+    (* Foreach propagated equality, there should be an explanation.
+     * The changes list is like a stack (last first).
+     * Since we consider only convex theory, there is no 'branching' in the proof.
+     *)
+    type t = change list * explanation PredMap.t
+
+    (* entry point of the proof: last predicate added which makes the thing unsat*)
+    let contradiction prf =
+      let last =
+        List.find (*ok since prf is LIFO*)
+          (fun p -> match p with StackSat _ -> true | _ -> false)
+          (fst prf)
+      in
+        match last with
+        | StackSat p -> p
+        | _ -> failwith "!?!?"
+
+    let given_predicate proof =
+        List.fold_left
+          (fun acc p -> match p with
+            | StackSat p -> PredSet.add p acc
+            | _ -> acc)
+          PredSet.empty
+          (fst proof)
+
+    let explanation_contains explanation pred = match explanation with
+      | ProofEUF euf -> SatEUF.Proof.contains euf pred
+      | ProofDL dl -> SatDL.Proof.contains dl pred
+      | ProofLA la -> ClpLI.Proof.contains la pred
+      | NoProof -> failwith "NoProof"
+
+    let of_what explanation = match explanation with
+      | ProofEUF euf -> SatEUF.Proof.final_equality euf
+      | ProofDL dl -> SatDL.Proof.of_what dl
+      | ProofLA la -> failwith "TODO Motzkin proof are proof of unsat, so ..."
+      | NoProof -> failwith "NoProof"
+
+    (** remove unused explanations *)
+    let shorten proof =
+      let (changes, explanations) = proof in
+      let last_expl = PredMap.find (contradiction proof) explanations in
+      let rec explanation_uses lst pred = match lst with
+        | (StackNO (p,_)) :: xs -> explanation_contains (PredMap.find p explanations) pred || explanation_uses xs pred
+        | _::xs -> explanation_uses xs pred
+        | [] -> false
+      in
+      let rec filter acc lst = match lst with
+        | ((StackNO (p,_) as x))::xs ->
+          if (explanation_contains last_expl p) || (explanation_uses xs p)
+          then filter (x::acc) xs
+          else filter acc xs
+        | x::xs -> filter (x::acc) xs
+        | [] -> acc
+      in
+        (filter [] (List.rev changes), explanations)
+
   end
 
 
 let string_of_explanation e = match e with
-  | ProofEUF path -> SatEUF.string_of_proof path
+  | ProofEUF path -> SatEUF.Proof.to_string path
   | _ -> "TODO"
 
 type t = {

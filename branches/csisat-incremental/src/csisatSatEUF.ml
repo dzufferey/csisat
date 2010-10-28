@@ -44,87 +44,112 @@ type euf_change = Deduction of predicate * node_info * node_info * (int list lis
                 | Equal of predicate * node_info * node_info (* information to restore previous state *)
                 | NotEqual of (int * int) (* for instance a < b ==> ~(a = b) *)
 
+module Proof =
+  struct
+    type t = Congruence of expression * expression * (t list) (* last part is, for each argument, a path of equal terms.*)
+           | Eqs of expression list (* equality path of given predicates *)
+           | Path of t list (*alternation of Congruence and Eqs*)
 
-type congruence_proof = Congruence of expression * expression * (congruence_proof list) (* last part is, for each argument, a path of equal terms.*)
-                      | Eqs of expression list (* equality path of given predicates *)
-                      | Path of congruence_proof list (*alternation of Congruence and Eqs*)
+    let rec proof_get_left_expr prf = match prf with
+      | Congruence (l, _, _) -> l
+      | Eqs lst -> List.hd lst
+      | Path lst -> proof_get_left_expr (List.hd lst)
 
-let rec proof_get_left_expr prf = match prf with
-  | Congruence (l, _, _) -> l
-  | Eqs lst -> List.hd lst
-  | Path lst -> proof_get_left_expr (List.hd lst)
+    let rec proof_get_right_expr prf = match prf with
+      | Congruence (_, r, _) -> r
+      | Eqs lst -> List.hd (List.rev lst)
+      | Path lst -> proof_get_right_expr (List.hd (List.rev lst))
 
-let rec proof_get_right_expr prf = match prf with
-  | Congruence (_, r, _) -> r
-  | Eqs lst -> List.hd (List.rev lst)
-  | Path lst -> proof_get_right_expr (List.hd (List.rev lst))
+    let final_equality p =
+      let a = proof_get_left_expr p in
+      let b = proof_get_right_expr p in
+        order_eq (Eq (a, b))
 
-let proof_final_equality p =
-  let a = proof_get_left_expr p in
-  let b = proof_get_right_expr p in
-    order_eq (Eq (a, b))
+    let rec path_well_formed lst = match lst with
+      | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
+      | _ -> true
 
-let rec path_well_formed lst = match lst with
-  | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
-  | _ -> true
+    let proof_compact_path proof =
+      let rec process acc lst = match lst with
+        | (Path lst) :: xs -> process acc (lst @ xs)
+        | (Eqs lst1) :: (Eqs lst2) :: xs ->
+          begin
+            assert (List.hd lst2 = List.hd (List.rev lst1));
+            process acc ((Eqs (lst1 @ (List.tl lst2))) :: xs)
+          end
+        | x :: xs -> process (x :: acc) xs
+        | [] -> List.rev acc
+      in
+      let proof = process [] [proof] in
+        assert (path_well_formed proof);
+        if List.length proof = 1
+        then List.hd proof
+        else Path proof
 
-let proof_compact_path proof =
-  let rec process acc lst = match lst with
-    | (Path lst) :: xs -> process acc (lst @ xs)
-    | (Eqs lst1) :: (Eqs lst2) :: xs ->
-      begin
-        assert (List.hd lst2 = List.hd (List.rev lst1));
-        process acc ((Eqs (lst1 @ (List.tl lst2))) :: xs)
-      end
-    | x :: xs -> process (x :: acc) xs
-    | [] -> List.rev acc
-  in
-  let proof = process [] [proof] in
-    assert (path_well_formed proof);
-    if List.length proof = 1
-    then List.hd proof
-    else Path proof
+    let rec to_string prf =
+      let eq = final_equality prf in
+        match prf with
+        | Congruence (a,b,args) ->
+          "\\inferrule{ "^(String.concat " \\\\ " (List.map to_string args))^" }{ "^(print_pred eq)^" }"
+        | Eqs lst -> 
+          "\\inferrule{ "^String.concat " = " (List.map print_expr lst)^" }{ "^(print_pred eq)^" }"
+        | Path lst ->
+          "\\inferrule{ "^(String.concat " \\\\ " (List.map to_string lst))^" }{ "^(print_pred eq)^" }"
 
-let rec string_of_proof prf =
-  let eq = proof_final_equality prf in
-    match prf with
-    | Congruence (a,b,args) ->
-      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof args))^" }{ "^(print_pred eq)^" }"
-    | Eqs lst -> 
-      "\\inferrule{ "^String.concat " = " (List.map print_expr lst)^" }{ "^(print_pred eq)^" }"
-    | Path lst ->
-      "\\inferrule{ "^(String.concat " \\\\ " (List.map string_of_proof lst))^" }{ "^(print_pred eq)^" }"
+    let rec proof_map_expr fct prf = match prf with
+      | Congruence (a,b,args) -> Congruence (fct a, fct b, List.map (proof_map_expr fct) args)
+      | Eqs lst -> Eqs (List.map fct lst)
+      | Path lst -> Path (List.map (proof_map_expr fct) lst)
 
-let rec proof_map_expr fct prf = match prf with
-  | Congruence (a,b,args) -> Congruence (fct a, fct b, List.map (proof_map_expr fct) args)
-  | Eqs lst -> Eqs (List.map fct lst)
-  | Path lst -> Path (List.map (proof_map_expr fct) lst)
+    (** returns all the congruence in the proof *)
+    let rec proof_congruences_contained prf = match prf with
+      | Congruence (a,b,args) ->
+        List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
+          (PredSet.singleton (order_eq (Eq (a, b))))
+          args
+      | Eqs _ -> PredSet.empty
+      | Path lst ->
+        List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
+          PredSet.empty
+          lst
 
-(** returns all the congruence in the proof *)
-let rec proof_congruences_contained prf = match prf with
-  | Congruence (a,b,args) ->
-    List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
-      (PredSet.singleton (order_eq (Eq (a, b))))
-      args
-  | Eqs _ -> PredSet.empty
-  | Path lst ->
-    List.fold_left (fun acc x -> PredSet.union (proof_congruences_contained x) acc)
-      PredSet.empty
-      lst
+    (** returns all the given equalities in the proof *)
+    let rec proof_equalities_contained prf = match prf with
+      | Congruence (a,b,args) ->
+        List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
+          PredSet.empty
+          args
+      | Eqs lst ->
+        let lst2 = path_to_edges lst in
+          List.fold_left (fun acc (a,b) -> PredSet.add (order_eq (Eq (a, b))) acc) PredSet.empty lst2
+      | Path lst ->
+        List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
+          PredSet.empty
+          lst
 
-(** returns all the given equalities in the proof *)
-let rec proof_equalities_contained prf = match prf with
-  | Congruence (a,b,args) ->
-    List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
-      PredSet.empty
-      args
-  | Eqs lst ->
-    let lst2 = path_to_edges lst in
-      List.fold_left (fun acc (a,b) -> PredSet.add (order_eq (Eq (a, b))) acc) PredSet.empty lst2
-  | Path lst ->
-    List.fold_left (fun acc x -> PredSet.union (proof_equalities_contained x) acc)
-      PredSet.empty
-      lst
+    (*no rec means do not go inside congruence*)
+    let rec contains_1expr_no_rec prf e = match prf with
+      | Congruence (e1,e2,_) -> e = e1 || e = e2
+      | Eqs lst -> List.mem e lst
+      | Path lst -> List.exists (fun p -> contains_1expr_no_rec p e) lst
+
+    (* e1 e2 must appear on the same path *)
+    let rec contains_2expr prf e1 e2 = match prf with
+      | Congruence (e1',e2',lst) ->
+        ((e1 = e1' || e1 = e2') && (e2 = e1' || e2 = e2')) ||
+        List.exists (fun p -> contains_2expr p e1 e2) lst
+      | Eqs lst -> List.mem e1 lst && List.mem e2 lst
+      | Path lst ->
+        List.exists (fun p -> contains_2expr p e1 e2) lst ||
+        (  List.exists (fun p -> contains_1expr_no_rec p e1) lst
+        && List.exists (fun p -> contains_1expr_no_rec p e2) lst)
+
+    let contains prf pred = match pred with
+      | Eq (e1, e2) -> contains_2expr prf e1 e2
+      | _ -> false
+  end
+
+open Proof
 
 module Node =
   struct
@@ -515,7 +540,7 @@ let mk_proof dag pred =
         edges
     )
   in
-    Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (string_of_proof raw_proof)));
+    Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (Proof.to_string raw_proof)));
     proof_compact_path raw_proof
 
 (*TODO clean up the mess with all these methods that do not quite the same ... *)
