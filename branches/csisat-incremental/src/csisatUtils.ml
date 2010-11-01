@@ -413,3 +413,27 @@ let range min max =
     else process (curr::acc) (curr + 1)
   in
     process [] min
+
+(** closed and finite intervals of integer *)
+module Interval =
+  struct
+    type t = int * int
+
+    let is_empty (a,b) = a > b
+    
+    let mem x (a,b) = x >= a && x <= b
+
+    let inter (a,b) (c,d) =
+      let a' = max a c in
+      let b' = min b d in
+        assert(a' <= b');
+        (a', b')
+
+    (** only for intervals with non empty intersection*)
+    let union (a,b) (c,d) =
+      let a' = min a c in
+      let b' = max b d in
+        assert(not (is_empty (inter (a,b) (c,d))));
+        (a', b')
+
+  end
