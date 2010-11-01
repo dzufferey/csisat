@@ -127,13 +127,13 @@ module Proof =
           PredSet.empty
           lst
 
-    (*no rec means do not go inside congruence*)
+    (* helper for contains: no rec means do not go inside congruence*)
     let rec contains_1expr_no_rec prf e = match prf with
       | Congruence (e1,e2,_) -> e = e1 || e = e2
       | Eqs lst -> List.mem e lst
       | Path lst -> List.exists (fun p -> contains_1expr_no_rec p e) lst
 
-    (* e1 e2 must appear on the same path *)
+    (* helper for contains: e1 e2 must appear on the same path *)
     let rec contains_2expr prf e1 e2 = match prf with
       | Congruence (e1',e2',lst) ->
         ((e1 = e1' || e1 = e2') && (e2 = e1' || e2 = e2')) ||
@@ -147,6 +147,60 @@ module Proof =
     let contains prf pred = match pred with
       | Eq (e1, e2) -> contains_2expr prf e1 e2
       | _ -> false
+
+    let rec find_terms_in proof (belongs_to: expression -> Interval.t) (where: Interval.t) = match proof with
+      | Congruence (e1,e2,lst) ->
+        begin
+          let args = List.map (fun p -> find_terms_in p belongs_to where) lst in
+            match e1 with
+            | Application(f, _) -> Application(f, args)
+            | _ -> failwith "SatEUF.Proof.find_terms_in: congruence not on Application ??"
+        end
+      | Eqs lst -> List.find (fun e -> (belongs_to e) = where) lst
+      | Path lst ->
+        begin
+          let candidate =
+            List.find
+              (fun p -> try ignore(find_terms_in p belongs_to where); true with Not_found -> false)
+              lst
+          in
+            find_terms_in candidate belongs_to where
+        end
+
+    (* EUF proofs produced by the solver are not necessarily local (congruence axiom).
+     * Therefore we need to rewrite the proof (and introduce new predicates).
+     * Example: A -> f(x) = 0 /\ x = y, b -> y = z /\ f(z) = 1.
+     * The solver will find that f(x) = f(z), but we want the middle term: f(x) = f(y) = f(z)
+     * In that case, a valid interpolant is f(y) = 0 *)
+    let rec make_proof_local proof (belongs_to: expression -> Interval.t) = match proof with
+      | Congruence (e1,e2,lst) ->
+        begin
+          (*TODO this currently assumes only 2 formula A,B.
+           * Generalizing to more formula ==> needs multiple local terms.
+           * ==> returns a Path of Congruence rather than a Congruence *)
+          let lst' = List.map (fun p -> make_proof_local p belongs_to) lst in
+            match (e1, e2) with
+            | (Application(f1, args1), Application(f2,args2)) ->
+              begin
+                assert(f1 = f2);
+                let zipped = List.combine args1 args2 in
+                let localized =
+                  List.map2
+                    (fun (a1,a2) prf ->
+                      (*TODO it is possible to make this 'left' local, or 'right' local.
+                       * on the example above, it means putting f(x) = f(y) or f(y) = f(z) *)
+                      let a2' = find_terms_in prf belongs_to (0, 1) in
+                        (a1, a2') (* left local*)
+                    )
+                    zipped lst'
+                in
+                let (args1', args2') = List.split localized in
+                  Congruence(Application(f1, args1'), Application(f2, args2'), lst')
+              end
+            | _ -> failwith "SatEUF.Proof.make_proof_local: congruence not on Application ??"
+        end
+      | Eqs lst -> Eqs lst (*should already be local*)
+      | Path lst -> Path (List.map (fun p -> make_proof_local p belongs_to) lst)
   end
 
 open Proof
