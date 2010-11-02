@@ -50,26 +50,26 @@ module Proof =
            | Eqs of expression list (* equality path of given predicates *)
            | Path of t list (*alternation of Congruence and Eqs*)
 
-    let rec proof_get_left_expr prf = match prf with
+    let rec get_left_expr prf = match prf with
       | Congruence (l, _, _) -> l
       | Eqs lst -> List.hd lst
-      | Path lst -> proof_get_left_expr (List.hd lst)
+      | Path lst -> get_left_expr (List.hd lst)
 
-    let rec proof_get_right_expr prf = match prf with
+    let rec get_right_expr prf = match prf with
       | Congruence (_, r, _) -> r
       | Eqs lst -> List.hd (List.rev lst)
-      | Path lst -> proof_get_right_expr (List.hd (List.rev lst))
+      | Path lst -> get_right_expr (List.hd (List.rev lst))
 
     let final_equality p =
-      let a = proof_get_left_expr p in
-      let b = proof_get_right_expr p in
+      let a = get_left_expr p in
+      let b = get_right_expr p in
         order_eq (Eq (a, b))
 
     let rec path_well_formed lst = match lst with
-      | a :: b :: xs -> (proof_get_right_expr a = proof_get_left_expr b) && path_well_formed (b :: xs)
+      | a :: b :: xs -> (get_right_expr a = get_left_expr b) && path_well_formed (b :: xs)
       | _ -> true
 
-    let proof_compact_path proof =
+    let compact_path proof =
       let rec process acc lst = match lst with
         | (Path lst) :: xs -> process acc (lst @ xs)
         | (Eqs lst1) :: (Eqs lst2) :: xs ->
@@ -85,6 +85,11 @@ module Proof =
         if List.length proof = 1
         then List.hd proof
         else Path proof
+
+    (** take a proof of a = b && b = c, and return a = c*)
+    let append prf1 prf2 =
+      assert((get_right_expr prf1) = (get_left_expr prf2));
+      compact_path (Path [prf1;prf2])
 
     let rec to_string prf =
       let eq = final_equality prf in
@@ -167,6 +172,92 @@ module Proof =
             find_terms_in candidate belongs_to where
         end
 
+    (* helper for make_proof_local *)
+    let common e1 e2 belongs_to =
+      not (Interval.is_empty (Interval.inter (belongs_to e1) (belongs_to e2)))
+
+    (* helper for make_proof_local *)
+    let extract_relevant_part a b prf = match prf with
+      | Congruence (e1,e2,lst) ->
+        begin
+          assert(a = e1 && b = e2);
+          Congruence (e1,e2,lst)
+        end
+      | Eqs lst ->
+        begin
+          assert(List.mem a lst);
+          assert(List.mem b lst);
+          let start_with_a = drop_while (fun x -> x <> a) lst in
+          let end_with_b = (take_while (fun x -> x <> b) start_with_a) @ [b] in
+            Eqs end_with_b
+        end
+      | Path lst ->
+        begin
+          let start_with_a = drop_while (fun x -> (get_left_expr x) <> a) lst in
+          let last = List.find (fun x -> (get_right_expr x) = b) start_with_a in
+          let end_with_b = (take_while (fun x -> (get_right_expr x) <> b) start_with_a) @ [last] in
+            Path end_with_b
+        end
+
+    (* helper for make_proof_local *)
+    let make_minimal_local_chain prf (belongs_to: expression -> Interval.t) = match prf with
+      | Congruence (e1,e2,lst) ->
+        begin
+          (*this should already be local*)
+          assert(common e1 e2 belongs_to);
+          [e1;e2]
+        end
+      | Eqs lst ->
+        begin
+          (*TODO it is possible to fold from left or right. Currently left.*)
+          let rec process acc lst = match lst with
+            | x::y::z::xs when common x z belongs_to -> process acc (x::z::xs)
+            | x::y::z::xs -> process (x::acc) (y::z::xs)
+            | x::y::[] -> List.rev (y::x::acc)
+            | _ -> failwith "SatEUF.Proof.make_minimal_local_chain: chain smaller than 2" 
+          in
+            process [] lst
+        end
+      | Path lst ->
+        begin
+          (*TODO it is possible to fold from left or right. Currently left.*)
+          let rec process acc e lst = match lst with
+            | x::y::xs ->
+              begin
+                let e2 = get_right_expr y in
+                  if common e e2 belongs_to then process acc e (y::xs)
+                  else process (e::acc) (get_right_expr x) (y::xs)
+              end
+            | x::[] -> List.rev ((get_right_expr x)::e::acc)
+            | _ -> failwith "SatEUF.Proof.make_minimal_local_chain: chain smaller than 2" 
+          in
+            process [] (get_left_expr (List.hd lst)) lst
+        end
+    
+    (* helper for make_proof_local.
+     * make all the chains have the same length
+     * transpose so that each element is all the arguments needed. *)
+    let equalize_and_transpose lsts belongs_to =
+      (*TODO this is the most brutal way => refine *)
+      let mins_maxs =
+        List.map
+          (fun lst ->
+            ( List.fold_left (fun acc x -> min acc (Interval.min (belongs_to x))) max_int lst,
+              List.fold_left (fun acc x -> max acc (Interval.max (belongs_to x))) (-1) lst) )
+          lsts
+      in
+      let (min, max) =
+        List.fold_left
+          (fun (mn,mx) (a,b) -> (min mn a, max mx b))
+          (List.hd mins_maxs)
+          (List.tl mins_maxs)
+      in
+      let find i = List.map (List.find (fun e -> Interval.mem i (belongs_to e))) lsts in
+        uniq (
+          List.map
+            (fun i -> find i)
+            (range min (max + 1)) )
+
     (* EUF proofs produced by the solver are not necessarily local (congruence axiom).
      * Therefore we need to rewrite the proof (and introduce new predicates).
      * Example: A -> f(x) = 0 /\ x = y, b -> y = z /\ f(z) = 1.
@@ -175,28 +266,24 @@ module Proof =
     let rec make_proof_local proof (belongs_to: expression -> Interval.t) = match proof with
       | Congruence (e1,e2,lst) ->
         begin
-          (*TODO this currently assumes only 2 formula A,B.
-           * Generalizing to more formula ==> needs multiple local terms.
-           * ==> returns a Path of Congruence rather than a Congruence *)
           let lst' = List.map (fun p -> make_proof_local p belongs_to) lst in
+          let chains = List.map (fun p -> make_minimal_local_chain p belongs_to) lst' in
+          let args_chains = equalize_and_transpose chains belongs_to in
+          let args_pairs = pairs_of_list args_chains in
+          let args_pairs_and_proof =
+            List.map
+              (fun (a,b) -> (a, b, List.map2 (fun (a,b) prf -> extract_relevant_part a b prf) (List.combine a b) lst'))
+              args_pairs
+          in
             match (e1, e2) with
             | (Application(f1, args1), Application(f2,args2)) ->
               begin
-                (*TODO this is wrong => should directly do the generalization to fix it*)
                 assert(f1 = f2);
-                let zipped = List.combine args1 args2 in
-                let localized =
-                  List.map2
-                    (fun (a1,a2) prf ->
-                      (*TODO it is possible to make this 'left' local, or 'right' local.
-                       * on the example above, it means putting f(x) = f(y) or f(y) = f(z) *)
-                      let a2' = find_terms_in prf belongs_to (0, 1) in
-                        (a1, a2') (* left local*)
-                    )
-                    zipped lst'
-                in
-                let (args1', args2') = List.split localized in
-                  Congruence(Application(f1, args1'), Application(f2, args2'), lst')
+                Path (
+                  List.map
+                    (fun (a1,a2, needed_part) -> Congruence (Application(f1, args1), Application(f2,args2), needed_part))
+                    args_pairs_and_proof
+                )
               end
             | _ -> failwith "SatEUF.Proof.make_proof_local: congruence not on Application ??"
         end
@@ -565,7 +652,7 @@ let mk_proof dag pred =
                           else Eqs [a;b])
                       preds edges
                   in
-                    proof_compact_path (Path proofs)
+                    compact_path (Path proofs)
                 end
             )
             args_pairs
@@ -596,7 +683,7 @@ let mk_proof dag pred =
     )
   in
     Message.print Message.Debug (lazy("SatEUF: mk_proof, raw_proof " ^ (Proof.to_string raw_proof)));
-    proof_compact_path raw_proof
+    compact_path raw_proof
 
 (*TODO clean up the mess with all these methods that do not quite the same ... *)
 

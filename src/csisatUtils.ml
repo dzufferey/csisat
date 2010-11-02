@@ -111,6 +111,12 @@ let maybe fct default opt = match opt with
   | Some x -> fct x
   | None -> Lazy.force default
 
+let uniq l =
+  List.fold_right
+    (fun elt acc -> if List.mem elt acc then acc else elt::acc)
+    l
+    []
+
 (** splits a list after position n.*)
 let split_list n lst =
   let acc = ref [] in
@@ -126,6 +132,16 @@ let split_list n lst =
   in
   let tail = process n lst in
     (List.rev !acc, tail)
+
+let rec partition_while fct lst = match lst with
+  | x::xs -> if fct x then let (ys,rest) = partition_while fct xs in (x::ys, rest) else ([],x::xs)
+  | [] -> ([], [])
+let rec take_while fct lst = match lst with
+  | x::xs -> if fct x then x::(take_while fct xs) else []
+  | [] -> []
+let rec drop_while fct lst = match lst with
+  | x::xs -> if fct x then drop_while fct xs else x::xs
+  | [] -> []
 
 (** map + keep only elements y where fct(x) = Some(y)*)
 let rec map_filter fct lst = match lst with
@@ -436,4 +452,23 @@ module Interval =
         assert(not (is_empty (inter (a,b) (c,d))));
         (a', b')
 
+    let min (a,b) = a
+
+    let max (a,b) = b
+
   end
+
+(** Transpose a list of list *)
+let rec transpose m =
+  if List.mem [] m then []
+  else (List.map List.hd m) :: transpose (List.map List.tl m)
+
+(** [a;b;c;...] => [(a,b);(b,c);...]*)
+let pairs_of_list lst =
+  assert(List.length lst >= 2);
+  let rec process acc lst = match lst with
+    | x::y::xs -> process ((x,y)::acc) (y::xs)
+    | x::[] -> List.rev acc
+    | [] -> failwith "Utils.pairs_of_list ??"
+  in
+    process [] lst
