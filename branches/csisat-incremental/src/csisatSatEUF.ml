@@ -182,6 +182,7 @@ module Proof =
             match (e1, e2) with
             | (Application(f1, args1), Application(f2,args2)) ->
               begin
+                (*TODO this is wrong => should directly do the generalization to fix it*)
                 assert(f1 = f2);
                 let zipped = List.combine args1 args2 in
                 let localized =
