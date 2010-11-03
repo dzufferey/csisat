@@ -199,7 +199,8 @@ module Proof =
             Path end_with_b
         end
 
-    (* helper for make_proof_local *)
+    (* helper for make_proof_local.
+     * TODO always keep at least the start and the end of a path *)
     let make_minimal_local_chain prf (belongs_to: expression -> Interval.t) = match prf with
       | Congruence (e1,e2,lst) ->
         begin
@@ -236,7 +237,9 @@ module Proof =
     
     (* helper for make_proof_local.
      * make all the chains have the same length
-     * transpose so that each element is all the arguments needed. *)
+     * transpose so that each element is all the arguments needed.
+     * keeps the beginning and the end of chains + what cross the boundaries
+     *)
     let equalize_and_transpose lsts belongs_to =
       (*TODO this is the most brutal way => refine *)
       let mins_maxs =
@@ -252,11 +255,11 @@ module Proof =
           (List.hd mins_maxs)
           (List.tl mins_maxs)
       in
-      let find i = List.map (List.find (fun e -> Interval.mem i (belongs_to e))) lsts in
-        uniq (
-          List.map
-            (fun i -> find i)
-            (range min (max + 1)) )
+      let begining = List.map (List.hd) lsts in
+      let ending = List.map (fun l -> List.hd (List.rev l)) lsts in
+      let find i = List.map (List.find (fun e -> Interval.sub (i, i+1) (belongs_to e) )) lsts in
+      let middle = List.map (fun i -> find i) (range min max) in
+        uniq (begining :: middle @ [ending])
 
     (* EUF proofs produced by the solver are not necessarily local (congruence axiom).
      * Therefore we need to rewrite the proof (and introduce new predicates).
@@ -268,22 +271,30 @@ module Proof =
         begin
           let lst' = List.map (fun p -> make_proof_local p belongs_to) lst in
           let chains = List.map (fun p -> make_minimal_local_chain p belongs_to) lst' in
+          print_endline (String.concat ", " (List.map print_expr (List.hd chains)));
           let args_chains = equalize_and_transpose chains belongs_to in
+          List.iter (fun c -> print_endline (String.concat ", " (List.map print_expr c))) args_chains;
           let args_pairs = pairs_of_list args_chains in
           let args_pairs_and_proof =
             List.map
               (fun (a,b) -> (a, b, List.map2 (fun (a,b) prf -> extract_relevant_part a b prf) (List.combine a b) lst'))
               args_pairs
           in
+          let args_pairs_and_proof_str =
+            List.map
+              (fun (a,b,c) -> (print_expr (List.hd a))^" = "^(print_expr (List.hd b))^" because "^(to_string (List.hd c)))
+              args_pairs_and_proof
+          in
+            print_endline (String.concat "\n" args_pairs_and_proof_str);
             match (e1, e2) with
             | (Application(f1, args1), Application(f2,args2)) ->
               begin
                 assert(f1 = f2);
-                Path (
+                compact_path (Path (
                   List.map
-                    (fun (a1,a2, needed_part) -> Congruence (Application(f1, args1), Application(f2,args2), needed_part))
+                    (fun (a1,a2, needed_part) -> Congruence (Application(f1, a1), Application(f2,a2), needed_part))
                     args_pairs_and_proof
-                )
+                ))
               end
             | _ -> failwith "SatEUF.Proof.make_proof_local: congruence not on Application ??"
         end
@@ -292,6 +303,26 @@ module Proof =
   end
 
 open Proof
+
+
+(* proof test
+let non_local = Congruence (Application("f",[Variable "a"]), Application("f", [Variable "c"]), [Eqs([Variable "a"; Variable "b"; Variable "c"])])
+let belongs_to e = match e with
+  | Application("f",[Variable "a"]) -> (1,1)
+  | Application("f",[Variable "b"]) -> (1,2)
+  | Application("f",[Variable "c"]) -> (2,2)
+  | Variable "a" -> (1,1)
+  | Variable "b" -> (1,2)
+  | Variable "c" -> (2,2)
+  | _ -> failwith "ASDF"
+let local = make_proof_local non_local belongs_to
+
+let _ =
+  print_endline "non_local";
+  print_endline (to_string non_local);
+  print_endline "local";
+  print_endline (to_string local)
+*************)
 
 module Node =
   struct

@@ -438,11 +438,13 @@ module Interval =
     let is_empty (a,b) = a > b
     
     let mem x (a,b) = x >= a && x <= b
+    
+    (*assumes non empty interval*)
+    let sub (a,b) (c,d) = a >= c && b <= d 
 
     let inter (a,b) (c,d) =
       let a' = max a c in
       let b' = min b d in
-        assert(a' <= b');
         (a', b')
 
     (** only for intervals with non empty intersection*)
