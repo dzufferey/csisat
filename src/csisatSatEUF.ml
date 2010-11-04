@@ -239,6 +239,9 @@ module Proof =
      * make all the chains have the same length
      * transpose so that each element is all the arguments needed.
      * keeps the beginning and the end of chains + what cross the boundaries
+     * TODO is it necessary to keep the extremities ?
+     *  Modifying the extremities implies that the rest of the proof has to be also changed
+     *  Maybe should be the work of the interpolation method to figure out what to throw away.
      *)
     let equalize_and_transpose lsts belongs_to =
       (*TODO this is the most brutal way => refine *)
@@ -300,13 +303,35 @@ module Proof =
         end
       | Eqs lst -> Eqs lst (*should already be local*)
       | Path lst -> Path (List.map (fun p -> make_proof_local p belongs_to) lst)
+
+
+    (* Keeps only the facts that cross the boundaries. Returns 1 interpolant per boundary.
+     * Deals with congruence axioms.
+     * Assumes that the proof is local. *)
+    let interpolate proof belongs_to =
+      (* TODO Normally both extremities of the proof should be common.
+       * But the path in the middle can contains local terms that must be eliminated. *)
+      (* Also takes care of the congruence axioms
+       * Basically, for each argument, project the equality path against the boundary (and adding not the result if it is on the left side).
+       * Then, depending on the side of the congruence, combine the pathes with And/Or
+       *  if s = A then (A, Or (SatUIF.interpolate_euf true eq (And !a_part_eq) (And !b_part_eq)))
+       *  else (B, And (SatUIF.interpolate_euf false eq (And !a_part_eq) (And !b_part_eq))) (*also mixed ?!*)
+       *  TODO for mixed, both should be possible ?
+       *)
+      failwith "TODO"
+
   end
 
 open Proof
 
 
-(* proof test
-let non_local = Congruence (Application("f",[Variable "a"]), Application("f", [Variable "c"]), [Eqs([Variable "a"; Variable "b"; Variable "c"])])
+(* proof test *
+let non_local =
+  Path [
+    Eqs [Constant 0.0; Application("f",[Variable "a"])];
+    Congruence (Application("f",[Variable "a"]), Application("f", [Variable "c"]), [Eqs([Variable "a"; Variable "b"; Variable "c"])]);
+    Eqs [Application("f",[Variable "c"]); Constant 1.0]
+  ] 
 let belongs_to e = match e with
   | Application("f",[Variable "a"]) -> (1,1)
   | Application("f",[Variable "b"]) -> (1,2)
@@ -314,6 +339,8 @@ let belongs_to e = match e with
   | Variable "a" -> (1,1)
   | Variable "b" -> (1,2)
   | Variable "c" -> (2,2)
+  | Constant 0.0 -> (1,2)
+  | Constant 1.0 -> (1,2)
   | _ -> failwith "ASDF"
 let local = make_proof_local non_local belongs_to
 
@@ -322,7 +349,7 @@ let _ =
   print_endline (to_string non_local);
   print_endline "local";
   print_endline (to_string local)
-*************)
+**************)
 
 module Node =
   struct
