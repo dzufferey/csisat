@@ -676,6 +676,7 @@ module InterfaceLayer =
 
     (* returns 'v1 ? v2 + c as (?, v1, v2, c) TODO more general *)
     let dl_edge pred =
+      Message.print Message.Debug (lazy("SatDL: dl_edge for " ^ (print pred)));
       let (kind, e1, e2) = match pred with
         | Eq(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (Equal, Variable v1, Sum [Variable v2; Constant c])
         | Lt(Sum[Variable v1; Coeff (-1.0, Variable v2)], Constant c) -> (LessStrict, Variable v1, Sum [Variable v2; Constant c])
@@ -699,27 +700,55 @@ module InterfaceLayer =
       struct
         type diff = predicate * expression * expression * float (* given predicate + edge (a - b <= c) *)
         type t = LEQ of predicate * domain * diff list
-               | LT of predicate * domain * diff list
+               | LT of predicate * domain * diff list (* also form NEQ proofs *)
                | EQ of predicate * domain * diff list * diff list (* two LEQ paths, a<=b /\ a>=b *)
-               | NEQ of predicate * domain * diff list (*actually is the same as an LT proof*)
 
 
         let mk_diff domain pred =
           let (v1, v2, c) = adapt_domain domain (dl_edge pred) in
             (pred, Variable v1, Variable v2, c)
 
+        let get_left_diff (p,e1,e2,c) = e1
+        let get_right_diff (p,e1,e2,c) = e2
+
+        let get_left_path path = get_left_diff (List.hd path) 
+        let get_right_path path = get_right_diff (List.hd (List.rev path))
+        
+        let get_left proof = match proof with
+            | LEQ (_, _, path) | LT (_, _, path) -> get_left_path path
+            | EQ (_, _, path1, path2) -> get_left_path path1
+        let get_right proof = match proof with
+            | LEQ (_, _, path) | LT (_, _, path) -> get_right_path path
+            | EQ (_, _, path1, path2) -> get_left_path path2
+
+        let sum_path path = List.fold_left (fun acc (_,_,_,c) -> acc +. c) 0.0 path
+
+        let final_diff prf = match prf with
+          | LEQ (pred, domain, path) | LT (pred, domain, path) -> mk_diff domain pred
+          | EQ (pred, domain, path1, path2) ->
+            let (_,e1,e2,c) = mk_diff domain pred in
+              if e1 = (get_left_path path1) then
+                begin
+                  assert(e2 = get_right_path path1);
+                  (pred, e1, e2, c)
+                end
+              else
+                begin
+                  assert(e2 = get_left_path path1);
+                  (pred, e2, e1, -.c)
+                end
+
         let well_formed prf =
           let diff_well_formed domain (pred, e1, e2, c) =
             let (_,e1',e2',c') = mk_diff domain pred in
               e1 = e1' && e2 = e2' && c >= c'
           in
-          let sum_path lst = List.fold_left (fun acc (_,_,_,c) -> acc +. c) 0.0 lst in
           let is_path e1 e2 path =
             let a = (List.map (fun (_,a,_,_) -> a) path) @ [e2] in
             let b = e1 :: (List.map (fun (_,_,b,_) -> b) path) in
               (List.for_all2 (=) a b)
           in
-          (*check path continuity and extremities*)
+          (*check path continuity and extremities TODO what about orientation of preds ?? *)
             match prf with
             | LEQ (pred, domain, path) ->
               begin
@@ -729,8 +758,7 @@ module InterfaceLayer =
                   (is_path e1 e2 path) &&
                   (c' <= c) 
               end
-            | LT (pred, domain, path)
-            | NEQ (pred, domain, path) ->
+            | LT (pred, domain, path) ->
               begin
                 let (_,e1,e2,c) = mk_diff domain pred in
                 let c' = sum_path path in
@@ -745,9 +773,10 @@ module InterfaceLayer =
                 let c2 = sum_path path2 in
                   (List.for_all (diff_well_formed domain) path1) &&
                   (List.for_all (diff_well_formed domain) path2) &&
-                  (is_path e1 e2 path1) &&
-                  (is_path e2 e1 path2) &&
-                  (c1 = c) && ((-.c) = c2)
+                  (    ((is_path e1 e2 path1) && (is_path e2 e1 path2) && (c1 = c) && ((-.c) = c2))
+                    || ((is_path e2 e1 path1) && (is_path e1 e2 path2) && (c2 = c) && ((-.c) = c1))
+                  )
+                  
               end
 
         (* only for eq given to the sovler.
@@ -761,7 +790,20 @@ module InterfaceLayer =
 
         (** proof of what ? *)
         let of_what prf = match prf with
-          | LEQ (p,_,_) | LT (p,_,_) | EQ (p,_,_,_) | NEQ (p,_,_) -> p
+          | LEQ (p,_,_) | LT (p,_,_) | EQ (p,_,_,_) -> p
+
+
+        let interpolate proof belongs_to =
+          (* TODO project paths on boundaries *)
+          (* 1: determines how many boundaries there are 'max of belongs_to' -1, assuming belongs_to -> [1;\infty[ *)
+          (* 2: compact path to keep only relevant parts:
+           * the extremity of the path should be common terms, but the constraints in the middle not.
+           * the path might also 'zigzag' between parts of the formula
+           * A side => project each part and take conj
+           * B side => project each part negate and take disj
+           * TODO remove z_0 from final formula, and add z_0 to belongs_to (appears every where) *)
+          failwith "TODO"
+
       end
     
 
