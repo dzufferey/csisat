@@ -128,7 +128,7 @@ let reverse formula = match formula with
 let is_pl_sat formula =
   let f =
     if AstUtil.is_cnf formula then formula
-    else match AstUtil.equisatisfiable formula with
+    else match AstUtil.better_equisatisfiable formula with
       | (_,_,f) -> f
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
@@ -160,7 +160,7 @@ let is_sat formula =
         else 
           begin
             Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-            AstUtil.equisatisfiable formula
+            AstUtil.better_equisatisfiable formula
           end
       in
       let f = AstUtil.cnf (AstUtil.simplify f) in (*TODO is needed ??*)
@@ -213,7 +213,7 @@ let unsat_cores_LIUIF formula =
     else 
       begin
         Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-        AstUtil.equisatisfiable formula
+        AstUtil.better_equisatisfiable formula
       end
   in
   let f = AstUtil.cnf (AstUtil.simplify f) in
