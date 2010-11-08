@@ -608,7 +608,7 @@ let lazy_cnf formula =
     else 
       begin
         Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-        equisatisfiable formula
+        better_equisatisfiable formula
       end
   in
     (atom_to_pred, pred_to_atom, f)
