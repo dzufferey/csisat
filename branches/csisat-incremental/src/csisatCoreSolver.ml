@@ -603,7 +603,9 @@ let rec solve t =
 
 (*TODO split the theories and keep what belongs to what *)
 let create pred =
-  let (euf_formula, la_formula, shared, definitions) = split_formula_LI_UIF pred in
+  (*apply split_formula_LI_UIF only to literals*) 
+  let literals = get_literal pred in
+  let (euf_formula, la_formula, shared, definitions) = split_formula_LI_UIF (And literals) in
   let sat_solver = new Dpll.csi_dpll true in
   let stack = Stack.create () in
   let pset = get_proposition_set pred in
