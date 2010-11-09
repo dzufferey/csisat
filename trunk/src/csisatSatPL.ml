@@ -184,7 +184,7 @@ let is_sat formula =
                   test_and_refine ()
               with SAT | SAT_FORMULA _ ->
                 begin 
-                  Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print (And [assign; And externals]) )));
+                  Message.print Message.Debug (lazy("assignment is SAT: "^(AstUtil.print (AstUtil.normalize_only (And [assign; And externals])))));
                   true
                 end
             end
@@ -196,134 +196,30 @@ let is_sat formula =
           test_and_refine ()
         end
 
-(** Assumes the formula to be unsat.
- *  Assumes NNF.
- * @deprecated
- *)
-let unsat_cores_LIUIF formula =
-  let solver = get_solver false in
-  let cores = ref [] in
-  let (atom_to_pred, pred_to_atom, f) =
-    (*if is already in cnf ...*)
-    if AstUtil.is_cnf formula then
-      begin
-        Message.print Message.Debug (lazy("already in CNF"));
-        to_atoms (AstUtil.cnf formula)
-      end
-    else 
-      begin
-        Message.print Message.Debug (lazy("not CNF, using an equisatisfiable"));
-        AstUtil.better_equisatisfiable formula
-      end
-  in
-  let f = AstUtil.cnf (AstUtil.simplify f) in
-    Message.print Message.Debug (lazy("abstracted formula is "^(AstUtil.print f)));
-    solver#init f;
-    let rec test_and_refine () =
-      if solver#solve then
-        begin
-          Message.print Message.Debug (lazy "found potentially SAT assign");
-          let solution = solver#get_solution in
-          let externals = AstUtil.get_external_atoms (And solution) in
-          let assign = AstUtil.remove_atoms (And solution) in
-          (*TODO config can force a theory*)
-          try
-            check_trivial_case assign;
-            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
-              Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
-              cores := core_with_info::!cores;
-              let clause = abstract pred_to_atom unsat_core in
-              let contra = reverse clause in
-                solver#add_clause contra;
-                test_and_refine ()
-          with SAT | SAT_FORMULA _ -> raise (SAT_FORMULA (And [assign; And externals]))
-        end
-      else
-        begin
-          Message.print Message.Debug (lazy "No potentially SAT assign");
-          (*in the "boolean" core, the contradiction should be direct if any ...*)
-          (*is in CNF -> DNF -> remove element that are covered by existing unsat cores*)
-          (* TODO when proof is available, skip this step avoid DNF*)
-          let bool_core = match AstUtil.dnf formula with
-            | Or lst -> lst
-            | _ -> failwith "SatPL: DNF does not returned a Or ?!"
-          in
-            List.iter (fun c -> Message.print Message.Debug (lazy("possible core: "^(AstUtil.print c)))) bool_core;
-            (*remove the clauses covered by the already found unsat cores*)
-            List.iter
-              (fun x ->
-                match x with
-                | And lst ->
-                  if not (List.exists
-                      (fun (c,_,_) -> match c with
-                        | And c_lst -> List.for_all (fun p -> List.mem p lst) c_lst
-                        | _ -> failwith "SatPL: cores are not And ..."
-                      ) !cores) then
-                    begin
-                      (*not covered => bool contradiction*)
-                      (*detect and directly add to cores*)
-                      let entailed = ref PredSet.empty in
-                      let rec process lst = match lst with
-                        | x::xs ->
-                          begin
-                            let contra = match x with
-                              | Not (Eq _ as eq) -> eq
-                              | Eq _ as eq -> Not eq
-                              | Lt (e1,e2) -> Leq (e2,e1)
-                              | Leq (e1,e2) -> Lt (e2, e1)
-                              | _ -> failwith "SatPL: not normalized formula"
-                            in
-                              if PredSet.mem contra !entailed then
-                                begin
-                                  cores := (And [x;contra],NelsonOppen.BOOL, [])::!cores
-                                end
-                              else
-                                begin
-                                  entailed := PredSet.add x !entailed;
-                                  process xs
-                                end
-                          end
-                        | [] -> failwith "SatPL: failed to detect SAT solver contradiction"
-                      in
-                        process lst
-                    end
-                | _ -> failwith "SatPL: second layer of DNF is not And ..."
-              ) bool_core;
-            !cores
-        end
-    in
-      test_and_refine ()
-
 let unsat_cores_with_proof formula =
   let solver = get_solver true in
   let cores = ref [] in
   let f = AstUtil.cnf (AstUtil.simplify formula) in
     Message.print Message.Debug (lazy("cnf formula is "^(AstUtil.print f)));
     solver#init f;
-    let rec test_and_refine () =
-      if solver#solve then
-        begin
-          Message.print Message.Debug (lazy "found potentially SAT assign");
-          let solution =  solver#get_solution in
-          let externals = AstUtil.get_external_atoms (And solution) in
-          let assign = AstUtil.remove_atoms (And solution) in
-          try
-            check_trivial_case assign;
-            let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
-              Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
-              cores := core_with_info::!cores;
-              let contra = reverse unsat_core in
-                solver#add_clause contra;
-                test_and_refine ()
-          with SAT | SAT_FORMULA _ -> raise (SAT_FORMULA (And [assign; And externals]))
-        end
-      else
-        begin
-          Message.print Message.Debug (lazy "No potentially SAT assign");
-          (!cores, solver#get_proof)
-        end
-    in
-      test_and_refine ()
+    while solver#solve do
+        Message.print Message.Debug (lazy "found potentially SAT assign");
+        let solution =  solver#get_solution in
+        let externals = AstUtil.get_external_atoms (And solution) in
+        let assign = AstUtil.remove_atoms (And solution) in
+        try
+          check_trivial_case assign;
+          let (unsat_core, _, _) as core_with_info = NelsonOppen.unsat_core_with_info assign in
+            Message.print Message.Debug (lazy("unsat core is: "^(AstUtil.print unsat_core)));
+            cores := core_with_info::!cores;
+            let contra = reverse unsat_core in
+              solver#add_clause contra
+        with SAT | SAT_FORMULA _ ->
+          Message.print Message.Debug (lazy("failed: "^(AstUtil.print (AstUtil.normalize_only (And [assign; And externals])))));
+          raise (SAT_FORMULA (AstUtil.normalize_only (And [assign; And externals])))
+    done;
+    Message.print Message.Debug (lazy "No potentially SAT assign");
+    (!cores, solver#get_proof)
 
 let make_proof_with_solver formula cores =
   let solver = get_solver true in
