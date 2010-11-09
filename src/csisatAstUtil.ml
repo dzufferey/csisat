@@ -211,24 +211,24 @@ let rec simplify_expr expr =
         else if c = 1.0 then prune e
         else Coeff(c, prune e)
   in
-    Message.print Message.Debug (lazy("  original:    " ^ (print_expr expr)));
-    let distr = distribute_coeff 1.0 expr in
-      (*Message.print Message.Debug (lazy("  distributed: " ^ (print_expr distr)));*)
-      let flat = flatten distr in
-        (*Message.print Message.Debug (lazy("  flat:        " ^ (print_expr flat)));*)
-        let cst = merge_cst flat in
-          (*Message.print Message.Debug (lazy("  merge cst:   " ^ (print_expr cst)));*)
-          let vars = get_var cst in
-          let merged_var = List.fold_left (fun acc x -> merge_var x acc) cst vars in
-            (*Message.print Message.Debug (lazy("  merge var:   " ^ (print_expr merged_var)));*)
-            let pruned = prune merged_var in
-              (*Message.print Message.Debug (lazy("  prune:       " ^ (print_expr pruned)));*)
-              let apps = get_appl pruned in
-              let merged_app =  List.fold_left (fun acc x -> merge_appl x acc) pruned apps in (*BUGGY: apps are not normalized ...*)
-                (*Message.print Message.Debug (lazy("  merge app:   " ^ (print_expr merged_app)));*)
-                let pruned2 = prune merged_app in
-                  Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));
-                  pruned2
+  let distr = distribute_coeff 1.0 expr in
+  let flat = flatten distr in
+  let cst = merge_cst flat in
+  let vars = get_var cst in
+  let merged_var = List.fold_left (fun acc x -> merge_var x acc) cst vars in
+  let pruned = prune merged_var in
+  let apps = get_appl pruned in
+  let merged_app =  List.fold_left (fun acc x -> merge_appl x acc) pruned apps in (*BUGGY: apps are not normalized ...*)
+  let pruned2 = prune merged_app in
+    (*Message.print Message.Debug (lazy("  original:    " ^ (print_expr expr)));*)
+    (*Message.print Message.Debug (lazy("  distributed: " ^ (print_expr distr)));*)
+    (*Message.print Message.Debug (lazy("  flat:        " ^ (print_expr flat)));*)
+    (*Message.print Message.Debug (lazy("  merge cst:   " ^ (print_expr cst)));*)
+    (*Message.print Message.Debug (lazy("  merge var:   " ^ (print_expr merged_var)));*)
+    (*Message.print Message.Debug (lazy("  prune:       " ^ (print_expr pruned)));*)
+    (*Message.print Message.Debug (lazy("  merge app:   " ^ (print_expr merged_app)));*)
+    (*Message.print Message.Debug (lazy("  simple:      " ^ (print_expr pruned2)));*)
+    pruned2
 
 (** Basic simplification steps for literals: constant inequalities, ...
  * known BUG: loop forever when a float value is NAN.

@@ -188,49 +188,6 @@ let test_bool_t () =
     test f1;
     test f2
 
-let test_unsat_core_with_pl () =
-  let f1 = AstUtil.cnf (AstUtil.simplify (List.hd (parse
-          "& [ = f [ a ] + [ b 5 ]  <= + [ b 1 ] f [ f [ a ] ]  = f [ c ] + [ d 4 ] = d + [ b 1 ] ~ <= + [ b 1 ] f [ f [ c] ] ]"
-     ))) in
-  let f2 = AstUtil.cnf (AstUtil.simplify (List.hd (parse
-          "& [ | [ = x 2 = 1 2 ]  ~<= x 2 ]"
-     ))) in
-  let f3 = AstUtil.cnf (AstUtil.simplify (List.hd (parse
-          "& [ = x y ~= f [x] f [y] ]"
-     ))) in
-  let f4 = AstUtil.cnf (AstUtil.simplify (List.hd (parse
-          "& [ | [ = x 2 = 1 2 ]  ~= x 2 ]"
-     ))) in
-  let f5 = AstUtil.cnf (AstUtil.simplify (List.hd (parse
-          "& [ | [ = x 2 = y 2 ]  ~= x 1 = x 1 ]"
-     ))) in
-  let print_core (core,th,eq) =
-    let print_dedeq (th,eq) =
-      match th with
-      | NelsonOppen.LI -> "LI "^(AstUtil.print eq)
-      | NelsonOppen.BOOL -> "BOOL!! "
-      | NelsonOppen.UIF -> "UIF "^(AstUtil.print eq)
-      | NelsonOppen.SATISFIABLE ->"NelsonOppen.SATISFIABLE!!!"
-    in
-    Message.print Message.Normal (lazy ("core:"^(AstUtil.print core)));
-    begin
-      match th with
-      | NelsonOppen.LI -> Message.print Message.Normal (lazy "LI contradiction")
-      | NelsonOppen.BOOL -> Message.print Message.Normal (lazy "SAT contradiction")
-      | NelsonOppen.UIF -> Message.print Message.Normal (lazy "UIF contradiction")
-      | NelsonOppen.SATISFIABLE -> Message.print Message.Error (lazy "NelsonOppen.SATISFIABLE!!!")
-    end;
-    Message.print Message.Normal (lazy("congruence is: "^(Utils.string_list_cat ", " (List.map print_dedeq eq))))
-  in
-  let test f =
-    Message.print Message.Normal (lazy("unsat cores of "^(AstUtil.print f)));
-    try 
-      let cores = SatPL.unsat_cores_LIUIF f in
-        List.iter print_core cores
-    with SAT -> Message.print Message.Error (lazy "SAT!!!")
-  in
-    List.iter test [f1;f2;f3;f4;f5]
-
 let test_unsat_EUF () =
   let f = AstUtil.simplify ( List.hd (parse
       "& [ ~= f2[c_5] f2[c_6] = c_0 f1[c_3 c_0] = c_1 f1[c_0 c_3]  = f1[c_0 c_3] f1[c_3 c_0] = c_1 f1[c_0 c_4] = c_5 f1[c_4 c_0]  = f1[c_0 c_4] f1[c_4 c_0] = c_0 f1[c_6 c_0] = c_6 f1[c_6 c_1] ]"
