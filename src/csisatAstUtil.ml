@@ -641,6 +641,21 @@ let get_proposition_set pred =
   in
     process pred
 
+(** Gets the propositional atoms of a formula.
+ * @return an OrdSet.
+ *)
+let get_atoms pred =
+  let rec process pred = match pred with
+    | False -> []
+    | True -> []
+    | And lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
+    | Or lst -> List.fold_left (fun acc x -> OrdSet.union acc (process x)) [] lst
+    | Not p -> process p
+    | Eq _  | Lt _ | Leq _ -> []
+    | Atom _ as a -> [a]
+  in
+    process pred
+
 (** Returns the variables of a predicate.
  * @return an OrdSet.
  *)
@@ -1082,3 +1097,43 @@ let rec integer_heuristic p =
     | Eq _ | Leq _ | Atom _ -> p 
   in
     p'
+
+
+(**********)
+let print_hol_cst flt =
+  let (f,i) = modf flt in
+    if f = 0.0 then
+      begin
+        let i = (int_of_float i) in
+        let prefix = if i < 0 then "-- &" else "&" in
+          prefix ^ (string_of_int (abs i))
+      end
+    else failwith "print_hol_cst"
+
+let rec print_hol_expr expr = match expr with
+  | Constant cst -> print_hol_cst cst
+  | Variable v -> v
+  | Application (sym, lst) -> sym ^ "(" ^ (Utils.string_list_cat ", " (List.map print_hol_expr lst)) ^")"
+  | Sum lst ->  "(" ^ (Utils.string_list_cat " + " (List.map print_hol_expr lst)) ^")"
+  | Coeff (co, expr) -> (print_hol_cst co) ^ " * " ^ (print_hol_expr expr)
+
+let rec print_hol p =
+  match p with
+  | False -> "F"
+  | True -> "T"
+  | And lst -> "(" ^ (Utils.string_list_cat " /\\ " (List.map print_hol lst)) ^")"
+  | Or lst -> "(" ^ (Utils.string_list_cat " \\/ " (List.map print_hol lst)) ^")"
+  | Not p -> "( ~ " ^ print_hol p ^ ")"
+  | Eq (e1,e2) -> "(" ^ (print_hol_expr e1) ^ " = " ^ (print_hol_expr e2) ^ ")"
+  | Lt (e1,e2) -> "(" ^ (print_hol_expr e1) ^ " < " ^ (print_hol_expr e2) ^ ")"
+  | Leq (e1,e2) -> "(" ^ (print_hol_expr e1) ^ " <= " ^ (print_hol_expr e2) ^ ")"
+  | Atom (External str) -> str
+  | Atom (Internal i) -> "atom"^(string_of_int i)
+
+let print_hol_full var_type p =
+  let variables = get_var p in
+  let vars_del = String.concat " " (List.map (fun v -> (print_hol_expr v) ^ ":" ^ var_type) variables) in
+  let atoms = get_atoms p in
+  let atoms_decl = String.concat " " (List.map (fun v -> (print_hol v) ^ ":bool") atoms) in
+  let prefix = "? "^ atoms_decl ^ " " ^ vars_del ^". " in
+    "`" ^ prefix  ^ (print_hol p) ^ "`"

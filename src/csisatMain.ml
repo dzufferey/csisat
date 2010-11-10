@@ -131,6 +131,8 @@ let interpolant_test_lst it_lst f_lst =
 
 let interpolate_in () =
   let lst = read_input () in
+  (*Message.print Message.Normal (lazy(AstUtil.print_hol_full "int" (AstUtil.simplify (And lst))));*)
+  (*Message.print Message.Normal (lazy(AstUtil.print_hol_full "int" (And lst)));*)
   let lst =
     if !integer_heuristics then List.map AstUtil.integer_heuristic  lst
     else lst
