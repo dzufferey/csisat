@@ -792,17 +792,88 @@ module InterfaceLayer =
         let of_what prf = match prf with
           | LEQ (p,_,_) | LT (p,_,_) | EQ (p,_,_,_) -> p
 
+        let get_expr proof =
+          let expr_from_diff (_,e1,e2,_) = (e1,e2) in
+          let traverse path =
+            List.fold_left
+              (fun acc diff ->
+                let e1,e2 = expr_from_diff diff in
+                  ExprSet.add e1 (ExprSet.add e2 acc)
+              )
+              ExprSet.empty
+              path
+          in
+            match proof with
+            | LEQ (pred, _, path) | LT (pred, _, path) ->
+              ExprSet.union (get_expr_set pred) (traverse path)
+            | EQ (pred, domain, path1, path2) ->
+              ExprSet.union
+                (get_expr_set pred)
+                (ExprSet.union (traverse path1) (traverse path2))
 
+
+
+        (* Project paths on boundaries.
+         * A proof of unsat is a negative cycle.
+         *)
         let interpolate proof belongs_to =
-          (* TODO project paths on boundaries *)
-          (* 1: determines how many boundaries there are 'max of belongs_to' -1, assuming belongs_to -> [1;\infty[ *)
-          (* 2: compact path to keep only relevant parts:
-           * the extremity of the path should be common terms, but the constraints in the middle not.
-           * the path might also 'zigzag' between parts of the formula
-           * A side => project each part and take conj
-           * B side => project each part negate and take disj
-           * TODO remove z_0 from final formula, and add z_0 to belongs_to (appears every where) *)
-          failwith "TODO"
+          (* get the max of belongs_to. *)
+          let maxExpr =
+            List.fold_left
+              (fun acc e -> max acc (Interval.max (belongs_to e)))
+              1
+              (ExprSet.elements (get_expr proof))
+          in
+          (* add z_0 to belongs_to (appears everywhere) *)
+          let belongs_to expr = if expr = z_0 then (1,maxExpr) else belongs_to expr in
+            if maxExpr <= 1 then
+              (* contradiction local to first part only *)
+              [false]
+            else
+              begin
+                let is_eq p = match p with Eq _ -> true | _ -> false in
+                let is_lt p = match p with Lt _ -> true | _ -> false in
+                (* 1: determines how many boundaries there are 'max of belongs_to' -1, assuming belongs_to -> [1;\infty[ *)
+                let boundaries = List.map (fun i -> (i,i+1)) (Utils.range 1 maxExpr) in
+                (* take two consecutive diffs and compact them. *)
+                let merge_diff diff1 diff2 domain =
+                  let (p1,e11,e12,c1) = diff1 in
+                  let (p2,e21,e22,c2) = diff2 in
+                  let p, c = match domain with
+                    | Integer ->
+                      begin
+                        let c = c1 +. c2 in
+                        let p =
+                          if (is_eq p1) && (is_eq p2) then Eq (e11, Sum [e22; Constant c])
+                          else Leq (e11, Sum [e22; Constant c])
+                        in
+                          (simplify (p) , c)
+                      end
+                    | Real -> (*the cs might contain some epsilons ... *)
+                      begin
+                        let c1 = if is_lt p1 then c1 +. epsilon else c1 in
+                        let c2 = if is_lt p2 then c2 +. epsilon else c2 in
+                        let c = c1 +. c2 in
+                        let p =
+                          if (is_eq p1) && (is_eq p2) then Eq (e11, Sum [e22; Constant c])
+                          else if (is_lt p1) && (is_lt p2) then Lt (e11, Sum [e22; Constant c])
+                          else Leq (e11, Sum [e22; Constant c])
+                        in
+                        let c' = if (is_lt p1) && (is_lt p2) then c -. epsilon else c in
+                          (simplify (p) , c')
+                      end
+                  in
+                    assert ( e12 = e21 );
+                    (p ,e11, e22, c)
+                in
+                (* 2: compact path to keep only relevant parts:
+                 * the extremity of the path should be common terms, but the constraints in the middle not.
+                 * the path might also 'zigzag' between parts of the formula
+                 * A side => project each part and take conj
+                 * B side => project each part negate and take disj
+                 * TODO remove z_0 from final formula. *)
+                  failwith "TODO"
+              end
 
       end
     
