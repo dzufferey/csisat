@@ -707,6 +707,7 @@ module InterfaceLayer =
         let mk_diff domain pred =
           let (v1, v2, c) = adapt_domain domain (dl_edge pred) in
             (pred, Variable v1, Variable v2, c)
+        let pred_of_diff (p,_,_,_) = p
 
         let get_left_diff (p,e1,e2,c) = e1
         let get_right_diff (p,e1,e2,c) = e2
@@ -720,6 +721,9 @@ module InterfaceLayer =
         let get_right proof = match proof with
             | LEQ (_, _, path) | LT (_, _, path) -> get_right_path path
             | EQ (_, _, path1, path2) -> get_left_path path2
+        
+        let get_domain prf = match prf with
+          | LEQ (_, domain, _) | LT (_, domain, _) | EQ (_, domain, _, _) -> domain
 
         let sum_path path = List.fold_left (fun acc (_,_,_,c) -> acc +. c) 0.0 path
 
@@ -817,6 +821,7 @@ module InterfaceLayer =
          * A proof of unsat is a negative cycle.
          *)
         let interpolate proof belongs_to =
+          let domain = get_domain proof in
           (* get the max of belongs_to. *)
           let maxExpr =
             List.fold_left
@@ -828,7 +833,7 @@ module InterfaceLayer =
           let belongs_to expr = if expr = z_0 then (1,maxExpr) else belongs_to expr in
             if maxExpr <= 1 then
               (* contradiction local to first part only *)
-              [false]
+              [False]
             else
               begin
                 let is_eq p = match p with Eq _ -> true | _ -> false in
@@ -836,7 +841,7 @@ module InterfaceLayer =
                 (* 1: determines how many boundaries there are 'max of belongs_to' -1, assuming belongs_to -> [1;\infty[ *)
                 let boundaries = List.map (fun i -> (i,i+1)) (Utils.range 1 maxExpr) in
                 (* take two consecutive diffs and compact them. *)
-                let merge_diff diff1 diff2 domain =
+                let merge_diff diff1 diff2 =
                   let (p1,e11,e12,c1) = diff1 in
                   let (p2,e21,e22,c2) = diff2 in
                   let p, c = match domain with
@@ -866,13 +871,72 @@ module InterfaceLayer =
                     assert ( e12 = e21 );
                     (p ,e11, e22, c)
                 in
+                let is_left i expr =
+                  let where = belongs_to expr in
+                    (Interval.max where) <= i
+                in
+                let is_right i expr =
+                  let where = belongs_to expr in
+                    (Interval.min where) > i
+                in
                 (* 2: compact path to keep only relevant parts:
-                 * the extremity of the path should be common terms, but the constraints in the middle not.
+                 * the extremity of the path should be the same term, since a proof of unsat is a negative cylce.
                  * the path might also 'zigzag' between parts of the formula
                  * A side => project each part and take conj
                  * B side => project each part negate and take disj
-                 * TODO remove z_0 from final formula. *)
-                  failwith "TODO"
+                 * This version is A side. *)
+                let rec process_path limit acc curr_diff path = match path with
+                  | ((p,e1,e2,c) as x) :: xs ->
+                    begin
+                      if (is_left (limit + 1) e1) && (is_right limit e2) then
+                        begin
+                          (* We have found an important point, me must stop compacting here *)
+                          match curr_diff with
+                          | Some curr_diff -> (*as expected*)
+                            process_path limit (curr_diff::acc) None xs
+                          | None -> (* starting with a boundary constraint *)
+                            process_path limit acc None xs
+                        end
+                      else if (is_left limit e1) && (is_left limit e2) then
+                        begin
+                          (* compact or set diff *)
+                          let curr_diff' = match curr_diff with
+                            | Some diff -> merge_diff diff x
+                            | None -> x
+                          in
+                            process_path limit acc (Some curr_diff') xs
+                        end
+                      else
+                        begin
+                          (* e1 is right (does not matter) *)
+                          assert((is_right limit e1) && (curr_diff = None));
+                          process_path limit acc curr_diff xs
+                        end
+                    end
+                  | [] ->
+                    begin
+                      (* take the first element of acc and curr_diff, and compact *)
+                      let diffs = match curr_diff with
+                        | Some diff -> 
+                          begin
+                            match List.rev acc with
+                            | [] -> [diff]
+                            | x::xs -> (merge_diff diff x)::xs
+                          end
+                        | None -> acc
+                      in
+                      let itp =  And (List.map pred_of_diff diffs) in
+                        (* remove z_0 from final formula. *)
+                        map_all_top_down (fun x -> x) (fun e -> if e = z_0 then z_0_c else e) itp
+                    end
+                in
+                let path = match proof with
+                  | LT (_, _, path) -> path
+                  | LEQ (_, _, path) -> path
+                  | _ -> failwith "SatDL.interpolate: expected LT or LEQ"
+                in
+                  (*TODO assert that this is a negative cytcle.*)
+                  List.map (fun (i,i') -> process_path i [] None path) boundaries
               end
 
       end
