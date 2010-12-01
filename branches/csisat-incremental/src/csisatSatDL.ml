@@ -818,19 +818,20 @@ module InterfaceLayer =
 
 
         (* Project paths on boundaries.
-         * A proof of unsat is a negative cycle.
-         *)
+         * A proof of unsat is a negative cycle. *)
         let interpolate proof belongs_to =
           let domain = get_domain proof in
+          let path = match proof with
+            | LT (_, _, path) | LEQ (_, _, path) -> path
+            | _ -> failwith "SatDL.interpolate: expected LT or LEQ"
+          in
           (* get the max of belongs_to. *)
           let maxExpr =
             List.fold_left
-              (fun acc e -> max acc (Interval.max (belongs_to e)))
+              (fun acc diff -> max acc (Interval.max (belongs_to (pred_of_diff diff))))
               1
-              (ExprSet.elements (get_expr proof))
+              path 
           in
-          (* add z_0 to belongs_to (appears everywhere) *)
-          let belongs_to expr = if expr = z_0 then (1,maxExpr) else belongs_to expr in
             if maxExpr <= 1 then
               (* contradiction local to first part only *)
               [False]
@@ -871,13 +872,10 @@ module InterfaceLayer =
                     assert ( e12 = e21 );
                     (p ,e11, e22, c)
                 in
-                let is_left i expr =
-                  let where = belongs_to expr in
+                (* a few methods to reason about where are the predicates *)
+                let is_left_pred i pred =
+                  let where = belongs_to pred in
                     (Interval.max where) <= i
-                in
-                let is_right i expr =
-                  let where = belongs_to expr in
-                    (Interval.min where) > i
                 in
                 (* 2: compact path to keep only relevant parts:
                  * the extremity of the path should be the same term, since a proof of unsat is a negative cylce.
@@ -885,58 +883,43 @@ module InterfaceLayer =
                  * A side => project each part and take conj
                  * B side => project each part negate and take disj
                  * This version is A side. *)
-                let rec process_path limit acc curr_diff path = match path with
-                  | ((p,e1,e2,c) as x) :: xs ->
+                let rec split_path i acc_done acc_in_progess path = match path with
+                  | ((px,_,_,_) as x)::((py,_,_,_) as y)::xs ->
                     begin
-                      if (is_left (limit + 1) e1) && (is_right limit e2) then
-                        begin
-                          (* We have found an important point, me must stop compacting here *)
-                          match curr_diff with
-                          | Some curr_diff -> (*as expected*)
-                            process_path limit (curr_diff::acc) None xs
-                          | None -> (* starting with a boundary constraint *)
-                            process_path limit acc None xs
-                        end
-                      else if (is_left limit e1) && (is_left limit e2) then
-                        begin
-                          (* compact or set diff *)
-                          let curr_diff' = match curr_diff with
-                            | Some diff -> merge_diff diff x
-                            | None -> x
-                          in
-                            process_path limit acc (Some curr_diff') xs
-                        end
-                      else
-                        begin
-                          (* e1 is right (does not matter) *)
-                          assert((is_right limit e1) && (curr_diff = None));
-                          process_path limit acc curr_diff xs
-                        end
+                      if (is_left_pred i px) = (is_left_pred i py) then (*accumulate*)
+                        split_path i acc_done (x::acc_in_progess) (y::xs)
+                      else (*split*)
+                        split_path i ((List.rev (x::acc_in_progess)) :: acc_done) [] (y::xs)
                     end
-                  | [] ->
+                  | ((px,_,_,_) as x)::[] ->
                     begin
-                      (* take the first element of acc and curr_diff, and compact *)
-                      let diffs = match curr_diff with
-                        | Some diff -> 
-                          begin
-                            match List.rev acc with
-                            | [] -> [diff]
-                            | x::xs -> (merge_diff diff x)::xs
-                          end
-                        | None -> acc
-                      in
-                      let itp =  And (List.map pred_of_diff diffs) in
-                        (* remove z_0 from final formula. *)
-                        map_all_top_down (fun x -> x) (fun e -> if e = z_0 then z_0_c else e) itp
+                      (*take the first and the last portion, and decide whether they should be merged.*)
+                      match List.rev acc_done with
+                      | (((py,_,_,_) as y) :: ys) :: accs ->
+                        begin
+                          if (is_left_pred i px) = (is_left_pred i py) then
+                            ((List.rev (x::acc_in_progess)) @ (y::ys)) :: accs
+                          else
+                            (List.rev (x::acc_in_progess)) :: (y::ys) :: accs
+                        end
+                      | [] -> [List.rev (x::acc_in_progess)]
+                      | _ -> failwith "SatDL.interpolate: empty portion of path."
                     end
+                  | [] -> failwith "SatDL.interpolate: empty path"
                 in
-                let path = match proof with
-                  | LT (_, _, path) -> path
-                  | LEQ (_, _, path) -> path
-                  | _ -> failwith "SatDL.interpolate: expected LT or LEQ"
+                let compact lst =
+                  let diff = List.fold_left merge_diff (List.hd lst) (List.tl lst) in
+                    pred_of_diff diff
                 in
                   (*TODO assert that this is a negative cytcle.*)
-                  List.map (fun (i,i') -> process_path i [] None path) boundaries
+                  List.map
+                    (fun (i,i') ->
+                      let split = split_path i [] [] path in
+                      let a_side = List.filter (fun section -> is_left_pred i (pred_of_diff (List.hd section))) split in
+                      let compacted = List.map compact a_side in
+                        And compacted
+                    )
+                    boundaries
               end
 
       end
