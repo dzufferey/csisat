@@ -149,6 +149,7 @@ module BasicSolver =
           let b = List.rev (List.tl (List.rev (List.map Diff.b prf))) in
             (List.for_all2 (=) a b) && Diff.weaker goal (strongest_consequence (goal, prf))
 
+        (*let to_string prf = "\\inferrule{ "^(String.concat " \\\\ " (List.map Diff.to_string (path prf)))^" }{ "^(Diff.to_string (what prf))^" }"*)
         let to_string (goal, lst) =
           (String.concat "," (List.map Diff.to_string lst)) ^ " ==> " ^ (Diff.to_string goal)
 
@@ -703,11 +704,19 @@ module InterfaceLayer =
                | LT of predicate * domain * diff list (* also form NEQ proofs *)
                | EQ of predicate * domain * diff list * diff list (* two LEQ paths, a<=b /\ a>=b *)
 
-
         let mk_diff domain pred =
           let (v1, v2, c) = adapt_domain domain (dl_edge pred) in
             (pred, Variable v1, Variable v2, c)
         let pred_of_diff (p,_,_,_) = p
+        
+        let diff_to_string diff = print_pred (pred_of_diff diff)
+        let path_to_string path = String.concat " " (List.map diff_to_string path)
+        let to_string proof = match proof with
+          | LEQ (pred, domain, diffs) | LT (pred, domain, diffs) ->
+            (print_pred pred) ^ " because\n" ^ (path_to_string diffs)
+          | EQ (pred, domain, diffs1, diffs2) ->
+            (print_pred pred) ^ " because\n" ^ (path_to_string diffs1) ^ "\n" ^ (path_to_string diffs2)
+
 
         let get_left_diff (p,e1,e2,c) = e1
         let get_right_diff (p,e1,e2,c) = e2
@@ -815,15 +824,40 @@ module InterfaceLayer =
                 (get_expr_set pred)
                 (ExprSet.union (traverse path1) (traverse path2))
 
-
+        let get_pred proof =
+          let traverse path =
+            List.fold_left
+              (fun acc diff ->
+                let p = pred_of_diff diff in
+                  PredSet.add p acc
+              )
+              PredSet.empty
+              path
+          in
+            match proof with
+            | LEQ (pred, _, path) | LT (pred, _, path) ->
+              PredSet.add pred (traverse path)
+            | EQ (pred, domain, path1, path2) ->
+              PredSet.add pred (PredSet.union (traverse path1) (traverse path2))
 
         (* Project paths on boundaries.
          * A proof of unsat is a negative cycle. *)
-        let interpolate proof belongs_to =
+        let interpolate contradiction proof belongs_to =
           let domain = get_domain proof in
-          let path = match proof with
+          let raw_path = match proof with
             | LT (_, _, path) | LEQ (_, _, path) -> path
             | _ -> failwith "SatDL.interpolate: expected LT or LEQ"
+          in
+          (* add the contradiction to the path to get a negative cycle *)
+          let (p, e1, e2, c) as cdiff = mk_diff domain contradiction in
+          let path =
+            if (get_left_path raw_path) = e2 then
+              cdiff :: raw_path
+            else
+              begin
+                assert(get_right_path raw_path = e1);
+                raw_path @ [cdiff]
+              end
           in
           (* get the max of belongs_to. *)
           let maxExpr =
@@ -1102,17 +1136,10 @@ module InterfaceLayer =
       let contradiction = normalize (Not pred) in
         (And core_pred, contradiction, DL, deductions)
 
-    let unsat_core_with_info t =
-      let (diff, proof) = BasicSolver.unsat_core_with_info t.solver in (* proof |= ~diff *)
-      let contradiction = get_pred t diff in
-      let core = BasicSolver.Proof.path proof in
-      let core_pred = OrdSet.remove_duplicates (List.map (get_pred t) core) in
-        (And core_pred, contradiction, DL, [])
-
-    
     (*transform a proof from the BasicSolver to a partial proof of the InterfaceLayer
      *this transform returns a predicate (implied by the proof), domain, and diff list. *)
     let transform_proof t prf =
+      Message.print Message.Debug (lazy ("SatDL.Proof transforming: " ^ (BasicSolver.Proof.to_string prf)));
       let proven = get_pred t (BasicSolver.Proof.what prf) in
       let proof = BasicSolver.Proof.path prf in
       let diff_to_diff diff =
@@ -1123,6 +1150,22 @@ module InterfaceLayer =
           (pred, a, b, c)
       in
         (proven, t.domain, List.map diff_to_diff proof)
+    
+    let unsat_core_with_info_proof t =
+      let (diff, proof) = BasicSolver.unsat_core_with_info t.solver in (* proof |= ~diff *)
+      let contradiction = get_pred t diff in
+      let (_, domain, proof') = transform_proof t proof in
+      let proof2 = Proof.LT (contradiction, domain, proof') in
+      let core_pred = PredSet.elements (PredSet.add contradiction (Proof.get_pred proof2)) in
+        Message.print Message.Debug (lazy ("SatDL basic contra: " ^ (Diff.to_string diff)));
+        Message.print Message.Debug (lazy ("SatDL basic proof: " ^ (BasicSolver.Proof.to_string proof)));
+        Message.print Message.Debug (lazy ("SatDL result: " ^ (Proof.to_string proof2)));
+        (normalize_only (And core_pred), contradiction, DL, proof2)
+    
+    (* TODO does not need to return the proof ??? *)
+    let unsat_core_with_info t =
+      let (core, contradiction, th, _) = unsat_core_with_info_proof t in
+        (core, contradiction, th, [])
 
     let mk_proof t pred =
       Message.print Message.Debug (lazy("SatDL: mk_proof" ^ (print_pred pred)));
@@ -1151,4 +1194,22 @@ module InterfaceLayer =
         proof
 
   end
+
+(*TODO put some tests here*)
+(*
+let test =
+  let a_pred = Lt (Variable "a", Variable "b") in
+  let b_pred = Lt (Variable "b", Variable "a") in
+  let domain = InterfaceLayer.Real in
+  let solver = InterfaceLayer.create domain [a_pred; b_pred] in
+    assert(InterfaceLayer.push solver a_pred);
+    assert(not (InterfaceLayer.push solver b_pred));
+    let core, contra, _, proof = InterfaceLayer.unsat_core_with_info_proof solver in
+    let belongs_to _ = (1,2) in
+    let itp = InterfaceLayer.Proof.interpolate contra proof belongs_to in
+      Message.print Message.Normal (lazy ("proof = " ^ (InterfaceLayer.Proof.to_string proof)));
+      Message.print Message.Normal (lazy ("core = " ^ (print_pred core)));
+      Message.print Message.Normal (lazy ("contra = " ^ (print_pred contra)));
+      Message.print Message.Normal (lazy ("itp = " ^ (print_pred (List.hd itp))))
+*)
 
