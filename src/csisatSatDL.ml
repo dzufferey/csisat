@@ -859,6 +859,7 @@ module InterfaceLayer =
                 raw_path @ [cdiff]
               end
           in
+          Message.print Message.Debug (lazy("SatDL.interpolate: path is " ^ (path_to_string path)));
           (* get the max of belongs_to. *)
           let maxExpr =
             List.fold_left
@@ -951,6 +952,8 @@ module InterfaceLayer =
                       let split = split_path i [] [] path in
                       let a_side = List.filter (fun section -> is_left_pred i (pred_of_diff (List.hd section))) split in
                       let compacted = List.map compact a_side in
+                        Message.print Message.Debug (lazy("SatDL.interpolate: boundary from " ^ (string_of_int i) ^ " to " ^ (string_of_int i')));
+                        Message.print Message.Debug (lazy("SatDL.interpolate: split path is " ^ (String.concat "; " (List.map path_to_string split))));
                         And compacted
                     )
                     boundaries
@@ -1198,18 +1201,26 @@ module InterfaceLayer =
 (*TODO put some tests here*)
 (*
 let test =
-  let a_pred = Lt (Variable "a", Variable "b") in
+  Message.enable_debug ();
+  let a_pred1 = Leq (Variable "a", Constant 0.0) in
+  let a_pred2 = Leq (Constant 1.0, Variable "b") in
+  let a_preds = [a_pred1; a_pred2] in
   let b_pred = Lt (Variable "b", Variable "a") in
+  let b_preds = [b_pred] in
   let domain = InterfaceLayer.Real in
-  let solver = InterfaceLayer.create domain [a_pred; b_pred] in
-    assert(InterfaceLayer.push solver a_pred);
+  let solver = InterfaceLayer.create domain (a_preds @ b_preds) in
+    assert(InterfaceLayer.push solver a_pred1);
+    assert(InterfaceLayer.push solver a_pred2);
     assert(not (InterfaceLayer.push solver b_pred));
     let core, contra, _, proof = InterfaceLayer.unsat_core_with_info_proof solver in
-    let belongs_to _ = (1,2) in
+    let belongs_to p =
+      if List.mem p a_preds then
+        if List.mem p b_preds then (1,2) else (1,1)
+      else (2,2)
+    in
     let itp = InterfaceLayer.Proof.interpolate contra proof belongs_to in
       Message.print Message.Normal (lazy ("proof = " ^ (InterfaceLayer.Proof.to_string proof)));
       Message.print Message.Normal (lazy ("core = " ^ (print_pred core)));
       Message.print Message.Normal (lazy ("contra = " ^ (print_pred contra)));
       Message.print Message.Normal (lazy ("itp = " ^ (print_pred (List.hd itp))))
 *)
-
