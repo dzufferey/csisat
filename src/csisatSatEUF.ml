@@ -201,7 +201,7 @@ module Proof =
 
     (* helper for make_proof_local.
      * TODO always keep at least the start and the end of a path *)
-    let make_minimal_local_chain prf (belongs_to: expression -> Interval.t) = match prf with
+    let make_minimal_local_chain prf belongs_to = match prf with
       | Congruence (e1,e2,lst) ->
         begin
           (*this should already be local*)
@@ -240,8 +240,8 @@ module Proof =
      * transpose so that each element is all the arguments needed.
      * keeps the beginning and the end of chains + what cross the boundaries
      * TODO is it necessary to keep the extremities ?
-     *  Modifying the extremities implies that the rest of the proof has to be also changed
-     *  Maybe should be the work of the interpolation method to figure out what to throw away.
+     * Modifying the extremities implies that the rest of the proof has to be also changed
+     * Maybe should be the work of the interpolation method to figure out what to throw away.
      *)
     let equalize_and_transpose lsts belongs_to =
       (*TODO this is the most brutal way => refine *)
@@ -307,16 +307,22 @@ module Proof =
 
     (* Keeps only the facts that cross the boundaries. Returns 1 interpolant per boundary.
      * Deals with congruence axioms.
-     * Assumes that the proof is local. *)
-    let interpolate proof belongs_to =
-      (* TODO Normally both extremities of the proof should be common.
-       * But the path in the middle can contains local terms that must be eliminated. *)
+     * Assumes that the proof is local.
+     * proof |= not contradication.
+     * belongs_to is supposed to work on predicates in this method. *)
+    let rec interpolate contradication proof belongs_to =
+      (* To make things more fancy, condtradiction might even be something that belongs_to does not know about *)
       (* Also takes care of the congruence axioms
        * Basically, for each argument, project the equality path against the boundary (and adding not the result if it is on the left side).
        * Then, depending on the side of the congruence, combine the pathes with And/Or
        *  if s = A then (A, Or (SatUIF.interpolate_euf true eq (And !a_part_eq) (And !b_part_eq)))
        *  else (B, And (SatUIF.interpolate_euf false eq (And !a_part_eq) (And !b_part_eq))) (*also mixed ?!*)
        *  TODO for mixed, both should be possible ?
+       *)
+      (* A proof is a path + congruence axioms.
+       * Belongs to can tag some constraints as part of some formula,
+       * However making the proof local introduces some new terms that belongs to does not know about.
+       * A first step would be to tag those terms, then when everything is tagged, compute the interpolant.
        *)
       failwith "TODO"
 
