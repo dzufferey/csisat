@@ -4,21 +4,10 @@ PWD = $(shell pwd)
 OBJ = obj
 SRC = src
 DOC = doc
-LIB = lib
+LIB =/usr/lib #lib
 
-INLCUDES = -I $(PWD)/glpk_ml_wrapper/include -I $(PWD)/pico_ml_wrapper/include
-LIB_GLPK_DIR = /usr/lib
-
-ifndef STATIC
-GLPK = #/usr/lib/libglpk.a # Uncomment for GLPK < 4.28
-LIBS = -cclib '-L $(PWD)/$(LIB) \
-	-lglpk -lpicosat -lcamlpico -lcamlglpk'
-else
-GLPK = $(LIB_GLPK_DIR)/libglpk.a  /usr/lib/libgmp.a /usr/lib/libz.a /usr/lib/libltdl.a /usr/lib/libdl.a # for GLPK 4.28
-LIBS = -ccopt '-static' \
-	-cclib '-L $(PWD)/$(LIB) \
-	-lm -ldl -lltdl -lz -lglpk -lpicosat -lcamlpico -lcamlglpk'
-endif
+INCLUDE=/usr/include
+LIBS=-ccopt -L$(LIB) -cclib -lglpk
 
 OCAML_C = $(shell if which ocamlc.opt 2> /dev/null > /dev/null ; then echo ocamlc.opt; else echo ocamlc; fi)
 OCAML_LD = $(OCAML_C)
@@ -27,13 +16,15 @@ OCAML_OPT_LD = $(OCAML_OPT_C)
 OCAML_OPT_LEX = $(shell if which ocamllex.opt 2> /dev/null > /dev/null ; then echo ocamllex.opt; else echo ocamllex; fi)
 OCAML_OPT_YACC = $(shell if which ocamlyacc.opt 2> /dev/null > /dev/null ; then echo ocamlyacc.opt; else echo ocamlyacc; fi)
 
-COMPILE_FLAG = -inline 10
+COMPILE_FLAG = -verbose #-inline 10
 #COMPILE_FLAG = -inline 10 -unsafe -noassert
 #COMPILE_FLAG = -p
 OCAML_LD_FLAGS = 
 
 
 FILES = \
+    $(OBJ)/camlglpk.cmx \
+    $(OBJ)/camlglpk_stubs.o \
 	$(OBJ)/csisatGlobal.cmx \
 	$(OBJ)/csisatMessage.cmx \
 	$(OBJ)/csisatOrdSet.cmx \
@@ -44,7 +35,6 @@ FILES = \
 	$(OBJ)/csisatDpllClause.cmx \
 	$(OBJ)/csisatDpllProof.cmx \
 	$(OBJ)/csisatSatInterface.cmx \
-	$(OBJ)/csisatPicoInterface.cmx \
 	$(OBJ)/csisatDpllCore.cmx \
 	$(OBJ)/csisatMatrix.cmx \
 	$(OBJ)/csisatInfixLex.cmx \
@@ -62,15 +52,13 @@ FILES = \
 	$(OBJ)/csisatSatPL.cmx \
 	$(OBJ)/csisatInterpolate.cmx \
 	$(OBJ)/csisatConfig.cmx \
-	$(OBJ)/csisatTests.cmx
+	$(OBJ)/csisatTests.cmx \
+    $(OBJ)/csisatMain.cmx 
 
-MAIN =  $(OBJ)/csisatMain.cmx
 TARGET = bin/csisat
-OCAML_LIB = libcsisat
 
-
-all: glpk pico picosat server $(FILES) $(MAIN) lib
-	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(LIBS)  $(GLPK) $(PWD)/picosat/libpicosat.a $(FILES) $(MAIN)
+all: $(FILES)
+	$(OCAML_OPT_C) $(COMPILE_FLAG) -o $(TARGET) $(FILES) $(LIBS) $(CAMLGLPK) 
 	$(shell sed -i 's/Version .*\\n\\n/Version 1.2 (Rev REV, Build DATE)\.\\n\\n/g' $(SRC)/csisatConfig.ml)
 
 VERSION = $(shell svnversion)
@@ -133,25 +121,14 @@ $(OBJ)/%.cmx: $(SRC)/%.ml
 	$(shell if test $< = $(SRC)/csisatConfig.ml; \
 		then sed -i 's/Rev REV, Build DATE/Rev $(VERSION), Build $(DATE)/g' $<; fi)
 	$(OCAML_OPT_C) $(COMPILE_FLAG) -I $(OBJ) $(INLCUDES) -c $<
-	$(OCAML_C) -I $(OBJ) $(INLCUDES) -c $<
 	@mv $(patsubst %.ml, %.cmx, $<) $@
 	@mv $(patsubst %.ml, %.cmi, $<) $(patsubst %.cmx, %.cmi, $@)
-	@mv $(patsubst %.ml, %.cmo, $<) $(patsubst %.cmx, %.cmo, $@)
 	@mv $(patsubst %.ml, %.o, $<) $(patsubst %.cmx, %.o, $@)
 
-lib: $(LIB)/$(OCAML_LIB).cma $(LIB)/$(OCAML_LIB).cmxa 
+$(OBJ)/%.o: $(SRC)/%.c
+	$(OCAML_C) -c -ccopt -I$(INCLUDE) -ccopt -o -ccopt $@ $<
 
-$(LIB)/$(OCAML_LIB).cma: $(OCAML_LIB_OBJ:%=%.cmo)
-	@echo Creating OCAML \(byte code\) library $@
-	@mkdir -p $(LIB)
-	$(OCAML_LD) $(OCAML_LD_FLAGS) -a -o $@ $(patsubst %.cmx, %.cmo, $(FILES))
-
-$(LIB)/$(OCAML_LIB).cmxa $(LIB)/$(OCAML_LIB).a: $(OCAML_LIB_OBJ:%=%.cmx)
-	@echo Creating OCAML \(native code\) library $@
-	@mkdir -p $(LIB)
-	$(OCAML_OPT_LD) $(OCAML_LD_FLAGS) -a -o $@ $(FILES)
-
-.PHONY: doc server picosat
+.PHONY: doc 
 
 doc: odoc
 
@@ -169,27 +146,5 @@ odoc:
 		-hide $(HIDE) \
 		$(patsubst $(OBJ)/%, $(SRC)/%, $(patsubst %.cmx, %.ml, $(FILES)))
 
-glpk:
-	cd glpk_ml_wrapper; make
-	@mkdir -p $(LIB)
-	cp glpk_ml_wrapper/libcamlglpk.a $(LIB)/
-
-pico:
-	cd pico_ml_wrapper; make
-	@mkdir -p $(LIB)
-	cp pico_ml_wrapper/libcamlpico.a $(LIB)/
-
-picosat:
-	cd picosat; ./configure -t;  make
-	@mkdir -p $(LIB)
-	cp picosat/libpicosat.a $(LIB)/
-
-server:
-	cd server; make
-
 clean:
-	$(RM) $(TARGET) $(OBJ)/* $(LIB)/*
-	cd glpk_ml_wrapper; make clean
-	cd pico_ml_wrapper; make clean
-	cd picosat; make clean
-	cd server; make clean
+	$(RM) $(TARGET) $(OBJ)/*

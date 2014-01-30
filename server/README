@@ -1,9 +1,0 @@
-The 'server' is an application that runs as many CSIsat as needed.
-
-The assumptions are that every line read (stdin) is a different query.
-It is usefull when you have multiple queries, but that you don't want to care
-about the process mangement. The argument given to the server are given to
-the children processes. It means you can run the server as CSisat.
-
-REQUIREMENT:
-    -assume that CSIsat is in the path

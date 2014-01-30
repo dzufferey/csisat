@@ -39,14 +39,14 @@ void no_output()
 value lp_create(value unit)
 {
     CAMLparam1(unit);
-    LPX* lp = lpx_create_prob();
+    glp_prob* lp = glp_create_prob();
     CAMLreturn ((value)lp);
 }
 
 value lp_delete(value lp)
 {
     CAMLparam1(lp);
-    lpx_delete_prob((LPX*)lp);   
+    glp_delete_prob((glp_prob*)lp);   
     CAMLreturn (Val_unit);
 }
 
@@ -54,105 +54,105 @@ value lp_delete(value lp)
 value lp_set_maximize(value lp)
 {
     CAMLparam1(lp);
-    lpx_set_obj_dir((LPX*)lp, LPX_MAX);
+    glp_set_obj_dir((glp_prob*)lp, GLP_MAX);
     CAMLreturn (Val_unit);
 }
 
 value lp_set_minimize(value lp)
 {
     CAMLparam1(lp);
-    lpx_set_obj_dir((LPX*)lp, LPX_MIN);
+    glp_set_obj_dir((glp_prob*)lp, GLP_MIN);
     CAMLreturn (Val_unit);
 }
 
 value lp_add_row(value lp, value i)
 {
     CAMLparam2(lp,i);
-    lpx_add_rows((LPX*)lp, Int_val(i));
+    glp_add_rows((glp_prob*)lp, Int_val(i));
     CAMLreturn (Val_unit);
 }
 
 value lp_add_col(value lp, value i)
 {
     CAMLparam2(lp,i);
-    lpx_add_cols((LPX*)lp, Int_val(i));
+    glp_add_cols((glp_prob*)lp, Int_val(i));
     CAMLreturn (Val_unit);
 }
 
 value lp_set_row_bnd_free(value lp, value i)
 {
     CAMLparam2(lp,i);
-    lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_FR, 0.0, 0.0 );
+    glp_set_row_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_FR, 0.0, 0.0 );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_row_bnd_lower(value lp, value i, value lo)
 {
     CAMLparam3(lp,i,lo);
-    lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_LO, Double_val(lo), 0.0 );
+    glp_set_row_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_LO, Double_val(lo), 0.0 );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_row_bnd_upper(value lp, value i, value up)
 {
     CAMLparam3(lp,i,up);
-    lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_UP, 0.0, Double_val(up) );
+    glp_set_row_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_UP, 0.0, Double_val(up) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_row_bnd_double(value lp, value i, value lo, value up)
 {
     CAMLparam4(lp,i,lo,up);
-    lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_DB, Double_val(lo), Double_val(up) );
+    glp_set_row_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_DB, Double_val(lo), Double_val(up) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_row_bnd_fixed(value lp, value i, value x)
 {
     CAMLparam3(lp,i,x);
-    lpx_set_row_bnds((LPX*)lp, Int_val(i) + 1, LPX_FX, Double_val(x), Double_val(x) );
+    glp_set_row_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_FX, Double_val(x), Double_val(x) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_col_bnd_free(value lp, value i)
 {
     CAMLparam2(lp,i);
-    lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_FR, 0.0, 0.0 );
+    glp_set_col_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_FR, 0.0, 0.0 );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_col_bnd_lower(value lp, value i, value lo)
 {
     CAMLparam3(lp,i,lo);
-    lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_LO, Double_val(lo), 0.0 );
+    glp_set_col_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_LO, Double_val(lo), 0.0 );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_col_bnd_upper(value lp, value i, value up)
 {
     CAMLparam3(lp,i,up);
-    lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_UP, 0.0, Double_val(up) );
+    glp_set_col_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_UP, 0.0, Double_val(up) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_col_bnd_double(value lp, value i, value lo, value up)
 {
     CAMLparam4(lp,i,lo,up);
-    lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_DB, Double_val(lo), Double_val(up) );
+    glp_set_col_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_DB, Double_val(lo), Double_val(up) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_col_bnd_fixed(value lp, value i, value x)
 {
     CAMLparam3(lp,i,x);
-    lpx_set_col_bnds((LPX*)lp, Int_val(i) + 1, LPX_FX, Double_val(x), Double_val(x) );
+    glp_set_col_bnds((glp_prob*)lp, Int_val(i) + 1, GLP_FX, Double_val(x), Double_val(x) );
     CAMLreturn (Val_unit);
 }
 
 value lp_set_obj_coef(value lp, value i, value coeff)
 {
     CAMLparam3(lp,i,coeff);
-    lpx_set_obj_coef((LPX*)lp, Int_val(i) + 1, Double_val(coeff));
+    glp_set_obj_coef((glp_prob*)lp, Int_val(i) + 1, Double_val(coeff));
     CAMLreturn (Val_unit);
 }
 
@@ -173,7 +173,7 @@ value lp_set_mat_row(value lp, value i, value len, value array)
         }
     }
     if(non_zero > 0){
-        lpx_set_mat_row((LPX*)lp, Int_val(i) + 1, non_zero, indexes, val);
+        glp_set_mat_row((glp_prob*)lp, Int_val(i) + 1, non_zero, indexes, val);
     }
     free(indexes);
     free(val);
@@ -197,7 +197,7 @@ value lp_set_mat_col(value lp, value i, value len, value array)
         }
     }
     if(non_zero > 0){
-        lpx_set_mat_col((LPX*)lp, Int_val(i) + 1, non_zero, indexes, val);
+        glp_set_mat_col((glp_prob*)lp, Int_val(i) + 1, non_zero, indexes, val);
     }
     free(indexes);
     free(val);
@@ -208,32 +208,28 @@ value lp_set_mat_col(value lp, value i, value len, value array)
 value lp_simplex(value lp, value presolve)
 {
     CAMLparam2(lp,presolve);
+    glp_smcp params;
+    glp_init_smcp(&params);
     if(Bool_val(presolve)){
-        lpx_set_int_parm((LPX*)lp, LPX_K_PRESOL, 1);
+        params.presolve = GLP_ON;
     }else{
-        lpx_set_int_parm((LPX*)lp, LPX_K_PRESOL, 0);
+        params.presolve = GLP_OFF;
     }
     no_output();
-    int status = lpx_simplex((LPX*)lp);
+    int status = glp_simplex((glp_prob*)lp, &params);
     value val = Val_false;
-    if(status == LPX_E_OK){
+    if(status == GLP_OPT){
         val = Val_true;
-    }else if (status == LPX_E_FAULT){
-        //fprintf(stderr, "solving failed \n");
-    }else if (status == LPX_E_OBJLL){
-        //fprintf(stderr, "unbounded (lower)\n");
-    }else if (status == LPX_E_OBJUL){
-        //fprintf(stderr, "unbounded (upper)\n");
-    }else if (status == LPX_E_ITLIM){
-        //fprintf(stderr, "iteration limit reached\n");
-    }else if (status == LPX_E_TMLIM){
-        //fprintf(stderr, "time limit reached\n");
-    }else if (status == LPX_E_SING){
-        fprintf(stderr, "singular or ill-conditionned matrix\n");
-    }else if (status == LPX_E_NOPFS){
-        //fprintf(stderr, "no primal solution\n");
-    }else if (status == LPX_E_NODFS){
-        //fprintf(stderr, "no dual solution\n");
+    }else if (status == GLP_FEAS){
+        fprintf(stderr, "feasible\n");
+    }else if (status == GLP_UNDEF){
+        fprintf(stderr, "undefined\n");
+    }else if (status == GLP_UNBND){
+        fprintf(stderr, "unbounded\n");
+    }else if (status == GLP_NOFEAS){
+        fprintf(stderr, "no feasible solution\n");
+    }else if (status == GLP_INFEAS){
+        fprintf(stderr, "infeasible\n");
     }else{
         fprintf(stderr, "unknown status: %d\n", status);
     }
@@ -244,27 +240,21 @@ value lp_simplex_exact(value lp)
 {
     CAMLparam1(lp);
     no_output();
-    lpx_simplex((LPX*)lp);
-    int status = lpx_exact((LPX*)lp);
+    glp_simplex((glp_prob*)lp, NULL);
+    int status = glp_exact((glp_prob*)lp, NULL);
     value val = Val_false;
-    if(status == LPX_E_OK){
+    if(status == GLP_OPT){
         val = Val_true;
-    }else if (status == LPX_E_FAULT){
-        //fprintf(stderr, "solving failed \n");
-    }else if (status == LPX_E_OBJLL){
-        //fprintf(stderr, "unbounded (lower)\n");
-    }else if (status == LPX_E_OBJUL){
-        //fprintf(stderr, "unbounded (upper)\n");
-    }else if (status == LPX_E_ITLIM){
-        //fprintf(stderr, "iteration limit reached\n");
-    }else if (status == LPX_E_TMLIM){
-        //fprintf(stderr, "time limit reached\n");
-    }else if (status == LPX_E_SING){
-        fprintf(stderr, "singular or ill-conditionned matrix\n");
-    }else if (status == LPX_E_NOPFS){
-        //fprintf(stderr, "no primal solution\n");
-    }else if (status == LPX_E_NODFS){
-        //fprintf(stderr, "no dual solution\n");
+    }else if (status == GLP_FEAS){
+        fprintf(stderr, "feasible\n");
+    }else if (status == GLP_UNDEF){
+        fprintf(stderr, "undefined\n");
+    }else if (status == GLP_UNBND){
+        fprintf(stderr, "unbounded\n");
+    }else if (status == GLP_NOFEAS){
+        fprintf(stderr, "no feasible solution\n");
+    }else if (status == GLP_INFEAS){
+        fprintf(stderr, "infeasible\n");
     }else{
         fprintf(stderr, "unknown status: %d\n", status);
     }
@@ -273,7 +263,7 @@ value lp_simplex_exact(value lp)
 value lp_get_stat(value lp)
 {
     CAMLparam1(lp);
-    int status = lpx_get_status((LPX*)lp);
+    int status = glp_get_status((glp_prob*)lp);
     CAMLreturn (Val_int(status));
 }
 
@@ -281,21 +271,21 @@ value lp_get_stat(value lp)
 value lp_get_obj_val(value lp)
 {
     CAMLparam1(lp);
-    double status = lpx_get_obj_val((LPX*)lp);
+    double status = glp_get_obj_val((glp_prob*)lp);
     CAMLreturn (caml_copy_double(status));
 }
 
 value lp_get_row_stat(value lp, value i)
 {
     CAMLparam2(lp,i);
-    int status = lpx_get_row_stat((LPX*)lp, Int_val(i) + 1);
+    int status = glp_get_row_stat((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (Val_int(status));
 }
 
 value lp_is_col_basic(value lp, value i)
 {
     CAMLparam2(lp,i);
-    int status = glp_get_col_stat((LPX*)lp, Int_val(i) + 1);
+    int status = glp_get_col_stat((glp_prob*)lp, Int_val(i) + 1);
     value val = Val_false;
     if(status == GLP_BS ) {
       val = Val_true;
@@ -306,7 +296,7 @@ value lp_is_col_basic(value lp, value i)
 value lp_is_row_basic(value lp, value i)
 {
     CAMLparam2(lp,i);
-    int status = glp_get_row_stat((LPX*)lp, Int_val(i) + 1);
+    int status = glp_get_row_stat((glp_prob*)lp, Int_val(i) + 1);
     value val = Val_false;
     if(status == GLP_BS ) {
       val = Val_true;
@@ -317,7 +307,7 @@ value lp_is_row_basic(value lp, value i)
 value lp_get_row_primal(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_get_row_prim((LPX*)lp, Int_val(i) + 1);
+    double val = glp_get_row_prim((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -326,7 +316,7 @@ value lp_get_rows_primal(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_get_row_prim((LPX*)lp, i + 1);
+        double val = glp_get_row_prim((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -336,7 +326,7 @@ value lp_get_rows_primal(value lp, value length, value array)
 value lp_get_row_dual(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_get_row_dual((LPX*)lp, Int_val(i) + 1);
+    double val = glp_get_row_dual((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -345,7 +335,7 @@ value lp_get_rows_dual(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_get_row_dual((LPX*)lp, i + 1);
+        double val = glp_get_row_dual((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -354,14 +344,14 @@ value lp_get_rows_dual(value lp, value length, value array)
 value lp_get_col_stat(value lp, value i)
 {
     CAMLparam2(lp,i);
-    int status = lpx_get_col_stat((LPX*)lp, Int_val(i) + 1);
+    int status = glp_get_col_stat((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (Val_int(status));
 }
 
 value lp_get_col_primal(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_get_col_prim((LPX*)lp, Int_val(i) + 1);
+    double val = glp_get_col_prim((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -370,7 +360,7 @@ value lp_get_cols_primal(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_get_col_prim((LPX*)lp, i + 1);
+        double val = glp_get_col_prim((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -379,7 +369,7 @@ value lp_get_cols_primal(value lp, value length, value array)
 value lp_get_col_dual(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_get_col_dual((LPX*)lp, Int_val(i) + 1);
+    double val = glp_get_col_dual((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -388,7 +378,7 @@ value lp_get_cols_dual(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_get_col_dual((LPX*)lp, i + 1);
+        double val = glp_get_col_dual((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -398,20 +388,20 @@ value lp_interior(value lp)
 {
     CAMLparam1(lp);
     no_output();
-    int status = lpx_interior((LPX*)lp);
+    int status = glp_interior((glp_prob*)lp, NULL);
     value val = Val_false;
-    if(status == LPX_E_OK){
+    if(status == GLP_OPT){
         val = Val_true;
-    }else if (status == LPX_E_FAULT){
-        //fprintf(stderr, "solving failed \n");
-    }else if (status == LPX_E_NOFEAS){
-        //fprintf(stderr, "unfeasible system\n");
-    }else if (status == LPX_E_NOCONV){
-        fprintf(stderr, "slow convergence (or diverge)\n");
-    }else if (status == LPX_E_ITLIM){
-        fprintf(stderr, "iteration limit reached\n");
-    }else if (status == LPX_E_INSTAB){
-        fprintf(stderr, "numerical instability\n");
+    }else if (status == GLP_FEAS){
+        fprintf(stderr, "feasible\n");
+    }else if (status == GLP_UNDEF){
+        fprintf(stderr, "undefined\n");
+    }else if (status == GLP_UNBND){
+        fprintf(stderr, "unbounded\n");
+    }else if (status == GLP_NOFEAS){
+        fprintf(stderr, "no feasible solution\n");
+    }else if (status == GLP_INFEAS){
+        fprintf(stderr, "infeasible\n");
     }else{
         fprintf(stderr, "unknown status: %d\n", status);
     }
@@ -421,14 +411,14 @@ value lp_interior(value lp)
 value lp_ipt_obj_val(value lp)
 {
     CAMLparam1(lp);
-    double status = lpx_ipt_obj_val((LPX*)lp);
+    double status = glp_ipt_obj_val((glp_prob*)lp);
     CAMLreturn (caml_copy_double(status));
 }
 
 value lp_ipt_row_primal(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_ipt_row_prim((LPX*)lp, Int_val(i) + 1);
+    double val = glp_ipt_row_prim((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -437,7 +427,7 @@ value lp_ipt_rows_primal(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_ipt_row_prim((LPX*)lp, i + 1);
+        double val = glp_ipt_row_prim((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -446,7 +436,7 @@ value lp_ipt_rows_primal(value lp, value length, value array)
 value lp_ipt_row_dual(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_ipt_row_dual((LPX*)lp, Int_val(i) + 1);
+    double val = glp_ipt_row_dual((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -455,7 +445,7 @@ value lp_ipt_rows_dual(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_ipt_row_dual((LPX*)lp, i + 1);
+        double val = glp_ipt_row_dual((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -464,7 +454,7 @@ value lp_ipt_rows_dual(value lp, value length, value array)
 value lp_ipt_col_primal(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_ipt_col_prim((LPX*)lp, Int_val(i) + 1);
+    double val = glp_ipt_col_prim((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -473,7 +463,7 @@ value lp_ipt_cols_primal(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_ipt_col_prim((LPX*)lp, i + 1);
+        double val = glp_ipt_col_prim((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -482,7 +472,7 @@ value lp_ipt_cols_primal(value lp, value length, value array)
 value lp_ipt_col_dual(value lp, value i)
 {
     CAMLparam2(lp,i);
-    double val = lpx_ipt_col_dual((LPX*)lp, Int_val(i) + 1);
+    double val = glp_ipt_col_dual((glp_prob*)lp, Int_val(i) + 1);
     CAMLreturn (caml_copy_double(val));
 }
 
@@ -491,7 +481,7 @@ value lp_ipt_cols_dual(value lp, value length, value array)
     CAMLparam3(lp,length,array);
     int i;
     for(i = 0; i < Int_val(length); ++i){
-        double val = lpx_ipt_col_dual((LPX*)lp, i + 1);
+        double val = glp_ipt_col_dual((glp_prob*)lp, i + 1);
         Store_double_field(array, i, val);
     }
     CAMLreturn (Val_unit);
@@ -500,7 +490,6 @@ value lp_ipt_cols_dual(value lp, value length, value array)
 value lp_dump_problem(value lp)
 {
     CAMLparam1(lp);
-    lpx_print_prob((LPX*)lp, "lp_error.debug");
-    lpx_write_cpxlp((LPX*)lp, "cpxlp_error.debug");
+    glp_write_prob((glp_prob*)lp, 0, "lp_error.debug"); //TODO flags ??
     CAMLreturn (Val_unit);
 }
