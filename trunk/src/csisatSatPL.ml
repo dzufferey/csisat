@@ -25,7 +25,6 @@
 (** Bool+T *)
 
 open   CsisatAst
-open   CsisatPicoInterface
 open   CsisatDpllCore
 (**/**)
 module Global      = CsisatGlobal
@@ -39,13 +38,7 @@ module DpllProof   = CsisatDpllProof
 
 let solver = ref "csi_dpll"
 
-let set_solver str = match str with
-  | "pico" -> solver := "pico"
-  | "csi_dpll" -> solver := "csi_dpll"
-  | _ -> failwith "SatPL: unknown SAT solver"
-
 let get_solver prf = match !solver with
-  | "pico" -> new picosat prf
   | "csi_dpll" -> new csi_dpll prf
   | _ -> failwith "SatPL: unknown SAT solver"
 
