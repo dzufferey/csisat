@@ -218,20 +218,10 @@ value lp_simplex(value lp, value presolve)
     no_output();
     int status = glp_simplex((glp_prob*)lp, &params);
     value val = Val_false;
-    if(status == GLP_OPT){
+    if(status == 0){ //no error, still need to check for optimality
         val = Val_true;
-    }else if (status == GLP_FEAS){
-        fprintf(stderr, "feasible\n");
-    }else if (status == GLP_UNDEF){
-        fprintf(stderr, "undefined\n");
-    }else if (status == GLP_UNBND){
-        fprintf(stderr, "unbounded\n");
-    }else if (status == GLP_NOFEAS){
-        fprintf(stderr, "no feasible solution\n");
-    }else if (status == GLP_INFEAS){
-        fprintf(stderr, "infeasible\n");
     }else{
-        fprintf(stderr, "unknown status: %d\n", status);
+        fprintf(stderr, "failed to solve: %d\n", status);
     }
     CAMLreturn (val);
 }
@@ -243,20 +233,10 @@ value lp_simplex_exact(value lp)
     glp_simplex((glp_prob*)lp, NULL);
     int status = glp_exact((glp_prob*)lp, NULL);
     value val = Val_false;
-    if(status == GLP_OPT){
+    if(status == 0){
         val = Val_true;
-    }else if (status == GLP_FEAS){
-        fprintf(stderr, "feasible\n");
-    }else if (status == GLP_UNDEF){
-        fprintf(stderr, "undefined\n");
-    }else if (status == GLP_UNBND){
-        fprintf(stderr, "unbounded\n");
-    }else if (status == GLP_NOFEAS){
-        fprintf(stderr, "no feasible solution\n");
-    }else if (status == GLP_INFEAS){
-        fprintf(stderr, "infeasible\n");
     }else{
-        fprintf(stderr, "unknown status: %d\n", status);
+        fprintf(stderr, "failed to solve: %d\n", status);
     }
     CAMLreturn (val);
 }

@@ -16,7 +16,7 @@ OCAML_OPT_LD = $(OCAML_OPT_C)
 OCAML_OPT_LEX = $(shell if which ocamllex.opt 2> /dev/null > /dev/null ; then echo ocamllex.opt; else echo ocamllex; fi)
 OCAML_OPT_YACC = $(shell if which ocamlyacc.opt 2> /dev/null > /dev/null ; then echo ocamlyacc.opt; else echo ocamlyacc; fi)
 
-COMPILE_FLAG = -verbose #-inline 10
+COMPILE_FLAG = #-inline 10
 #COMPILE_FLAG = -inline 10 -unsafe -noassert
 #COMPILE_FLAG = -p
 OCAML_LD_FLAGS = 
